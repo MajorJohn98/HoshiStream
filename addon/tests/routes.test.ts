@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  manageAssetPath,
   noStoreProtocolResource,
   technicalProbeRequested,
 } from "../src/routes.js";
@@ -18,5 +19,29 @@ describe("inspection route", () => {
     expect(noStoreProtocolResource("catalog")).toBe(true);
     expect(noStoreProtocolResource("meta")).toBe(true);
     expect(noStoreProtocolResource("stream")).toBe(true);
+  });
+});
+
+describe("management asset route", () => {
+  it("serves only whitelisted js and css names", () => {
+    expect(manageAssetPath("/manage-assets/app.js")).toBe("app.js");
+    expect(manageAssetPath("/manage-assets/styles.css")).toBe("styles.css");
+    expect(manageAssetPath("/manage-assets/classify-imports.js")).toBe(
+      "classify-imports.js",
+    );
+    expect(manageAssetPath("/manage-assets/views/library.js")).toBe(
+      "views/library.js",
+    );
+  });
+
+  it("rejects traversal and unexpected paths", () => {
+    expect(manageAssetPath("/manage-assets/../library.json")).toBeUndefined();
+    expect(manageAssetPath("/manage-assets/..%2f..%2f.env")).toBeUndefined();
+    expect(manageAssetPath("/manage-assets/app.js.map")).toBeUndefined();
+    expect(manageAssetPath("/manage-assets/App.js")).toBeUndefined();
+    expect(manageAssetPath("/manage-assets/views/../app.js")).toBeUndefined();
+    expect(manageAssetPath("/manage-assets/deep/views/app.js")).toBeUndefined();
+    expect(manageAssetPath("/manage-assets/logo.png")).toBeUndefined();
+    expect(manageAssetPath("/manage-assets/")).toBeUndefined();
   });
 });

@@ -60,12 +60,47 @@ function noStoreReply(
 function html(response: ServerResponse, value: string): void {
   response.writeHead(200, {
     "content-security-policy":
-      "default-src 'self'; img-src 'self' https: data:; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
+      "default-src 'self'; img-src 'self' https: data:; script-src 'self'; style-src 'self'",
     "content-type": "text/html; charset=utf-8",
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
   });
   response.end(value);
+}
+
+const MANAGE_ASSET_TYPES: Record<string, string> = {
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+};
+
+export function manageAssetPath(pathname: string): string | undefined {
+  const match = /^\/manage-assets\/((?:views\/)?[a-z0-9-]+\.(?:js|css))$/.exec(
+    pathname,
+  );
+  return match?.[1];
+}
+
+async function serveManageAsset(
+  response: ServerResponse,
+  asset: string,
+): Promise<void> {
+  const extension = asset.slice(asset.lastIndexOf("."));
+  let content: Buffer;
+  try {
+    content = await readFile(
+      new URL(`../assets/manage/${asset}`, import.meta.url),
+    );
+  } catch {
+    response.writeHead(404, JSON_HEADERS);
+    response.end(JSON.stringify({ error: "Not found" }));
+    return;
+  }
+  response.writeHead(200, {
+    "cache-control": "public, max-age=300",
+    "content-type": MANAGE_ASSET_TYPES[extension],
+    "x-content-type-options": "nosniff",
+  });
+  response.end(content);
 }
 
 async function body(request: IncomingMessage): Promise<unknown> {
@@ -116,6 +151,10 @@ export function createHandler(
             ),
           ),
         );
+      }
+      const manageAsset = manageAssetPath(url.pathname);
+      if (manageAsset && request.method === "GET") {
+        return serveManageAsset(response, manageAsset);
       }
       if (url.pathname === "/ready") {
         await Promise.all([library.list(), torrServer.health()]);

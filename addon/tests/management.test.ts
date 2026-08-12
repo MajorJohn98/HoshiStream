@@ -1,47 +1,103 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { classifyLibraryImports, managementHtml } from "../src/management.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore plain browser ES module shared with the management UI
+import { classifyLibraryImports } from "../assets/manage/classify-imports.js";
+import { managementHtml } from "../src/management.js";
 
-describe("management page", () => {
-  it("uses the tokenized URL and authenticated library API", () => {
-    expect(managementHtml).toContain('Authorization:"Bearer "+token');
-    expect(managementHtml).toContain('fetch("/api/"+path');
-    expect(managementHtml).toContain('method:"PATCH"');
-    expect(managementHtml).toContain("/api/torrent-upload");
-    expect(managementHtml).toContain("Files & episode mapping");
-    expect(managementHtml).toContain("System Status");
-    expect(managementHtml).toContain("Test playback");
-    expect(managementHtml).toContain("Playback analysis");
-    expect(managementHtml).toContain("Recommended speed");
-    expect(managementHtml).toContain("Likely to direct play");
-    expect(managementHtml).not.toContain('"diagnostics"');
-    expect(managementHtml).toContain("Inspecting files…");
-    expect(managementHtml).toContain("Analyzing playback…");
-    expect(managementHtml).toContain("color:#151719");
-    expect(managementHtml).toContain(".primary:disabled");
-    expect(managementHtml).toContain('technical?"?probe=true":""');
-    expect(managementHtml).toContain("Refresh Stremio");
-    expect(managementHtml).toContain("Export JSON");
-    expect(managementHtml).toContain("Import JSON");
-    expect(managementHtml).toContain("Choose titles to add");
-    expect(managementHtml).toContain('<textarea name="magnetUri" required>');
+const asset = (name: string) =>
+  readFile(new URL(`../assets/manage/${name}`, import.meta.url), "utf8");
+
+describe("management page shell", () => {
+  it("links only static assets and contains no inline code or secrets", () => {
     expect(managementHtml).toContain(
-      "visible only on the tokenized management page",
+      '<link rel="stylesheet" href="/manage-assets/styles.css" />',
     );
     expect(managementHtml).toContain(
-      'link.download="hoshistream-library.json"',
+      '<script type="module" src="/manage-assets/app.js"></script>',
     );
-    expect(managementHtml).toContain(
-      "({torrentFilePath,localFilePath,localFolderPath,...details})",
-    );
-    expect(managementHtml).toContain('details.magnetUri?"magnet"');
-    expect(managementHtml).toContain('api("stremio-refresh",{method:"POST"}');
-    expect(managementHtml).toContain('location.href="stremio:///board"');
-    expect(managementHtml).toContain("Copy add-on URL");
-    expect(managementHtml).toContain('role="dialog"');
-    expect(managementHtml).toContain('e.key==="Escape"');
+    expect(managementHtml).toContain('<main id="app">');
+    expect(managementHtml).toContain('<div id="toast" class="toast">');
+    expect(managementHtml).toContain('data-view="library"');
+    expect(managementHtml).toContain('data-view="add"');
+    expect(managementHtml).toContain('data-view="status"');
+    expect(managementHtml).not.toContain("<style>");
+    expect(managementHtml).not.toMatch(/<script>[^<]/);
     expect(managementHtml).not.toContain("ACCESS_TOKEN");
   });
+});
 
+describe("management assets", () => {
+  it("app module wires the token, API auth, and view router", async () => {
+    const appJs = await asset("app.js");
+    expect(appJs).toContain('Authorization: "Bearer " + token');
+    expect(appJs).toContain('fetch("/api/" + path');
+    expect(appJs).toContain("location.pathname.split");
+    expect(appJs).toContain('import { libraryView } from "./views/library.js"');
+    expect(appJs).toContain('import { addView } from "./views/add.js"');
+    expect(appJs).toContain('import { detailView } from "./views/detail.js"');
+    expect(appJs).toContain('import { statusView } from "./views/status.js"');
+    expect(appJs).not.toContain("ACCESS_TOKEN");
+  });
+
+  it("library view covers grid, import/export, and Stremio refresh", async () => {
+    const libraryJs = await asset("views/library.js");
+    expect(libraryJs).toContain("Refresh Stremio");
+    expect(libraryJs).toContain("Export JSON");
+    expect(libraryJs).toContain("Import JSON");
+    expect(libraryJs).toContain("Choose titles to add");
+    expect(libraryJs).toContain('link.download = "hoshistream-library.json"');
+    expect(libraryJs).toContain(
+      "({ torrentFilePath, localFilePath, localFolderPath, ...details })",
+    );
+    expect(libraryJs).toContain('api("stremio-refresh", { method: "POST" })');
+    expect(libraryJs).toContain('location.href = "stremio:///board"');
+    expect(libraryJs).toContain("Copy add-on URL");
+    expect(libraryJs).toContain('role="dialog"');
+    expect(libraryJs).toContain('e.key === "Escape"');
+    expect(libraryJs).toContain(
+      'import { classifyLibraryImports } from "../classify-imports.js"',
+    );
+  });
+
+  it("add view uploads torrents and media through the API", async () => {
+    const addJs = await asset("views/add.js");
+    expect(addJs).toContain("/api/torrent-upload");
+    expect(addJs).toContain("/api/upload?batch=");
+    expect(addJs).toContain("webkitdirectory");
+  });
+
+  it("detail view keeps inspection, mapping, and playback flows", async () => {
+    const detailJs = await asset("views/detail.js");
+    expect(detailJs).toContain('method: "PATCH"');
+    expect(detailJs).toContain("Files & episode mapping");
+    expect(detailJs).toContain("Test playback");
+    expect(detailJs).toContain("Playback analysis");
+    expect(detailJs).toContain("Recommended speed");
+    expect(detailJs).toContain("Likely to direct play");
+    expect(detailJs).toContain("Inspecting files…");
+    expect(detailJs).toContain("Analyzing playback…");
+    expect(detailJs).toContain('technical ? "?probe=true" : ""');
+    expect(detailJs).toContain('<textarea name="magnetUri" required>');
+    expect(detailJs).toContain("visible only on the tokenized management page");
+    expect(detailJs).toContain('role="dialog"');
+  });
+
+  it("status view reports service health", async () => {
+    const statusJs = await asset("views/status.js");
+    expect(statusJs).toContain("System Status");
+    expect(statusJs).toContain("TorrServer");
+    expect(statusJs).not.toContain('"diagnostics"');
+  });
+
+  it("stylesheet keeps the disabled-button affordance", async () => {
+    const css = await asset("styles.css");
+    expect(css).toContain("color: #151719");
+    expect(css).toContain(".primary:disabled");
+  });
+});
+
+describe("classifyLibraryImports", () => {
   it("flags ID, normalized title, and magnet conflicts", () => {
     const current = [
       {
