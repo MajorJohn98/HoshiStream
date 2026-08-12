@@ -1,6 +1,6 @@
 import type { Library } from "./library.js";
 import type { SelectedFile } from "./media-file-selection.js";
-import { inspectEntry } from "./inspection.js";
+import { resolveStreamSource } from "./inspection.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 
 const episodeId = /^(hoshi:[^:]+):(\d+):(\d+)$/;
@@ -83,8 +83,8 @@ export async function getStreams(
   if (!entry || entry.type !== type) return { streams: [] };
 
   if (entry.localFilePath || entry.localFolderPath) {
-    const inspection = await inspectEntry(entry, torrServer);
-    const file = requestedFile(inspection.selectedFiles, type, id).file;
+    const source = await resolveStreamSource(entry, torrServer, library);
+    const file = requestedFile(source.selectedFiles, type, id).file;
     if (!file) return { streams: [] };
     return {
       streams: [
@@ -98,12 +98,12 @@ export async function getStreams(
     };
   }
 
-  const inspection = await inspectEntry(entry, torrServer);
-  const file = requestedFile(inspection.selectedFiles, type, id).file;
+  const source = await resolveStreamSource(entry, torrServer, library);
+  const file = requestedFile(source.selectedFiles, type, id).file;
   if (!file) return { streams: [] };
 
   const url = rewritePublicUrl(
-    torrServer.streamUrl(inspection.hash, file),
+    torrServer.streamUrl(source.hash, file),
     publicTorrServerUrl,
   );
   console.log(

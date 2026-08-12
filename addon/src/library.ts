@@ -12,11 +12,21 @@ import { z } from "zod";
 import {
   libraryEntrySchema,
   type CreateEntry,
+  type InspectionCache,
   type LibraryEntry,
   type PatchEntry,
 } from "./types.js";
 
 const librarySchema = z.array(libraryEntrySchema);
+const CACHE_INVALIDATING_FIELDS = [
+  "type",
+  "magnetUri",
+  "torrentFilePath",
+  "localFilePath",
+  "localFolderPath",
+  "preferredFileIndex",
+  "fileOverrides",
+] as const;
 
 export class LibraryError extends Error {}
 
@@ -63,6 +73,8 @@ export class Library {
       if (input.description === null) delete candidate.description;
       if (input.poster === null) delete candidate.poster;
       if (input.background === null) delete candidate.background;
+      if (CACHE_INVALIDATING_FIELDS.some((field) => field in input))
+        delete candidate.inspectionCache;
       const updated = libraryEntrySchema.parse(candidate);
       entries[index] = updated;
       return updated;
@@ -75,6 +87,17 @@ export class Library {
       if (index === -1) return false;
       entries.splice(index, 1);
       return true;
+    });
+  }
+
+  setInspectionCache(id: string, cache: InspectionCache): Promise<void> {
+    return this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return;
+      entries[index] = libraryEntrySchema.parse({
+        ...entries[index],
+        inspectionCache: cache,
+      });
     });
   }
 
@@ -107,10 +130,9 @@ export class Library {
       );
     }
     if (!missing) {
-      await rename(
-        this.path,
-        `${this.path}.corrupt-${Date.now()}`,
-      ).catch(() => undefined);
+      await rename(this.path, `${this.path}.corrupt-${Date.now()}`).catch(
+        () => undefined,
+      );
     }
     await copyFile(this.backupPath, this.path).catch(() => undefined);
     console.error(

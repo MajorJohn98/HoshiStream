@@ -21,11 +21,7 @@ import {
 } from "./native-picker.js";
 import { bearerToken, validToken } from "./security.js";
 import type { AddonInterface } from "./server-types.js";
-import {
-  getStreams,
-  resolvePublicUrls,
-  type PublicUrls,
-} from "./streams.js";
+import { getStreams, resolvePublicUrls, type PublicUrls } from "./streams.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 import { createEntrySchema, patchEntrySchema } from "./types.js";
 
@@ -353,7 +349,7 @@ export function createHandler(
         if (inspectMatch && request.method === "POST") {
           const entry = await library.get(decodeURIComponent(inspectMatch[1]));
           if (!entry) return reply(response, 404, { error: "Not found" });
-          const inspection = await inspectEntry(entry, torrServer);
+          const inspection = await inspectEntry(entry, torrServer, library);
           const selected = inspection.selectedFiles[0];
           const source = inspection.files.find(
             (file) => file.id === selected?.id,

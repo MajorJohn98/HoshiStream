@@ -10,6 +10,18 @@ const fileOverrideSchema = z.object({
   season: z.number().int().positive().optional(),
   episode: z.number().int().positive().optional(),
 });
+const cachedFileSchema = z.object({
+  id: z.number().int().nonnegative(),
+  path: z.string().min(1),
+  length: z.number().int().nonnegative(),
+  season: z.number().int().positive().optional(),
+  episode: z.number().int().positive().optional(),
+});
+export const inspectionCacheSchema = z.object({
+  hash: z.string().min(1),
+  selectedFiles: z.array(cachedFileSchema).min(1),
+  inspectedAt: z.string().datetime(),
+});
 
 export const libraryEntrySchema = z
   .object({
@@ -26,6 +38,7 @@ export const libraryEntrySchema = z
     managedMedia: z.boolean().optional(),
     preferredFileIndex: z.number().int().nonnegative().optional(),
     fileOverrides: z.array(fileOverrideSchema).optional(),
+    inspectionCache: inspectionCacheSchema.optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -44,6 +57,7 @@ export const libraryEntrySchema = z
 export const createEntrySchema = libraryEntrySchema
   .omit({
     id: true,
+    inspectionCache: true,
     createdAt: true,
     updatedAt: true,
   })
@@ -66,6 +80,7 @@ export const patchEntrySchema = createEntrySchema.partial().extend({
 });
 
 export type LibraryEntry = z.infer<typeof libraryEntrySchema>;
+export type InspectionCache = z.infer<typeof inspectionCacheSchema>;
 export type CreateEntry = z.infer<typeof createEntrySchema>;
 export type PatchEntry = z.infer<typeof patchEntrySchema>;
 export type ContentType = LibraryEntry["type"];
