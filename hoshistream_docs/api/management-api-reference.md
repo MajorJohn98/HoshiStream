@@ -53,7 +53,7 @@ Returns the TorrServer registration (`hash`, `files`, `selectedFiles`) plus `hom
 
 | Method & path | Description |
 |---|---|
-| `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps`, `streamingActive` (recent stream activity or active TorrServer torrents), `uptimeSeconds` |
+| `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps`, `nativePicker` (supervisor socket present, so Finder pickers work), `streamingActive` (recent stream activity or active TorrServer torrents), `uptimeSeconds` |
 | `POST /api/stremio-refresh` | Recount catalogs → `{movies, series, total, updatedAt}` (no-store) |
 | `GET /api/media-files` | List files available under the read-only media mount |
 | `POST /api/upload?batch=&path=` | Browser upload of a video into managed storage → `204` |
@@ -64,6 +64,7 @@ Returns the TorrServer registration (`hash`, `files`, `selectedFiles`) plus `hom
 
 | Method & path | Description |
 |---|---|
-| `GET /manage/{token}` | Embedded management page (HTML, CSP-restricted) |
+| `GET /manage/{token}` | Management page shell (HTML, CSP `script-src 'self'; style-src 'self'`) |
+| `GET /manage-assets/{file}` | Static UI modules and stylesheet from `addon/assets/manage/` (public, whitelisted names only, cached 5 min) |
 | `GET\|HEAD /local/{token}/{entryId}[/{fileId}]` | Range-capable local media streaming |
 | `GET /assets/hoshistream-logo.png` | Logo (public, cached 1 day) |

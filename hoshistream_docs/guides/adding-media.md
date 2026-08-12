@@ -14,7 +14,7 @@ From there you can add magnet links, upload `.torrent` files, pick local files (
 
 ### Local files
 
-- With the native app: Finder pickers link files/folders in place — nothing is copied. A folder becomes one series; `S01E02` / `1x02` filename patterns map episodes, otherwise files become season 1 in filename order. Use **Edit → Relink in Finder** after moving/renaming.
+- With the native app: Finder pickers link files/folders in place — nothing is copied. The **Add Media** local/folder cards show a **Choose with Finder** button, and the detail **Source** tab offers **Relink in Finder** after moving/renaming. A folder becomes one series; `S01E02` / `1x02` filename patterns map episodes, otherwise files become season 1 in filename order.
 - With Docker: set `MEDIA_DIR` in `.env` to the folder containing your videos (mounted read-only), restart, then choose from the **Local file** menu.
 - Browser upload always copies the file into managed storage; deleting a Finder-linked entry never deletes the source.
 
