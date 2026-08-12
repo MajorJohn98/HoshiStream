@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { realpath, readdir, stat } from "node:fs/promises";
+import { access, realpath, readdir, stat } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { basename, join } from "node:path";
 import { isPlayablePath } from "./media-file-selection.js";
@@ -40,6 +40,16 @@ export class NativePicker {
   private readonly grants = new Map<string, Grant>();
 
   constructor(private readonly socketPath: string) {}
+
+  /** True when the supervisor socket exists, so Finder pickers can work. */
+  async available(): Promise<boolean> {
+    try {
+      await access(this.socketPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   async issue(kind: PickerKind) {
     const path = await this.select(kind);

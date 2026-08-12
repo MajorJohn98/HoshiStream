@@ -271,8 +271,8 @@ export function createHandler(
           });
         }
         if (url.pathname === "/api/status" && request.method === "GET") {
-          const [entries, torrServerStatus, activeTorrents] = await Promise.all(
-            [
+          const [entries, torrServerStatus, activeTorrents, pickerAvailable] =
+            await Promise.all([
               library.list(),
               torrServer
                 .health()
@@ -282,13 +282,14 @@ export function createHandler(
                 .list()
                 .then((torrents) => torrents.length)
                 .catch(() => 0),
-            ],
-          );
+              nativePicker.available(),
+            ]);
           return reply(response, 200, {
             status: "online",
             torrServer: torrServerStatus,
             libraryCount: entries.length,
             homeSpeedMbps,
+            nativePicker: pickerAvailable,
             streamingActive: recentStreamActivity() || activeTorrents > 0,
             uptimeSeconds: Math.floor(process.uptime()),
           });

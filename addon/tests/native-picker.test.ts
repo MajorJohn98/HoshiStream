@@ -32,6 +32,18 @@ describe("native Finder picker", () => {
     await expect(validateNativePath(folder, "file")).rejects.toThrow();
   });
 
+  it("reports availability from the supervisor socket path", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hoshistream-picker-"));
+    temporary.push(root);
+    const socket = join(root, "supervisor.sock");
+    await writeFile(socket, "");
+
+    await expect(new NativePicker(socket).available()).resolves.toBe(true);
+    await expect(
+      new NativePicker(join(root, "missing.sock")).available(),
+    ).resolves.toBe(false);
+  });
+
   it("redeems an opaque grant only once", () => {
     const picker = new NativePicker("/unused");
     const grants = (
