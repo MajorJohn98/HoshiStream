@@ -49,3 +49,21 @@ services:
       options:
         max-size: 10m
         max-file: "3"
+
+  # Optional: expose HoshiStream remotely via a Cloudflare Tunnel.
+  # Enable with: docker-compose --profile tunnel up -d
+  # Requires TUNNEL_TOKEN in .env (see hoshistream_docs/guides/remote-access-cloudflare-tunnel.md).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    mem_limit: 100m
+    command: tunnel run --token ${TUNNEL_TOKEN:-}
+    depends_on:
+      addon:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
