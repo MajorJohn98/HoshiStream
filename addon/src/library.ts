@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readFile,
+  rename,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
 import {
@@ -73,12 +80,52 @@ export class Library {
 
   private async read(): Promise<LibraryEntry[]> {
     try {
-      return librarySchema.parse(JSON.parse(await readFile(this.path, "utf8")));
+      return await this.parse(this.path);
     } catch (error) {
+      return this.recover(error);
+    }
+  }
+
+  private async parse(path: string): Promise<LibraryEntry[]> {
+    return librarySchema.parse(JSON.parse(await readFile(path, "utf8")));
+  }
+
+  private async recover(cause: unknown): Promise<LibraryEntry[]> {
+    const missing =
+      cause instanceof Error &&
+      (cause as NodeJS.ErrnoException).code === "ENOENT";
+    let entries: LibraryEntry[];
+    try {
+      entries = await this.parse(this.backupPath);
+    } catch (backupError) {
+      const backupMissing =
+        backupError instanceof Error &&
+        (backupError as NodeJS.ErrnoException).code === "ENOENT";
+      if (missing && backupMissing) return [];
       throw new LibraryError(
-        `Cannot read library: ${error instanceof Error ? error.message : error}`,
+        `Cannot read library: ${cause instanceof Error ? cause.message : cause}`,
       );
     }
+    if (!missing) {
+      await rename(
+        this.path,
+        `${this.path}.corrupt-${Date.now()}`,
+      ).catch(() => undefined);
+    }
+    await copyFile(this.backupPath, this.path).catch(() => undefined);
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        event: "library_recovered_from_backup",
+        entries: entries.length,
+        error: cause instanceof Error ? cause.message : String(cause),
+      }),
+    );
+    return entries;
+  }
+
+  private get backupPath(): string {
+    return `${this.path}.bak`;
   }
 
   private update<T>(
@@ -105,6 +152,7 @@ export class Library {
         mode: 0o600,
       });
       await rename(temporaryPath, this.path);
+      await copyFile(this.path, this.backupPath).catch(() => undefined);
     } catch (error) {
       await unlink(temporaryPath).catch(() => undefined);
       throw error;

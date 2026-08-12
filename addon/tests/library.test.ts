@@ -73,9 +73,34 @@ describe("Library", () => {
     expect(updated?.magnetUri).toBe("magnet:?xt=urn:btih:after");
   });
 
-  it("reports corrupt JSON", async () => {
+  it("reports corrupt JSON when no backup exists", async () => {
     const { path, library } = await temporaryLibrary();
     await writeFile(path, "{");
     await expect(library.list()).rejects.toBeInstanceOf(LibraryError);
+  });
+
+  it("writes a backup and recovers from it after corruption", async () => {
+    const { directory, path, library } = await temporaryLibrary();
+    const entry = await library.create({
+      type: "movie",
+      name: "Survivor",
+      magnetUri: "magnet:?xt=urn:btih:survive",
+    });
+    expect(JSON.parse(await readFile(`${path}.bak`, "utf8"))).toHaveLength(1);
+
+    await writeFile(path, "not json");
+    const entries = await new Library(path).list();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe(entry.id);
+    expect(JSON.parse(await readFile(path, "utf8"))).toHaveLength(1);
+    expect(
+      (await readdir(directory)).some((name) => name.includes(".corrupt-")),
+    ).toBe(true);
+  });
+
+  it("starts empty when neither library nor backup exists", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "hoshistream-"));
+    const library = new Library(join(directory, "library.json"));
+    expect(await library.list()).toEqual([]);
   });
 });
