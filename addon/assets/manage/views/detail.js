@@ -1,6 +1,15 @@
 // Detail modal: overview, source, files, and playback tabs for one entry.
 import { state, api, esc, fmt, notify, token } from "../app.js";
 
+function agoLabel(iso) {
+  const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return minutes + " min ago";
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return hours + " h ago";
+  return Math.round(hours / 24) + " days ago";
+}
+
 async function inspect(technical = false) {
   const button = document.querySelector("#inspect");
   const label = button?.textContent;
@@ -146,6 +155,15 @@ function sourceView(body) {
     '</p><div class="metric"><span class="muted">Location</span><strong style="font-size:14px">' +
     esc(path || "Editable on the Overview tab") +
     "</strong></div>" +
+    (state.selected.inspectionCache
+      ? '<div class="metric" style="margin-top:12px"><span class="muted">Last inspected</span><strong style="font-size:14px">' +
+        esc(agoLabel(state.selected.inspectionCache.inspectedAt)) +
+        " · " +
+        state.selected.inspectionCache.selectedFiles.length +
+        " file" +
+        (state.selected.inspectionCache.selectedFiles.length === 1 ? "" : "s") +
+        " selected</strong></div>"
+      : "") +
     (state.inspectionError
       ? '<p class="danger">' + esc(state.inspectionError) + "</p>"
       : "") +
@@ -178,12 +196,40 @@ function sourceView(body) {
 
 function filesView(body) {
   if (!state.inspection) {
-    inspectionPrompt(
-      body,
-      "Inspect files first",
-      "Load source metadata to choose files and map episodes.",
-      false,
-    );
+    const cache = state.selected.inspectionCache;
+    if (!cache) {
+      inspectionPrompt(
+        body,
+        "Inspect files first",
+        "Load source metadata to choose files and map episodes.",
+        false,
+      );
+      return;
+    }
+    body.innerHTML =
+      '<div class="toolbar"><div><h2>Selected files</h2><span class="muted">From the last inspection, ' +
+      esc(agoLabel(cache.inspectedAt)) +
+      '</span></div><button class="primary" id="inspect">Inspect to edit</button></div>' +
+      (state.inspectionError
+        ? '<p class="danger">' + esc(state.inspectionError) + "</p>"
+        : "") +
+      '<div class="panel tablewrap"><table class="files"><thead><tr><th>File</th><th>Size</th><th>Season</th><th>Episode</th></tr></thead><tbody>' +
+      cache.selectedFiles
+        .map(
+          (f) =>
+            '<tr><td class="filename">' +
+            esc(f.path) +
+            "</td><td>" +
+            fmt(f.length) +
+            "</td><td>" +
+            (f.season ?? "—") +
+            "</td><td>" +
+            (f.episode ?? "—") +
+            "</td></tr>",
+        )
+        .join("") +
+      '</tbody></table><p class="muted" style="margin-bottom:0">Inspect again to change which files are used or remap episodes.</p></div>';
+    document.querySelector("#inspect").onclick = () => inspect(false);
     return;
   }
   const overrides = new Map(

@@ -98,6 +98,15 @@ describe("management assets", () => {
     expect(detailJs).toContain("state.status.nativePicker");
   });
 
+  it("detail files tab shows cached inspection results instantly", async () => {
+    const detailJs = await asset("views/detail.js");
+    expect(detailJs).toContain("state.selected.inspectionCache");
+    expect(detailJs).toContain("From the last inspection");
+    expect(detailJs).toContain("Inspect to edit");
+    expect(detailJs).toContain("Last inspected");
+    expect(detailJs).toContain("function agoLabel");
+  });
+
   it("status view reports service health", async () => {
     const statusJs = await asset("views/status.js");
     expect(statusJs).toContain("System Status");
