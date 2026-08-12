@@ -35,7 +35,7 @@ GET /addon/{token}/stream/{movie|series}/{id}.json
 
 ## Stream objects
 
-For torrent entries, the stream `url` is TorrServer's `/play/{hash}/{id}` rewritten to `PUBLIC_TORRSERVER_URL` — playback bypasses the add-on. For local entries, the `url` points at the add-on's range-capable `/local/{token}/{entryId}/{fileId}` route. Both include:
+For torrent entries, the stream `url` is TorrServer's `/play/{hash}/{id}` with its origin derived from the request `Host` header (hostname of the request plus the configured TorrServer port), falling back to `PUBLIC_TORRSERVER_URL` when the header is missing, invalid, or Docker-internal — playback bypasses the add-on. Successful inspections are cached on the entry (ADR 0006), so repeat stream requests answer without re-polling torrent metadata. For local entries, the `url` points at the add-on's range-capable `/local/{token}/{entryId}/{fileId}` route, with the same Host-derived origin. Both include:
 
 ```json
 {

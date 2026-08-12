@@ -53,7 +53,7 @@ Returns the TorrServer registration (`hash`, `files`, `selectedFiles`) plus `hom
 
 | Method & path | Description |
 |---|---|
-| `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps`, `uptimeSeconds` |
+| `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps`, `streamingActive` (recent stream activity or active TorrServer torrents), `uptimeSeconds` |
 | `POST /api/stremio-refresh` | Recount catalogs → `{movies, series, total, updatedAt}` (no-store) |
 | `GET /api/media-files` | List files available under the read-only media mount |
 | `POST /api/upload?batch=&path=` | Browser upload of a video into managed storage → `204` |

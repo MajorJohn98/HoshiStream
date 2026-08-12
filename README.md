@@ -115,7 +115,8 @@ server, reveal logs, enable Start at Login, or quit cleanly. Mutable state is
 stored in `~/Library/Application Support/HoshiStream`; logs are written to
 `~/Library/Logs/HoshiStream/server.log`.
 
-Keep the Mac awake during playback:
+The menu-bar app keeps the Mac awake automatically while a stream is
+active. For Docker-only setups, keep the Mac awake during playback with:
 
 ```bash
 caffeinate -dimsu
@@ -284,7 +285,7 @@ Logs are structured JSON for startup, library mutations, torrent inspection, fil
 
 **Playback stalls:** choose a healthier authorized torrent, compare peer download speed with the media bitrate, keep the Mac awake, and test a webOS-compatible codec.
 
-**Corrupt library JSON:** stop the stack and repair `data/library.json` as a JSON array. Atomic writes prevent partial replacement during normal management API updates.
+**Corrupt library JSON:** the add-on quarantines an unreadable `library.json` as `library.json.corrupt-<timestamp>` and restores the last-known-good `library.json.bak` automatically. If both are damaged, stop the stack and repair the file as a JSON array. Atomic writes prevent partial replacement during normal management API updates.
 
 ## Development checks
 
