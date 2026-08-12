@@ -29,6 +29,41 @@ describe("TorrServerClient", () => {
     });
   });
 
+  it("retries transient failures before succeeding", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(new Response("oops", { status: 503 }))
+      .mockResolvedValueOnce(new Response("MatriX.141", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new TorrServerClient("http://torrserver:8090", 1_000, 1);
+    await expect(client.health()).resolves.toBe("MatriX.141");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry client errors", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("missing", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new TorrServerClient("http://torrserver:8090", 1_000, 1);
+    await expect(client.health()).rejects.toThrow("TorrServer 404");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails after exhausting retries", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new TorrServerClient("http://torrserver:8090", 1_000, 1);
+    await expect(client.health()).rejects.toThrow(
+      "TorrServer request failed: fetch failed",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("builds the documented /play/{hash}/{id} URL", () => {
     expect(
       new TorrServerClient("http://torrserver:8090").streamUrl("abc 123", {

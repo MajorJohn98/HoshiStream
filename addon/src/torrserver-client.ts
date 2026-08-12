@@ -28,6 +28,7 @@ export class TorrServerClient {
   constructor(
     private readonly baseUrl: string,
     private readonly timeoutMs = 10_000,
+    private readonly retryDelayMs = 500,
   ) {}
 
   async health(): Promise<string> {
@@ -53,10 +54,14 @@ export class TorrServerClient {
       basename(path),
     );
     if (title) form.append("title", title);
-    const response = await this.request("/torrent/upload", {
-      method: "POST",
-      body: form,
-    });
+    const response = await this.request(
+      "/torrent/upload",
+      {
+        method: "POST",
+        body: form,
+      },
+      1,
+    );
     const statuses = torrentListSchema.parse(await response.json());
     if (!statuses[0])
       throw new TorrServerError("TorrServer did not accept the torrent file");
@@ -111,23 +116,33 @@ export class TorrServerClient {
     return (await this.request(path)).text();
   }
 
-  private async request(path: string, init?: RequestInit): Promise<Response> {
-    try {
-      const response = await fetch(`${this.baseUrl}${path}`, {
-        ...init,
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-      if (!response.ok) {
-        throw new TorrServerError(
-          `TorrServer ${response.status} ${response.statusText}`,
-        );
+  private async request(
+    path: string,
+    init?: RequestInit,
+    attempts = 3,
+  ): Promise<Response> {
+    let delayMs = this.retryDelayMs;
+    for (let attempt = 1; ; attempt += 1) {
+      let failure: string;
+      try {
+        const response = await fetch(`${this.baseUrl}${path}`, {
+          ...init,
+          signal: AbortSignal.timeout(this.timeoutMs),
+        });
+        if (response.ok) return response;
+        if (response.status < 500) {
+          throw new TorrServerError(
+            `TorrServer ${response.status} ${response.statusText}`,
+          );
+        }
+        failure = `TorrServer ${response.status} ${response.statusText}`;
+      } catch (error) {
+        if (error instanceof TorrServerError) throw error;
+        failure = `TorrServer request failed: ${error instanceof Error ? error.message : error}`;
       }
-      return response;
-    } catch (error) {
-      if (error instanceof TorrServerError) throw error;
-      throw new TorrServerError(
-        `TorrServer request failed: ${error instanceof Error ? error.message : error}`,
-      );
+      if (attempt >= attempts) throw new TorrServerError(failure);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      delayMs *= 2;
     }
   }
 }
