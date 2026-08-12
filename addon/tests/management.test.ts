@@ -67,6 +67,14 @@ describe("management assets", () => {
     expect(addJs).toContain("webkitdirectory");
   });
 
+  it("add view offers Finder linking only when the picker is available", async () => {
+    const addJs = await asset("views/add.js");
+    expect(addJs).toContain("state.status.nativePicker");
+    expect(addJs).toContain("Choose with Finder");
+    expect(addJs).toContain("d.nativePathGrant = picked.grant");
+    expect(addJs).toContain('"native-picker/"');
+  });
+
   it("detail view keeps inspection, mapping, and playback flows", async () => {
     const detailJs = await asset("views/detail.js");
     expect(detailJs).toContain('method: "PATCH"');
@@ -81,6 +89,13 @@ describe("management assets", () => {
     expect(detailJs).toContain('<textarea name="magnetUri" required>');
     expect(detailJs).toContain("visible only on the tokenized management page");
     expect(detailJs).toContain('role="dialog"');
+  });
+
+  it("detail source tab can relink local entries in Finder", async () => {
+    const detailJs = await asset("views/detail.js");
+    expect(detailJs).toContain("Relink in Finder");
+    expect(detailJs).toContain('"/relink"');
+    expect(detailJs).toContain("state.status.nativePicker");
   });
 
   it("status view reports service health", async () => {

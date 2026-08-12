@@ -380,6 +380,12 @@ textarea {
   display: block;
   margin: 8px 0;
 }
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
 .drop {
   border: 1px dashed #676b6f;
   border-radius: 12px;

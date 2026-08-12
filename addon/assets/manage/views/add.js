@@ -1,5 +1,20 @@
 // Add Media view: magnet, .torrent, local file, and series folder sources.
-import { state, app, api, headers, notify, shell, load, go } from "../app.js";
+// When the native app is running, local sources can be linked in place with
+// a Finder picker instead of uploading a copy.
+import {
+  state,
+  app,
+  api,
+  esc,
+  headers,
+  notify,
+  shell,
+  load,
+  go,
+} from "../app.js";
+
+// Finder selection pending for the current form, if any.
+let picked = null;
 
 async function upload(file, batch, path) {
   const r = await fetch(
@@ -14,7 +29,12 @@ async function addSubmit(e) {
   const f = e.target;
   const d = Object.fromEntries(new FormData(f));
   try {
-    if (state.source === "torrentFile") {
+    if (picked && (state.source === "local" || state.source === "folder")) {
+      d.nativePathGrant = picked.grant;
+      if (state.source === "folder") d.type = "series";
+      delete d.media;
+      delete d.folder;
+    } else if (state.source === "torrentFile") {
       const file = f.elements.torrent.files[0];
       const batch = crypto.randomUUID();
       const r = await fetch(
@@ -65,6 +85,7 @@ async function addSubmit(e) {
 }
 
 export function addView() {
+  picked = null;
   app.innerHTML =
     shell(
       "Add Media",
@@ -100,15 +121,55 @@ export function addView() {
       }),
   );
   const field = document.querySelector("#sourceField");
+  renderSourceField(field);
+  if (state.source === "folder")
+    document.querySelector('[name="type"]').value = "series";
+  document.querySelector("#addForm").onsubmit = addSubmit;
+}
+
+function renderSourceField(field) {
+  const pickerReady = Boolean(state.status.nativePicker);
+  const localPicker = (label) =>
+    '<div class="picker-row"><button type="button" class="secondary" id="pickNative">Choose with Finder</button><span class="muted" id="pickName">' +
+    (picked ? esc(picked.name) : label) +
+    "</span></div>";
   field.innerHTML =
     state.source === "torrent"
       ? '<label>Magnet link<input name="magnetUri" required placeholder="magnet:?xt=urn:btih:…"></label>'
       : state.source === "torrentFile"
         ? '<div class="drop"><b>Drop a .torrent file here</b><p class="muted">Metadata is inspected locally.</p><input name="torrent" type="file" accept=".torrent" required></div>'
         : state.source === "local"
-          ? '<label>Local media file<input name="media" type="file" accept=".mp4,.mkv,.webm,.avi,.mov,.m4v" required></label>'
-          : '<label>Series folder<input name="folder" type="file" webkitdirectory multiple required></label>';
-  if (state.source === "folder")
-    document.querySelector('[name="type"]').value = "series";
-  document.querySelector("#addForm").onsubmit = addSubmit;
+          ? (pickerReady
+              ? localPicker("Link a video in place — no copy is made.") +
+                '<p class="muted">Or upload a copy into managed storage:</p>'
+              : "") +
+            '<label>Local media file<input name="media" type="file" accept=".mp4,.mkv,.webm,.avi,.mov,.m4v" ' +
+            (picked ? "" : "required") +
+            "></label>"
+          : (pickerReady
+              ? localPicker(
+                  "Link a series folder in place — no copy is made.",
+                ) +
+                '<p class="muted">Or upload a copy into managed storage:</p>'
+              : "") +
+            '<label>Series folder<input name="folder" type="file" webkitdirectory multiple ' +
+            (picked ? "" : "required") +
+            "></label>";
+  const pick = field.querySelector("#pickNative");
+  if (pick)
+    pick.onclick = async () => {
+      pick.disabled = true;
+      pick.textContent = "Waiting for Finder…";
+      try {
+        picked = await api(
+          "native-picker/" + (state.source === "folder" ? "folder" : "file"),
+          { method: "POST" },
+        );
+        renderSourceField(field);
+      } catch (error) {
+        picked = null;
+        notify(error.message);
+        renderSourceField(field);
+      }
+    };
 }

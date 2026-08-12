@@ -131,6 +131,9 @@ function sourceView(body) {
     state.selected.localFolderPath ||
     state.selected.localFilePath ||
     state.selected.torrentFilePath;
+  const relinkable =
+    Boolean(state.selected.localFilePath || state.selected.localFolderPath) &&
+    Boolean(state.status.nativePicker);
   body.innerHTML =
     '<div class="layout"><div class="panel"><h2>Source</h2><p class="muted">' +
     (state.selected.magnetUri
@@ -146,8 +149,31 @@ function sourceView(body) {
     (state.inspectionError
       ? '<p class="danger">' + esc(state.inspectionError) + "</p>"
       : "") +
-    '<div class="actions"><button class="primary" id="inspect">Inspect again</button></div></div><aside class="panel"><h3>Privacy</h3><p class="muted">Complete magnet URIs are visible only on the tokenized management page and are never written to logs.</p></aside></div>';
+    '<div class="actions"><button class="primary" id="inspect">Inspect again</button>' +
+    (relinkable
+      ? '<button class="secondary" id="relink">Relink in Finder</button>'
+      : "") +
+    '</div></div><aside class="panel"><h3>Privacy</h3><p class="muted">Complete magnet URIs are visible only on the tokenized management page and are never written to logs.</p></aside></div>';
   document.querySelector("#inspect").onclick = () => inspect(false);
+  const relink = document.querySelector("#relink");
+  if (relink)
+    relink.onclick = async () => {
+      relink.disabled = true;
+      relink.textContent = "Waiting for Finder…";
+      try {
+        state.selected = await api(
+          "library/" + encodeURIComponent(state.selected.id) + "/relink",
+          { method: "POST" },
+        );
+        state.inspection = null;
+        notify("Source relinked");
+        detailView();
+      } catch (error) {
+        notify(error.message);
+        relink.disabled = false;
+        relink.textContent = "Relink in Finder";
+      }
+    };
 }
 
 function filesView(body) {
