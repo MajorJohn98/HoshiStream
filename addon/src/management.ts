@@ -19,9 +19,6 @@ export const managementHtml = `<!doctype html>
           <button data-view="add"><span class="nav-icon">＋</span>Add Media</button>
           <button data-view="status"><span class="nav-icon">⌁</span>System Status</button>
         </nav>
-        <nav class="settings">
-          <button data-view="status"><span class="nav-icon">⚙</span>Settings</button>
-        </nav>
       </aside>
       <main id="app"></main>
     </div>

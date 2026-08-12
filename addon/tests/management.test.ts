@@ -21,6 +21,7 @@ describe("management page shell", () => {
     expect(managementHtml).toContain('data-view="library"');
     expect(managementHtml).toContain('data-view="add"');
     expect(managementHtml).toContain('data-view="status"');
+    expect(managementHtml).not.toContain("Settings");
     expect(managementHtml).not.toContain("<style>");
     expect(managementHtml).not.toMatch(/<script>[^<]/);
     expect(managementHtml).not.toContain("ACCESS_TOKEN");
@@ -107,10 +108,16 @@ describe("management assets", () => {
     expect(detailJs).toContain("function agoLabel");
   });
 
-  it("status view reports service health", async () => {
+  it("status view reports service health, mode, and sleep behavior", async () => {
     const statusJs = await asset("views/status.js");
     expect(statusJs).toContain("System Status");
     expect(statusJs).toContain("TorrServer");
+    expect(statusJs).toContain("Streaming now");
+    expect(statusJs).toContain("state.status.streamingActive");
+    expect(statusJs).toContain("Native macOS app");
+    expect(statusJs).toContain("Docker mode");
+    expect(statusJs).toContain("Kept awake automatically during playback");
+    expect(statusJs).toContain("Run caffeinate or keep the Mac awake");
     expect(statusJs).not.toContain('"diagnostics"');
   });
 

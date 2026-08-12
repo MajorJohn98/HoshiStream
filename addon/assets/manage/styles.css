@@ -87,9 +87,6 @@ nav button:hover {
   background: linear-gradient(90deg, #303235, #222426);
   color: #fff;
 }
-.settings {
-  margin-top: auto;
-}
 main {
   padding: 34px;
   min-width: 0;
