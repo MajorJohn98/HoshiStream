@@ -1,5 +1,6 @@
 import AppKit
 import Darwin
+import IOKit.pwr_mgt
 import ServiceManagement
 import UniformTypeIdentifiers
 
@@ -13,6 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pickerSocket: PickerSocket?
     private var restartCount = 0
     private var quitting = false
+    private var sleepAssertion: IOPMAssertionID = 0
+    private var sleepAssertionHeld = false
 
     private var projectRoot: String {
         Bundle.main.object(forInfoDictionaryKey: "HoshiStreamProjectRoot") as! String
@@ -172,6 +175,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func updateSleepAssertion(streaming: Bool) {
+        if streaming, !sleepAssertionHeld {
+            sleepAssertionHeld = IOPMAssertionCreateWithName(
+                kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
+                IOPMAssertionLevel(kIOPMAssertionLevelOn),
+                "HoshiStream playback" as CFString,
+                &sleepAssertion
+            ) == kIOReturnSuccess
+        } else if !streaming, sleepAssertionHeld {
+            IOPMAssertionRelease(sleepAssertion)
+            sleepAssertionHeld = false
+        }
+    }
+
     private func checkHealth() {
         guard let token else { return setStatus("Error — missing access token") }
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(addonPort)/api/status")!)
@@ -183,6 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             DispatchQueue.main.async {
                 guard let self else { return }
+                self.updateSleepAssertion(streaming: ready && summary?.streamingActive == true)
                 if ready {
                     self.restartCount = 0
                     self.setStatus(
@@ -325,6 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 private struct ServerStatus: Decodable {
     let libraryCount: Int
     let homeSpeedMbps: Double
+    let streamingActive: Bool?
 }
 
 @main

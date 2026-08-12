@@ -1,5 +1,6 @@
 import type { Library } from "./library.js";
 import type { SelectedFile } from "./media-file-selection.js";
+import { markStreamActivity } from "./activity.js";
 import { resolveStreamSource } from "./inspection.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 
@@ -86,6 +87,7 @@ export async function getStreams(
     const source = await resolveStreamSource(entry, torrServer, library);
     const file = requestedFile(source.selectedFiles, type, id).file;
     if (!file) return { streams: [] };
+    markStreamActivity();
     return {
       streams: [
         {
@@ -101,6 +103,7 @@ export async function getStreams(
   const source = await resolveStreamSource(entry, torrServer, library);
   const file = requestedFile(source.selectedFiles, type, id).file;
   if (!file) return { streams: [] };
+  markStreamActivity();
 
   const url = rewritePublicUrl(
     torrServer.streamUrl(source.hash, file),

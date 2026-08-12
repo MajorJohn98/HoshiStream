@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { z, ZodError } from "zod";
+import { markStreamActivity, recentStreamActivity } from "./activity.js";
 import { inspectEntry } from "./inspection.js";
 import type { Library } from "./library.js";
 import { managementHtml } from "./management.js";
@@ -168,13 +169,15 @@ export function createHandler(
         validToken(decodeURIComponent(localMatch[1]), accessToken)
       ) {
         const entry = await library.get(decodeURIComponent(localMatch[2]));
-        if (entry)
+        if (entry) {
+          markStreamActivity();
           return serveLocalMedia(
             request,
             response,
             entry,
             localMatch[3] === undefined ? undefined : Number(localMatch[3]),
           );
+        }
       }
 
       const managementMatch = /^\/manage\/([^/]+)\/?$/.exec(url.pathname);
@@ -229,18 +232,25 @@ export function createHandler(
           });
         }
         if (url.pathname === "/api/status" && request.method === "GET") {
-          const [entries, torrServerStatus] = await Promise.all([
-            library.list(),
-            torrServer
-              .health()
-              .then((version) => ({ online: true, version }))
-              .catch(() => ({ online: false })),
-          ]);
+          const [entries, torrServerStatus, activeTorrents] = await Promise.all(
+            [
+              library.list(),
+              torrServer
+                .health()
+                .then((version) => ({ online: true, version }))
+                .catch(() => ({ online: false })),
+              torrServer
+                .list()
+                .then((torrents) => torrents.length)
+                .catch(() => 0),
+            ],
+          );
           return reply(response, 200, {
             status: "online",
             torrServer: torrServerStatus,
             libraryCount: entries.length,
             homeSpeedMbps,
+            streamingActive: recentStreamActivity() || activeTorrents > 0,
             uptimeSeconds: Math.floor(process.uptime()),
           });
         }
