@@ -29,6 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         environmentValue("ACCESS_TOKEN")
     }
 
+    private var addonPort: Int {
+        Int(environmentValue("ADDON_PORT") ?? "") ?? 7001
+    }
+
     private func isPrivateIPv4(_ value: String) -> Bool {
         let parts = value.split(separator: ".").compactMap { Int($0) }
         guard parts.count == 4 else { return false }
@@ -149,10 +153,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.record("Daemon exited with status \(process.terminationStatus)")
                 self.service = nil
                 if self.quitting { return }
-                if self.restartCount < 1 {
+                if self.restartCount < 5 {
+                    let delay = min(2.0 * pow(2.0, Double(self.restartCount)), 30.0)
                     self.restartCount += 1
-                    self.setStatus("Recovering…")
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.startServer() }
+                    self.setStatus("Recovering… (attempt \(self.restartCount))")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self.startServer() }
                 } else {
                     self.setStatus("Error — see logs")
                 }
@@ -169,7 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func checkHealth() {
         guard let token else { return setStatus("Error — missing access token") }
-        var request = URLRequest(url: URL(string: "http://127.0.0.1:7001/api/status")!)
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(addonPort)/api/status")!)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
             let ready = (response as? HTTPURLResponse)?.statusCode == 200
@@ -226,7 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openLibrary() {
         guard let token,
               let escaped = token.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "http://127.0.0.1:7001/manage/\(escaped)")
+              let url = URL(string: "http://127.0.0.1:\(addonPort)/manage/\(escaped)")
         else {
             setStatus("Error — missing access token")
             return
@@ -241,7 +246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             setStatus("Error — no private LAN address")
             return
         }
-        let port = Int(environmentValue("ADDON_PORT") ?? "") ?? 7001
+        let port = addonPort
         let value = "http://\(address):\(port)/addon/\(escaped)/manifest.json"
         guard let url = URL(string: value) else {
             setStatus("Error — invalid manifest URL")

@@ -23,7 +23,6 @@ const options = Object.fromEntries(
       return [key, rest.join("=") || "true"];
     }),
 );
-const addonPort = Number(options["addon-port"] ?? 7001);
 const torrServerPort = Number(options["torrserver-port"] ?? 8090);
 const projectRoot = resolve(options["project-root"] ?? runtimeRoot);
 const stateRoot = resolve(
@@ -37,6 +36,9 @@ const projectEnvironment = Object.fromEntries(
       const index = line.indexOf("=");
       return [line.slice(0, index), line.slice(index + 1)];
     }),
+);
+const addonPort = Number(
+  options["addon-port"] ?? projectEnvironment.ADDON_PORT ?? 7001,
 );
 const mediaRoot = resolve(
   options["media-root"] ??
