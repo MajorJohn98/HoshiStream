@@ -1,0 +1,8 @@
+{
+  "version": "v26.3.1",
+  "darwin-arm64": {
+    "name": "node-v26.3.1-darwin-arm64.tar.gz",
+    "sha256": "3f624ab0d774553c0d28b968e141d8c676a35a2811fb0b7b356ba9cbdce15f74",
+    "url": "https://nodejs.org/dist/v26.3.1/node-v26.3.1-darwin-arm64.tar.gz"
+  }
+}

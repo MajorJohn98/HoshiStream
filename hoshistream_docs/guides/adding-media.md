@@ -1,0 +1,61 @@
+# Adding Media
+
+Use only media you own, public-domain media, or media you are authorized to access. HoshiStream provides no torrent search, index scraping, source lists, or bundled magnet links.
+
+## Management page (recommended)
+
+Open the token-gated page locally:
+
+```text
+http://127.0.0.1:7000/manage/<ACCESS_TOKEN>
+```
+
+From there you can add magnet links, upload `.torrent` files, pick local files (native Finder picker with the menu-bar app, or browser upload fallback), edit metadata and posters, inspect entries, and probe technical details.
+
+### Local files
+
+- With the native app: Finder pickers link files/folders in place — nothing is copied. A folder becomes one series; `S01E02` / `1x02` filename patterns map episodes, otherwise files become season 1 in filename order. Use **Edit → Relink in Finder** after moving/renaming.
+- With Docker: set `MEDIA_DIR` in `.env` to the folder containing your videos (mounted read-only), restart, then choose from the **Local file** menu.
+- Browser upload always copies the file into managed storage; deleting a Finder-linked entry never deletes the source.
+
+Supported extensions: `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.m4v`.
+
+## Management API (curl)
+
+All `/api/*` requests need `Authorization: Bearer <ACCESS_TOKEN>`. Full reference: [management-api-reference](../api/management-api-reference.md).
+
+```bash
+export ACCESS_TOKEN='the-value-from-your-.env'
+
+# list
+curl -H "Authorization: ******" http://127.0.0.1:7000/api/library
+
+# add a movie by magnet
+curl -X POST -H "Authorization: ******" \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"movie","name":"Authorized Movie","magnetUri":"magnet:?xt=urn:btih:YOUR_INFO_HASH"}' \
+  http://127.0.0.1:7000/api/library
+
+# add a series from a .torrent placed under data/
+curl -X POST -H "Authorization: ******" \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"series","name":"Authorized Series","torrentFilePath":"/data/series.torrent"}' \
+  http://127.0.0.1:7000/api/library
+
+# update / inspect / delete (URL-encode the hoshi: id)
+curl -X PATCH -H "Authorization: ******" -H 'Content-Type: application/json' \
+  -d '{"description":"My private copy","preferredFileIndex":1}' \
+  'http://127.0.0.1:7000/api/library/hoshi%3AITEM_UUID'
+
+curl -X POST -H "Authorization: ******" \
+  'http://127.0.0.1:7000/api/library/hoshi%3AITEM_UUID/inspect'
+
+curl -X DELETE -H "Authorization: ******" \
+  'http://127.0.0.1:7000/api/library/hoshi%3AITEM_UUID'
+```
+
+## Inspection and viability
+
+Inspection may take up to 30 seconds while TorrServer fetches metadata; file IDs are TorrServer's one-based IDs. Add `?probe=true` to inspection to read resolution, codecs, duration, and average bitrate, and get a recommended speed with 50% headroom. Set `HOME_SPEED_MBPS` in `.env` to your measured connection speed for the viability verdict.
+
+If automatic file selection is wrong, set `preferredFileIndex` to an inspected playable file ID. For series, `fileOverrides` can include/exclude files and pin season/episode numbers.

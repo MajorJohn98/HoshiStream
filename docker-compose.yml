@@ -1,0 +1,51 @@
+services:
+  torrserver:
+    image: ghcr.io/yourok/torrserver:MatriX.141.1
+    restart: unless-stopped
+    mem_limit: 1300m
+    cpus: 2
+    environment:
+      TS_CONF_PATH: /opt/ts/config
+      TS_TORR_DIR: /opt/ts/torrents
+      TS_PORT: "8090"
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./torrserver/config:/opt/ts/config
+      - ./torrserver/torrents:/opt/ts/torrents
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  addon:
+    build: ./addon
+    restart: unless-stopped
+    mem_limit: 200m
+    cpus: 0.5
+    env_file: .env
+    ports:
+      - "${ADDON_PORT:-7000}:${ADDON_PORT:-7000}"
+    volumes:
+      - "${HOSHISTREAM_STATE_DIR:-./data}:/data"
+      - "${MEDIA_DIR:-./media}:/media:ro"
+    depends_on:
+      torrserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:$${ADDON_PORT}/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

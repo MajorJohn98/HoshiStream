@@ -1,0 +1,8 @@
+{
+  "version": "MatriX.141.1",
+  "darwin-arm64": {
+    "name": "TorrServer-darwin-arm64",
+    "sha256": "a91adbfcec069a0db204ae909d098832d16220c154e86e409b10e2f243e1c7f9",
+    "url": "https://github.com/YouROK/TorrServer/releases/download/MatriX.141.1/TorrServer-darwin-arm64"
+  }
+}
