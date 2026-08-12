@@ -13,6 +13,33 @@ export function streamBehaviorHints(entryId: string, file: SelectedFile) {
   };
 }
 
+export interface PublicUrls {
+  addonUrl: string;
+  torrServerUrl: string;
+}
+
+export function resolvePublicUrls(
+  hostHeader: string | undefined,
+  fallback: PublicUrls,
+): PublicUrls {
+  if (!hostHeader) return fallback;
+  let requested: URL;
+  try {
+    requested = new URL(`http://${hostHeader}`);
+  } catch {
+    return fallback;
+  }
+  if (
+    !requested.hostname ||
+    ["addon", "torrserver"].includes(requested.hostname)
+  ) {
+    return fallback;
+  }
+  const torrServer = new URL(fallback.torrServerUrl);
+  torrServer.hostname = requested.hostname;
+  return { addonUrl: requested.origin, torrServerUrl: torrServer.origin };
+}
+
 export function rewritePublicUrl(
   internalUrl: string,
   publicBaseUrl: string,

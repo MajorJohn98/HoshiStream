@@ -21,6 +21,11 @@ import {
 } from "./native-picker.js";
 import { bearerToken, validToken } from "./security.js";
 import type { AddonInterface } from "./server-types.js";
+import {
+  getStreams,
+  resolvePublicUrls,
+  type PublicUrls,
+} from "./streams.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 import { createEntrySchema, patchEntrySchema } from "./types.js";
 
@@ -91,6 +96,7 @@ export function createHandler(
   accessToken: string,
   homeSpeedMbps: number,
   nativePicker: NativePicker,
+  publicUrls: PublicUrls,
 ) {
   return async (request: IncomingMessage, response: ServerResponse) => {
     try {
@@ -129,6 +135,19 @@ export function createHandler(
         );
       if (protocolMatch && request.method === "GET") {
         const [, resource, type, rawId, rawExtra] = protocolMatch;
+        if (resource === "stream") {
+          const resolved = resolvePublicUrls(request.headers.host, publicUrls);
+          const result = await getStreams(
+            library,
+            torrServer,
+            resolved.torrServerUrl,
+            resolved.addonUrl,
+            accessToken,
+            type,
+            decodeURIComponent(rawId),
+          );
+          return noStoreReply(response, 200, result);
+        }
         const result = await addon.get(
           resource,
           type,

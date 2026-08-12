@@ -26,6 +26,10 @@ export async function startHoshiStream(settings = config) {
       settings.ACCESS_TOKEN,
       settings.HOME_SPEED_MBPS,
       nativePicker,
+      {
+        addonUrl: settings.PUBLIC_ADDON_URL,
+        torrServerUrl: settings.PUBLIC_TORRSERVER_URL,
+      },
     ),
   );
   await new Promise<void>((resolve, reject) => {
