@@ -30,6 +30,7 @@ export async function startHoshiStream(settings = config) {
         addonUrl: settings.PUBLIC_ADDON_URL,
         torrServerUrl: settings.PUBLIC_TORRSERVER_URL,
       },
+      settings.LAN_REDIRECT,
     ),
   );
   await new Promise<void>((resolve, reject) => {

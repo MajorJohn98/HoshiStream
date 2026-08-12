@@ -22,6 +22,7 @@ export const configSchema = z.object({
   UPLOAD_ROOT: z.string().min(1).default("/data/media"),
   NATIVE_PICKER_SOCKET: z.string().min(1).default("/data/run/supervisor.sock"),
   HOME_SPEED_MBPS: z.coerce.number().positive().default(10),
+  LAN_REDIRECT: z.enum(["auto", "off"]).default("auto"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 

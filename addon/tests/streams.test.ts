@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveClientAwareUrls,
   resolvePublicUrls,
   rewritePublicUrl,
   streamBehaviorHints,
@@ -26,6 +27,63 @@ describe("resolvePublicUrls", () => {
   it("falls back for Docker-internal hostnames", () => {
     expect(resolvePublicUrls("torrserver:8090", fallback)).toEqual(fallback);
     expect(resolvePublicUrls("addon:7000", fallback)).toEqual(fallback);
+  });
+});
+
+describe("resolveClientAwareUrls", () => {
+  const tunnelHost = "hoshi.example.com";
+  const tunnelUrls = {
+    addonUrl: "http://hoshi.example.com",
+    torrServerUrl: "http://hoshi.example.com:8090",
+  };
+
+  it("returns LAN fallback URLs when the client shares the public IP", () => {
+    expect(
+      resolveClientAwareUrls(
+        { host: tunnelHost, "cf-connecting-ip": "203.0.113.9" },
+        fallback,
+        "203.0.113.9",
+      ),
+    ).toEqual(fallback);
+  });
+
+  it("keeps host-derived URLs for remote clients", () => {
+    expect(
+      resolveClientAwareUrls(
+        { host: tunnelHost, "cf-connecting-ip": "198.51.100.4" },
+        fallback,
+        "203.0.113.9",
+      ),
+    ).toEqual(tunnelUrls);
+  });
+
+  it("keeps host-derived URLs when the header is missing", () => {
+    expect(
+      resolveClientAwareUrls({ host: tunnelHost }, fallback, "203.0.113.9"),
+    ).toEqual(tunnelUrls);
+  });
+
+  it("keeps host-derived URLs when the header is repeated", () => {
+    expect(
+      resolveClientAwareUrls(
+        {
+          host: tunnelHost,
+          "cf-connecting-ip": ["203.0.113.9", "203.0.113.9"],
+        },
+        fallback,
+        "203.0.113.9",
+      ),
+    ).toEqual(tunnelUrls);
+  });
+
+  it("keeps host-derived URLs when the own IP is unknown", () => {
+    expect(
+      resolveClientAwareUrls(
+        { host: tunnelHost, "cf-connecting-ip": "203.0.113.9" },
+        fallback,
+        null,
+      ),
+    ).toEqual(tunnelUrls);
   });
 });
 

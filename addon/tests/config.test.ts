@@ -13,9 +13,17 @@ describe("parseConfig", () => {
     expect(parseConfig(valid)).toMatchObject({
       ADDON_PORT: 7000,
       HOME_SPEED_MBPS: 10,
+      LAN_REDIRECT: "auto",
       LIBRARY_PATH: "/data/library.json",
       LOG_LEVEL: "info",
     });
+  });
+
+  it("accepts disabling LAN redirect and rejects unknown values", () => {
+    expect(parseConfig({ ...valid, LAN_REDIRECT: "off" }).LAN_REDIRECT).toBe(
+      "off",
+    );
+    expect(() => parseConfig({ ...valid, LAN_REDIRECT: "on" })).toThrow();
   });
 
   it("rejects missing or malformed public configuration", () => {

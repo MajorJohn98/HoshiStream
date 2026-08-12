@@ -73,7 +73,9 @@ describe("ownPublicIp", () => {
   });
 
   it("returns null on non-OK responses", async () => {
-    expect(await ownPublicIp(traceResponse("ip=203.0.113.9", false))).toBeNull();
+    expect(
+      await ownPublicIp(traceResponse("ip=203.0.113.9", false)),
+    ).toBeNull();
   });
 
   it("returns null on malformed bodies", async () => {

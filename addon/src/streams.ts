@@ -41,6 +41,18 @@ export function resolvePublicUrls(
   return { addonUrl: requested.origin, torrServerUrl: torrServer.origin };
 }
 
+export function resolveClientAwareUrls(
+  headers: { host?: string; "cf-connecting-ip"?: string | string[] },
+  fallback: PublicUrls,
+  ownIp: string | null,
+): PublicUrls {
+  const clientIp = headers["cf-connecting-ip"];
+  if (typeof clientIp === "string" && ownIp && clientIp === ownIp) {
+    return fallback;
+  }
+  return resolvePublicUrls(headers.host, fallback);
+}
+
 export function rewritePublicUrl(
   internalUrl: string,
   publicBaseUrl: string,

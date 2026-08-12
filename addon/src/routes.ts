@@ -22,7 +22,13 @@ import {
 } from "./native-picker.js";
 import { bearerToken, validToken } from "./security.js";
 import type { AddonInterface } from "./server-types.js";
-import { getStreams, resolvePublicUrls, type PublicUrls } from "./streams.js";
+import {
+  getStreams,
+  resolveClientAwareUrls,
+  resolvePublicUrls,
+  type PublicUrls,
+} from "./streams.js";
+import { ownPublicIp } from "./public-ip.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 import { createEntrySchema, patchEntrySchema } from "./types.js";
 
@@ -129,6 +135,7 @@ export function createHandler(
   homeSpeedMbps: number,
   nativePicker: NativePicker,
   publicUrls: PublicUrls,
+  lanRedirect: "auto" | "off" = "auto",
 ) {
   return async (request: IncomingMessage, response: ServerResponse) => {
     try {
@@ -172,7 +179,15 @@ export function createHandler(
       if (protocolMatch && request.method === "GET") {
         const [, resource, type, rawId, rawExtra] = protocolMatch;
         if (resource === "stream") {
-          const resolved = resolvePublicUrls(request.headers.host, publicUrls);
+          const clientIp = request.headers["cf-connecting-ip"];
+          const resolved =
+            lanRedirect === "auto" && typeof clientIp === "string"
+              ? resolveClientAwareUrls(
+                  request.headers,
+                  publicUrls,
+                  await ownPublicIp(),
+                )
+              : resolvePublicUrls(request.headers.host, publicUrls);
           const result = await getStreams(
             library,
             torrServer,
