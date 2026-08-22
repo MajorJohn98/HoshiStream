@@ -32,6 +32,12 @@ describe("management asset route", () => {
     expect(manageAssetPath("/manage-assets/views/library.js")).toBe(
       "views/library.js",
     );
+    expect(manageAssetPath("/manage-assets/vendor/preact-htm.js")).toBe(
+      "vendor/preact-htm.js",
+    );
+    expect(manageAssetPath("/manage-assets/components/shell.js")).toBe(
+      "components/shell.js",
+    );
   });
 
   it("rejects traversal and unexpected paths", () => {
@@ -40,6 +46,9 @@ describe("management asset route", () => {
     expect(manageAssetPath("/manage-assets/app.js.map")).toBeUndefined();
     expect(manageAssetPath("/manage-assets/App.js")).toBeUndefined();
     expect(manageAssetPath("/manage-assets/views/../app.js")).toBeUndefined();
+    expect(
+      manageAssetPath("/manage-assets/vendor/../../src/index.js"),
+    ).toBeUndefined();
     expect(manageAssetPath("/manage-assets/deep/views/app.js")).toBeUndefined();
     expect(manageAssetPath("/manage-assets/logo.png")).toBeUndefined();
     expect(manageAssetPath("/manage-assets/")).toBeUndefined();

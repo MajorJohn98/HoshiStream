@@ -3,7 +3,14 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "src/stremio-addon-sdk.d.ts"] },
+  {
+    ignores: [
+      "dist",
+      "node_modules",
+      "src/stremio-addon-sdk.d.ts",
+      "assets/manage/vendor",
+    ],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

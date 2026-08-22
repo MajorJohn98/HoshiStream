@@ -29,16 +29,26 @@ describe("management page shell", () => {
 });
 
 describe("management assets", () => {
-  it("app module wires the token, API auth, and view router", async () => {
+  it("app module wires the router and legacy re-exports", async () => {
     const appJs = await asset("app.js");
-    expect(appJs).toContain('Authorization: "Bearer " + token');
-    expect(appJs).toContain('fetch("/api/" + path');
-    expect(appJs).toContain("location.pathname.split");
-    expect(appJs).toContain('import { libraryView } from "./views/library.js"');
-    expect(appJs).toContain('import { addView } from "./views/add.js"');
-    expect(appJs).toContain('import { detailView } from "./views/detail.js"');
-    expect(appJs).toContain('import { statusView } from "./views/status.js"');
+    expect(appJs).toContain('from "./vendor/preact-htm.js"');
+    expect(appJs).toContain('import { LibraryView } from "./views/library.js"');
+    expect(appJs).toContain('import { AddView } from "./views/add.js"');
+    expect(appJs).toContain('import { StatusView } from "./views/status.js"');
+    expect(appJs).toContain("hashchange");
+    // Legacy re-exports the unmigrated detail modal still depends on.
+    expect(appJs).toContain(
+      "export { state, load, api, esc, fmt, notify, token, headers }",
+    );
     expect(appJs).not.toContain("ACCESS_TOKEN");
+  });
+
+  it("api module wires the token and bearer auth", async () => {
+    const apiJs = await asset("api.js");
+    expect(apiJs).toContain('Authorization: "Bearer " + token');
+    expect(apiJs).toContain('fetch("/api/" + path');
+    expect(apiJs).toContain("location.pathname.split");
+    expect(apiJs).not.toContain("ACCESS_TOKEN");
   });
 
   it("library view covers grid, import/export, and Stremio refresh", async () => {
@@ -70,7 +80,7 @@ describe("management assets", () => {
 
   it("add view offers Finder linking only when the picker is available", async () => {
     const addJs = await asset("views/add.js");
-    expect(addJs).toContain("state.status.nativePicker");
+    expect(addJs).toContain("status.nativePicker");
     expect(addJs).toContain("Choose with Finder");
     expect(addJs).toContain("d.nativePathGrant = picked.grant");
     expect(addJs).toContain('"native-picker/"');
@@ -113,7 +123,7 @@ describe("management assets", () => {
     expect(statusJs).toContain("System Status");
     expect(statusJs).toContain("TorrServer");
     expect(statusJs).toContain("Streaming now");
-    expect(statusJs).toContain("state.status.streamingActive");
+    expect(statusJs).toContain("status.streamingActive");
     expect(statusJs).toContain("Native macOS app");
     expect(statusJs).toContain("Docker mode");
     expect(statusJs).toContain("Kept awake automatically during playback");

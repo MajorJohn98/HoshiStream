@@ -91,9 +91,10 @@ const MANAGE_ASSET_TYPES: Record<string, string> = {
 };
 
 export function manageAssetPath(pathname: string): string | undefined {
-  const match = /^\/manage-assets\/((?:views\/)?[a-z0-9-]+\.(?:js|css))$/.exec(
-    pathname,
-  );
+  const match =
+    /^\/manage-assets\/((?:(?:views|vendor|components)\/)?[a-z0-9-]+\.(?:js|css))$/.exec(
+      pathname,
+    );
   return match?.[1];
 }
 

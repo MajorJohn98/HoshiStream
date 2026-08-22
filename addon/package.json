@@ -8,6 +8,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "dev": "node --watch --env-file=.env dist/index.js",
+    "dev:tsc": "tsc --watch --preserveWatchOutput",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

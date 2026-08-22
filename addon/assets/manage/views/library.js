@@ -1,16 +1,10 @@
 // Library view: grid of titles, search/filter, JSON import/export, and the
-// Stremio catalog refresh flow.
-import {
-  state,
-  app,
-  api,
-  esc,
-  notify,
-  shell,
-  load,
-  go,
-  token,
-} from "../app.js";
+// Stremio catalog refresh flow. The import-review and Stremio modals stay as
+// body-level DOM (outside the preact root), same as the detail modal.
+import { html, useState } from "../vendor/preact-htm.js";
+import { api, esc, notify, token } from "../api.js";
+import { state, setState, useStore, load } from "../store.js";
+import { Shell, Pill } from "../components/shell.js";
 import { classifyLibraryImports } from "../classify-imports.js";
 import { detailView } from "./detail.js";
 
@@ -116,50 +110,39 @@ async function reviewImport(file) {
   backdrop.querySelector(".modal-close").focus();
 }
 
-async function refreshStremio() {
-  const button = document.querySelector("#refreshStremio");
-  button.disabled = true;
-  button.textContent = "Validating…";
-  try {
-    const result = await api("stremio-refresh", { method: "POST" });
-    const backdrop = document.createElement("div");
-    backdrop.className = "modal-backdrop";
-    backdrop.innerHTML =
-      '<section class="modal" role="dialog" aria-modal="true" aria-label="Stremio catalog refresh" style="width:min(520px,100%)"><button class="modal-close" aria-label="Close">×</button><h2>Catalog ready for Stremio</h2><div class="metrics"><div class="metric"><span class="muted">Movies</span><strong>' +
-      result.movies +
-      '</strong></div><div class="metric"><span class="muted">Series</span><strong>' +
-      result.series +
-      '</strong></div></div><p class="muted">Validated just now. Stremio has been opened so it can request the current catalog.</p><div class="row"><button class="secondary" id="copyAddon">Copy add-on URL</button><button class="primary" id="openStremio">Open Stremio</button></div></section>';
-    document.body.append(backdrop);
-    const close = () => backdrop.remove();
-    const open = () => {
-      location.href = "stremio:///board";
-    };
-    backdrop.onclick = (e) => {
-      if (e.target === backdrop) close();
-    };
-    backdrop.onkeydown = (e) => {
-      if (e.key === "Escape") close();
-    };
-    backdrop.querySelector(".modal-close").onclick = close;
-    backdrop.querySelector("#openStremio").onclick = open;
-    backdrop.querySelector("#copyAddon").onclick = async () => {
-      await navigator.clipboard.writeText(
-        location.origin +
-          "/addon/" +
-          encodeURIComponent(token) +
-          "/manifest.json",
-      );
-      notify("Add-on URL copied");
-    };
-    backdrop.querySelector(".modal-close").focus();
-    open();
-  } catch (error) {
-    notify(error.message);
-  } finally {
-    button.disabled = false;
-    button.textContent = "↻ Refresh Stremio";
-  }
+function showStremioModal(result) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML =
+    '<section class="modal" role="dialog" aria-modal="true" aria-label="Stremio catalog refresh" style="width:min(520px,100%)"><button class="modal-close" aria-label="Close">×</button><h2>Catalog ready for Stremio</h2><div class="metrics"><div class="metric"><span class="muted">Movies</span><strong>' +
+    result.movies +
+    '</strong></div><div class="metric"><span class="muted">Series</span><strong>' +
+    result.series +
+    '</strong></div></div><p class="muted">Validated just now. Stremio has been opened so it can request the current catalog.</p><div class="row"><button class="secondary" id="copyAddon">Copy add-on URL</button><button class="primary" id="openStremio">Open Stremio</button></div></section>';
+  document.body.append(backdrop);
+  const close = () => backdrop.remove();
+  const open = () => {
+    location.href = "stremio:///board";
+  };
+  backdrop.onclick = (e) => {
+    if (e.target === backdrop) close();
+  };
+  backdrop.onkeydown = (e) => {
+    if (e.key === "Escape") close();
+  };
+  backdrop.querySelector(".modal-close").onclick = close;
+  backdrop.querySelector("#openStremio").onclick = open;
+  backdrop.querySelector("#copyAddon").onclick = async () => {
+    await navigator.clipboard.writeText(
+      location.origin +
+        "/addon/" +
+        encodeURIComponent(token) +
+        "/manifest.json",
+    );
+    notify("Add-on URL copied");
+  };
+  backdrop.querySelector(".modal-close").focus();
+  open();
 }
 
 async function remove(id) {
@@ -168,92 +151,146 @@ async function remove(id) {
   await load();
 }
 
-function card(e) {
-  const local = e.localFilePath || e.localFolderPath;
-  return (
-    '<article class="card" data-id="' +
-    esc(e.id) +
-    '"><div class="art">' +
-    (e.poster
-      ? '<img src="' + esc(e.poster) + '" alt="">'
-      : '<span class="placeholder">★</span>') +
-    '<span class="badge">Available</span></div><div class="body"><h2>' +
-    esc(e.name) +
-    '</h2><div class="muted">' +
-    (e.type === "series" ? "Series" : "Movie") +
-    '</div><span class="badge">' +
-    (local ? "Local" : "Torrent") +
-    '</span><div class="actions"><button>Open details</button><button data-delete class="danger">Delete</button></div></div></article>'
-  );
+function openDetail(entry) {
+  setState({
+    selected: entry,
+    tab: "overview",
+    inspection: null,
+    inspectionError: "",
+  });
+  detailView();
 }
 
-export function libraryView() {
-  const visible = state.entries.filter(
+const Card = ({ entry }) => html`
+  <article class="card" onClick=${() => openDetail(entry)}>
+    <div class="art">
+      ${
+        entry.poster
+          ? html`<img src=${entry.poster} alt="" />`
+          : html`<span class="placeholder">★</span>`
+      }
+      <span class="badge">Available</span>
+    </div>
+    <div class="body">
+      <h2>${entry.name}</h2>
+      <div class="muted">${entry.type === "series" ? "Series" : "Movie"}</div>
+      <span class="badge">
+        ${entry.localFilePath || entry.localFolderPath ? "Local" : "Torrent"}
+      </span>
+      <div class="actions">
+        <button>Open details</button>
+        <button
+          class="danger"
+          onClick=${(e) => {
+            e.stopPropagation();
+            remove(entry.id).catch((error) => notify(error.message));
+          }}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  </article>
+`;
+
+const FILTERS = { all: "All", movie: "Movies", series: "Series" };
+
+export function LibraryView() {
+  const { entries, status, query, filter } = useStore();
+  const [refreshing, setRefreshing] = useState(false);
+  const visible = entries.filter(
     (e) =>
-      (state.filter === "all" || e.type === state.filter) &&
-      e.name.toLowerCase().includes(state.query.toLowerCase()),
+      (filter === "all" || e.type === filter) &&
+      e.name.toLowerCase().includes(query.toLowerCase()),
   );
-  app.innerHTML =
-    shell(
-      "Your Library",
-      '<div class="row"><input id="importFile" type="file" accept="application/json,.json" hidden><button class="secondary" id="importLibrary">⇧ Import JSON</button><button class="secondary" id="exportLibrary">⇩ Export JSON</button><button class="secondary" id="refreshStremio">↻ Refresh Stremio</button><button class="primary" id="addTop">＋ Add Media</button></div>',
-    ) +
-    '<div class="statusbar"><span class="pill online">● HoshiStream online</span><span class="pill ' +
-    (state.status.torrServer?.online ? "online" : "warn") +
-    '">TorrServer ' +
-    (state.status.torrServer?.online ? "online" : "offline") +
-    '</span><span class="pill">' +
-    state.entries.length +
-    ' titles</span><span class="pill">Home ' +
-    state.status.homeSpeedMbps +
-    ' Mbps</span></div><div class="controls"><input id="search" class="field" type="search" placeholder="Search movies and series…" value="' +
-    esc(state.query) +
-    '"><div class="chips">' +
-    ["all", "movie", "series"]
-      .map(
-        (x) =>
-          '<button class="chip ' +
-          (state.filter === x ? "active" : "") +
-          '" data-filter="' +
-          x +
-          '">' +
-          { all: "All", movie: "Movies", series: "Series" }[x] +
-          "</button>",
-      )
-      .join("") +
-    '</div></div><section class="grid">' +
-    (visible.length
-      ? visible.map(card).join("")
-      : '<div class="empty">No matching titles.</div>') +
-    "</section>";
-  document.querySelector("#addTop").onclick = () => go("add");
-  document.querySelector("#importLibrary").onclick = () =>
-    document.querySelector("#importFile").click();
-  document.querySelector("#importFile").onchange = (e) => {
-    if (e.target.files[0]) reviewImport(e.target.files[0]);
+  const refreshStremio = async () => {
+    setRefreshing(true);
+    try {
+      showStremioModal(await api("stremio-refresh", { method: "POST" }));
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setRefreshing(false);
+    }
   };
-  document.querySelector("#exportLibrary").onclick = exportLibrary;
-  document.querySelector("#refreshStremio").onclick = refreshStremio;
-  document.querySelector("#search").oninput = (e) => {
-    state.query = e.target.value;
-    libraryView();
-  };
-  document.querySelectorAll("[data-filter]").forEach(
-    (b) =>
-      (b.onclick = () => {
-        state.filter = b.dataset.filter;
-        libraryView();
-      }),
-  );
-  document.querySelectorAll("[data-id]").forEach(
-    (c) =>
-      (c.onclick = (e) => {
-        if (e.target.closest("[data-delete]")) return remove(c.dataset.id);
-        state.selected = state.entries.find((x) => x.id === c.dataset.id);
-        state.tab = "overview";
-        state.inspection = null;
-        state.inspectionError = "";
-        detailView();
-      }),
-  );
+  return html`
+    <${Shell}
+      title="Your Library"
+      actions=${html`
+        <div class="row">
+          <input
+            id="importFile"
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange=${(e) => {
+              if (e.target.files[0]) reviewImport(e.target.files[0]);
+              e.target.value = "";
+            }}
+          />
+          <button
+            class="secondary"
+            onClick=${() => document.querySelector("#importFile").click()}
+          >
+            ⇧ Import JSON
+          </button>
+          <button class="secondary" onClick=${exportLibrary}>
+            ⇩ Export JSON
+          </button>
+          <button
+            class="secondary"
+            disabled=${refreshing}
+            onClick=${refreshStremio}
+          >
+            ${refreshing ? "Validating…" : "↻ Refresh Stremio"}
+          </button>
+          <button class="primary" onClick=${() => (location.hash = "#/add")}>
+            ＋ Add Media
+          </button>
+        </div>
+      `}
+    >
+      <div class="statusbar">
+        <${Pill} online>● HoshiStream online<//>
+        <${Pill}
+          online=${status.torrServer?.online}
+          warn=${!status.torrServer?.online}
+        >
+          TorrServer ${status.torrServer?.online ? "online" : "offline"}
+        <//>
+        <${Pill}>${entries.length} titles<//>
+        <${Pill}>Home ${status.homeSpeedMbps} Mbps<//>
+      </div>
+      <div class="controls">
+        <input
+          class="field"
+          type="search"
+          placeholder="Search movies and series…"
+          value=${query}
+          onInput=${(e) => setState({ query: e.target.value })}
+        />
+        <div class="chips">
+          ${Object.entries(FILTERS).map(
+            ([key, label]) => html`
+              <button
+                class="chip ${filter === key ? "active" : ""}"
+                onClick=${() => setState({ filter: key })}
+              >
+                ${label}
+              </button>
+            `,
+          )}
+        </div>
+      </div>
+      <section class="grid">
+        ${
+          visible.length
+            ? visible.map(
+                (entry) => html`<${Card} key=${entry.id} entry=${entry} />`,
+              )
+            : html`<div class="empty">No matching titles.</div>`
+        }
+      </section>
+    <//>
+  `;
 }
