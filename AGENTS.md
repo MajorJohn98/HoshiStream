@@ -4,16 +4,16 @@ Instructions for AI coding agents working in this repository.
 
 ## Project Overview
 
-HoshiStream is a private, local-first Stremio-compatible add-on for Nuvio: a Node 22 + TypeScript server that keeps a personal JSON library, asks a pinned TorrServer to inspect authorized torrents, and returns direct-play URLs. It runs as a Docker Compose stack or a native macOS menu-bar app.
+HoshiStream is a private, local-first Stremio-compatible add-on for Nuvio: a Node 22 + TypeScript server that keeps a personal JSON library, asks a pinned TorrServer to inspect authorized torrents, and returns direct-play URLs. It runs as a native app — a macOS menu-bar supervisor today, Windows next. There are no containers ([ADR 0009](hoshistream_docs/decisions/0009-native-only-deployment.md)).
 
 ## Working Agreement (required)
 
 - Implement only the requested phase.
 - Verify TorrServer behavior against its source or Swagger before adding API calls.
 - Keep media legal, local-first, direct-play, and private by default.
-- Do not add torrent search, transcoding, a database, or a dashboard.
+- Do not add torrent search, transcoding, a database, a dashboard, or containers.
 - Never log access tokens, authorization headers, or complete magnet URIs.
-- Run type checks and Docker Compose validation before finishing.
+- Run type checks, tests, lint, and format checks before finishing.
 
 ## Documentation Workflow (required)
 
@@ -54,7 +54,7 @@ cd addon
 npm ci
 ```
 
-Running the full stack (optional for most code changes): copy `.env.example` to `.env`, set the LAN URLs and `ACCESS_TOKEN`, then `docker compose up -d --build`. See `hoshistream_docs/guides/setup-docker.md`.
+Running the full stack (optional for most code changes): copy `.env.example` to `.env`, set `ACCESS_TOKEN` and `MEDIA_DIR`, then build and launch the native app. See `hoshistream_docs/guides/setup-native-macos.md`.
 
 ## Build & Test
 
@@ -65,12 +65,6 @@ npm run typecheck
 npm test
 npm run lint
 npm run format:check
-```
-
-And from the repository root:
-
-```bash
-docker compose config -q   # or: docker-compose config -q
 ```
 
 The optional TorrServer integration test is opt-in: `TORRSERVER_TEST_URL=http://127.0.0.1:8090 npm test`. It checks only health and an empty list; it downloads no media.

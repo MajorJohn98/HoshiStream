@@ -5,35 +5,18 @@ Expose HoshiStream securely outside your home without opening router ports. A Cl
 ## Prerequisites
 
 - A Cloudflare account (free plan works) with a domain added to it.
-- The Docker stack running, or the native macOS app.
+- The native app running.
 
 ## 1. Create the tunnel
 
 1. Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel** (Cloudflared connector).
 2. Name it (e.g. `hoshistream`) and copy the **tunnel token**.
-3. Under **Public Hostname**, add e.g. `hoshi.your-domain.com` pointing at:
-   - Docker: `http://addon:7000`
-   - Native app: `http://localhost:7001`
+3. Under **Public Hostname**, add e.g. `hoshi.your-domain.com` pointing at
+   `http://localhost:7001` (or whichever `ADDON_PORT` you configured).
 
 ## 2. Run the connector
 
-### Docker mode
-
-Add the token to `.env`:
-
-```
-TUNNEL_TOKEN=eyJh...
-```
-
-Start the stack with the tunnel profile:
-
-```bash
-docker-compose --profile tunnel up -d
-```
-
-Without `--profile tunnel` the connector is simply not started — the base stack is unchanged.
-
-### Native macOS mode
+### macOS
 
 ```bash
 brew install cloudflared
@@ -56,7 +39,7 @@ The path token still gates everything; the tunnel adds TLS for free.
 
 Requests through the tunnel carry a `CF-Connecting-IP` header with the client's real public IP (set by Cloudflare — it cannot be forged from outside). When a stream is requested, HoshiStream compares that IP with its own public IP (a cached lookup of `cloudflare.com/cdn-cgi/trace`, refreshed every 5 minutes):
 
-- **Match** → the client shares your internet connection, so the stream URLs use your configured LAN addresses (`PUBLIC_ADDON_URL` / `PUBLIC_TORRSERVER_URL`, or the auto-detected LAN IP in native mode). Video flows directly over WiFi.
+- **Match** → the client shares your internet connection, so the stream URLs use your configured LAN addresses (the auto-detected LAN IP, or `PUBLIC_ADDON_URL` / `PUBLIC_TORRSERVER_URL` when running the add-on directly). Video flows directly over WiFi.
 - **No match, missing header, or lookup failure** → stream URLs keep the tunnel hostname. Playback always works; the LAN shortcut is purely an optimization.
 
 ```mermaid

@@ -493,3 +493,23 @@ textarea {
     padding: 18px;
   }
 }
+
+/* Play action in the detail modal header, available from every tab. */
+.title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.modal .title-row {
+  padding-right: 60px;
+}
+.title-row .title-summary {
+  flex: 1;
+  padding-right: 0;
+}
+.head-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+}

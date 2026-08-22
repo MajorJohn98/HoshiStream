@@ -11,7 +11,12 @@ const target = `${process.platform}-${process.arch}`;
 const asset = lock[target];
 if (!asset) throw new Error(`No pinned TorrServer binary for ${target}`);
 
-const output = join(root, "vendor/torrserver", target, "TorrServer");
+const output = join(
+  root,
+  "vendor/torrserver",
+  target,
+  process.platform === "win32" ? "TorrServer.exe" : "TorrServer",
+);
 const temporary = `${output}.download`;
 await mkdir(dirname(output), { recursive: true });
 

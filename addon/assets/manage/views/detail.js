@@ -1,5 +1,5 @@
 // Detail modal: overview, source, files, and playback tabs for one entry.
-import { state, api, esc, fmt, notify, token } from "../app.js";
+import { state, api, esc, fmt, notify, token, headers } from "../app.js";
 
 function agoLabel(iso) {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
@@ -47,9 +47,51 @@ async function patch(d) {
   });
 }
 
+async function playHere(fileId) {
+  const button = document.querySelector("#playhere");
+  const label = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Starting…";
+  }
+  try {
+    const r = await fetch("/api/player/play", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({
+        entryId: state.selected.id,
+        ...(fileId === undefined ? {} : { fileId }),
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Playback failed");
+    const queued = d.queued
+      ? " · " +
+        d.queued +
+        " more episode" +
+        (d.queued === 1 ? "" : "s") +
+        " queued"
+      : "";
+    notify(
+      d.mode === "system"
+        ? "Opened " + d.title + " in your player"
+        : (d.resumedAt
+            ? "Resumed " + d.title + " at " + Math.round(d.resumedAt) + "s"
+            : "Playing " + d.title) + queued,
+    );
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+}
+
 function titleHead() {
   return (
-    '<div class="title-summary">' +
+    '<div class="title-row"><div class="title-summary">' +
     (state.selected.poster
       ? '<img class="poster" src="' + esc(state.selected.poster) + '" alt="">'
       : '<div class="poster placeholder">★</div>') +
@@ -61,7 +103,12 @@ function titleHead() {
     (state.selected.localFilePath || state.selected.localFolderPath
       ? "Local"
       : "Torrent") +
-    '</span></div></div><div class="tabs">' +
+    '</span></div></div><div class="head-actions"><button class="primary" id="playhere">' +
+    (state.selected.playback?.fileId !== undefined ||
+    state.selected.playback?.positionSeconds
+      ? "▶ Resume on this Mac"
+      : "▶ Play on this Mac") +
+    '</button></div></div><div class="tabs">' +
     ["overview", "source", "files", "playback"]
       .map(
         (x) =>
@@ -213,7 +260,7 @@ function filesView(body) {
       (state.inspectionError
         ? '<p class="danger">' + esc(state.inspectionError) + "</p>"
         : "") +
-      '<div class="panel tablewrap"><table class="files"><thead><tr><th>File</th><th>Size</th><th>Season</th><th>Episode</th></tr></thead><tbody>' +
+      '<div class="panel tablewrap"><table class="files"><thead><tr><th>File</th><th>Size</th><th>Season</th><th>Episode</th><th></th></tr></thead><tbody>' +
       cache.selectedFiles
         .map(
           (f) =>
@@ -225,11 +272,16 @@ function filesView(body) {
             (f.season ?? "—") +
             "</td><td>" +
             (f.episode ?? "—") +
-            "</td></tr>",
+            '</td><td><button class="secondary play-file" data-file="' +
+            f.id +
+            '" title="Play this file on this Mac">▶</button></td></tr>',
         )
         .join("") +
       '</tbody></table><p class="muted" style="margin-bottom:0">Inspect again to change which files are used or remap episodes.</p></div>';
     document.querySelector("#inspect").onclick = () => inspect(false);
+    document.querySelectorAll(".play-file").forEach((b) => {
+      b.onclick = () => playHere(Number(b.dataset.file));
+    });
     return;
   }
   const overrides = new Map(
@@ -282,6 +334,44 @@ function filesView(body) {
   };
 }
 
+const DIRECT_PLAY_TEXT = {
+  direct: "Supported",
+  caution: "Check device",
+  risky: "May stutter",
+};
+
+function directPlayText(compatibility) {
+  return DIRECT_PLAY_TEXT[compatibility] || "Unknown";
+}
+
+function verdictTitle(t, dp, ready, needed) {
+  if (t.error) return "Analysis incomplete";
+  if (dp?.compatibility === "risky") return "May not direct play";
+  if (dp?.compatibility === "caution") return "Check compatibility";
+  if (ready) return "Likely to direct play";
+  if (needed) return "Connection may be too slow";
+  return "Compatibility unknown";
+}
+
+function verdictBody(t, dp, ready, needed) {
+  if (dp?.warnings?.length) {
+    return (
+      '<ul class="muted">' +
+      dp.warnings.map((w) => "<li>" + esc(w) + "</li>").join("") +
+      "</ul>"
+    );
+  }
+  return (
+    '<p class="muted">' +
+    (ready
+      ? "Your configured home speed meets the recommended 1.5× bitrate target."
+      : needed
+        ? "Recommended speed is above your configured home speed. Playback may buffer."
+        : "A bitrate estimate was unavailable. Test playback on the target device.") +
+    "</p>"
+  );
+}
+
 function playback(body) {
   if (!state.inspection?.technical) {
     inspectionPrompt(
@@ -296,6 +386,7 @@ function playback(body) {
   }
   const f = state.inspection.selectedFiles[0];
   const t = state.inspection.technical || {};
+  const dp = state.inspection.directPlay;
   const needed = t.recommendedMbps;
   const ready = needed && state.inspection.homeSpeedMbps >= needed;
   body.innerHTML =
@@ -318,6 +409,7 @@ function playback(body) {
       ],
       ["Recommended speed", needed ? needed.toFixed(1) + " Mbps" : "Unknown"],
       ["Home speed", state.inspection.homeSpeedMbps + " Mbps"],
+      ["Direct play", dp ? directPlayText(dp.compatibility) : "Unknown"],
       ["Selected files", state.inspection.selectedFiles.length],
     ]
       .map(
@@ -329,26 +421,17 @@ function playback(body) {
           "</strong></div>",
       )
       .join("") +
-    '</div><div class="actions"><button class="primary" id="test">Test playback</button></div></div><div class="panel route" style="margin-top:18px"><span>HoshiStream</span>→<span>' +
+    '</div><div class="actions"><button class="primary" id="playselected">▶ Play this file</button><button class="secondary" id="test">Test playback</button></div></div><div class="panel route" style="margin-top:18px"><span>HoshiStream</span>→<span>' +
     (state.selected.localFilePath || state.selected.localFolderPath
       ? "Local file"
       : "TorrServer") +
     '</span>→<span>Player</span></div></div><aside class="panel"><h3>' +
-    (t.error
-      ? "Analysis incomplete"
-      : ready
-        ? "Likely to direct play"
-        : needed
-          ? "Connection may be too slow"
-          : "Compatibility unknown") +
-    '</h3><p class="muted">' +
-    (ready
-      ? "Your configured home speed meets the recommended 1.5× bitrate target."
-      : needed
-        ? "Recommended speed is above your configured home speed. Playback may buffer."
-        : "A bitrate estimate was unavailable. Test playback on the target device.") +
-    '</p><p class="muted">HoshiStream never transcodes; the player must support the listed codecs.</p></aside></div>';
+    verdictTitle(t, dp, ready, needed) +
+    "</h3>" +
+    verdictBody(t, dp, ready, needed) +
+    '<p class="muted">HoshiStream never transcodes; the player must support the listed codecs.</p></aside></div>';
   document.querySelector("#inspect").onclick = () => inspect(true);
+  document.querySelector("#playselected").onclick = () => playHere(f?.id);
   document.querySelector("#test").onclick = async () => {
     const id =
       state.selected.type === "series" && f
@@ -396,6 +479,9 @@ export function detailView() {
         detailView();
       }),
   );
+  // Available from every tab: playing should not require running an analysis.
+  const play = document.querySelector("#playhere");
+  if (play) play.onclick = () => playHere();
   const body = document.querySelector("#tabBody");
   if (state.tab === "overview") overview(body);
   if (state.tab === "source") sourceView(body);

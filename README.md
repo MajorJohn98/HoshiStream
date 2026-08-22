@@ -21,7 +21,7 @@ Nuvio on webOS TV ──┘                  │
 
 The five MVP implementation phases are complete:
 
-- Apple Silicon Docker Compose stack and health checks.
+- Native app supervising TorrServer and the add-on, with health checks.
 - Tokenized manifest, atomic JSON library, catalogs, search, pagination, metadata, and management API.
 - TorrServer magnet and `.torrent` registration, metadata polling, inspection, removal, and media-file selection.
 - Movie streams, series episode mapping, and public TorrServer URL rewriting.
@@ -33,12 +33,11 @@ Live Mac/webOS playback still requires testing with media you are authorized to 
 
 ## Prerequisites
 
-- Apple Silicon Mac with Docker Desktop, or [Colima](https://github.com/abiosoft/colima)
-- Docker Compose
+- Apple Silicon Mac (Windows support is in progress)
 - Mac and playback devices on the same trusted LAN
-- Nuvio on the Mac or LG webOS TV
+- Nuvio on the LG webOS TV, or nothing at all to watch on the Mac itself
 
-Node.js 22 is used inside the add-on image; a host Node installation is only needed for local development.
+Node.js 22 and TorrServer are vendored into the app bundle; a host Node installation is only needed for local development.
 
 ## Configure
 
@@ -68,38 +67,10 @@ openssl rand -hex 32
 
 ## Run
 
-For Colima:
-
-```bash
-colima start
-```
-
-Start and inspect the stack:
-
-```bash
-docker compose up -d --build
-docker compose ps
-docker compose logs -f
-./scripts/healthcheck.sh
-```
-
-For local macOS interface development against the installed app's library:
-
-```bash
-HOSHISTREAM_STATE_DIR="$HOME/Library/Application Support/HoshiStream" \
-  docker compose up -d --build
-```
-
-If the Docker plugin is unavailable, use the equivalent `docker-compose` command. Stop without deleting the library or configuration:
-
-```bash
-docker compose down
-```
-
-### Native macOS app
+### Install
 
 The native menu-bar app bundles Node and TorrServer, preserves the library and
-tokenized URLs, and supervises both services without Docker.
+tokenized URLs, and supervises both services.
 
 ```bash
 node packaging/fetch-node-runtime.mjs
@@ -115,14 +86,12 @@ server, reveal logs, enable Start at Login, or quit cleanly. Mutable state is
 stored in `~/Library/Application Support/HoshiStream`; logs are written to
 `~/Library/Logs/HoshiStream/server.log`.
 
-The menu-bar app keeps the Mac awake automatically while a stream is
-active. For Docker-only setups, keep the Mac awake during playback with:
-
-```bash
-caffeinate -dimsu
-```
-
+The menu-bar app keeps the Mac awake automatically while a stream is active.
 Closing the MacBook lid may still suspend networking and stop playback.
+
+To watch on the Mac itself, use **Play on this computer** on an entry's playback
+tab. HoshiStream drives mpv directly, so no TV client is needed locally
+([ADR 0008](hoshistream_docs/decisions/0008-bundled-mpv-player-over-json-ipc.md)).
 
 ## Add media
 
@@ -134,9 +103,8 @@ For a local web interface, open:
 http://127.0.0.1:7000/manage/ACCESS_TOKEN
 ```
 
-Set `MEDIA_DIR` in `.env` to the Mac folder containing your videos (the local
-setup uses `/Users/majorjohn/Downloads`). Compose mounts it read-only. Restart
-the add-on, open the management page, and choose a compatible file from the
+Set `MEDIA_DIR` in `.env` to the Mac folder containing your videos. Restart
+the app, open the management page, and choose a compatible file from the
 **Local file** menu. Files are streamed directly without copying or
 transcoding.
 
@@ -237,7 +205,7 @@ The adapter uses only verified endpoints:
 
 TorrServer has one cache-size setting that applies to either RAM or disk; it cannot provide a separate 512 MiB RAM cache plus 2 GiB disk tier. HoshiStream therefore chooses a bounded 2 GiB disk cache. The MVP assumes one active stream, so its normal cache target remains approximately 2 GiB. Multiple simultaneously active torrents can each allocate that capacity; they are not a supported MVP workload.
 
-TorrServer automatically closes inactive, non-persisted torrents after five minutes. This avoids stale playback URLs during normal TV navigation while `RemoveCacheOnDrop` still removes their disk cache. Container logs rotate at three 10 MiB files per service. Compose caps the add-on at 200 MiB and TorrServer at 1.3 GiB.
+TorrServer automatically closes inactive, non-persisted torrents after five minutes. This avoids stale playback URLs during normal TV navigation while `RemoveCacheOnDrop` still removes their disk cache. Logs are written to `~/Library/Logs/HoshiStream/server.log`.
 
 ## Performance and codecs
 
@@ -279,7 +247,7 @@ Logs are structured JSON for startup, library mutations, torrent inspection, fil
 
 **Manifest works on the Mac but not the TV:** confirm the public URLs use the LAN IP, not `127.0.0.1` or `torrserver`; verify both devices are on the same non-isolated network.
 
-**TorrServer unavailable:** run `docker compose ps`, `docker compose logs torrserver`, and open `/swagger/index.html`.
+**TorrServer unavailable:** check `~/Library/Logs/HoshiStream/server.log` and open `/swagger/index.html`.
 
 **No playable files:** inspect the entry. Supported extensions are `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, and `.m4v`. Set `preferredFileIndex` to an inspected playable file ID when automatic selection is wrong.
 
@@ -298,17 +266,12 @@ npm run lint
 npm run format:check
 
 TORRSERVER_TEST_URL=http://127.0.0.1:8090 npm test
-docker compose config -q
 ```
 
 The optional integration test checks only health and the empty/list response; it downloads no media.
 
 ## Cleanup and uninstall
 
-Remove one inactive torrent through TorrServer’s UI, or stop the entire stack:
+Remove one inactive torrent through TorrServer’s UI, or quit the app from the menu bar to stop both services.
 
-```bash
-docker compose down
-```
-
-To uninstall, run `docker compose down`, then remove this project directory. `data/library.json`, `torrserver/config/`, and `torrserver/torrents/` are the only host-mounted application state. Deleting those directories permanently removes the local library, configuration, and temporary cache.
+To uninstall, quit the app, delete `~/Applications/HoshiStream.app`, and remove this project directory. All mutable state lives in `~/Library/Application Support/HoshiStream` (library, managed media, TorrServer config and cache) with logs in `~/Library/Logs/HoshiStream`. Deleting those permanently removes the local library, configuration, and temporary cache.

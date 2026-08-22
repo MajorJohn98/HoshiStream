@@ -4,6 +4,7 @@ import {
   selectMediaFiles,
   type TorrentFile,
 } from "../src/media-file-selection.js";
+import { inspectionCacheSchema } from "../src/types.js";
 
 const files: TorrentFile[] = [
   { id: 1, path: "Movie.sample.mkv", length: 50 },
@@ -46,5 +47,58 @@ describe("selectMediaFiles", () => {
         { id: 2, included: true, season: 3, episode: 7 },
       ]),
     ).toMatchObject([{ id: 2, season: 3, episode: 7 }]);
+  });
+});
+
+describe("season numbering edge cases", () => {
+  const specials = [
+    { id: 1, path: "Show.S00E01.Special.mkv", length: 100 },
+    { id: 2, path: "Show.S00E02.Special.mkv", length: 100 },
+  ];
+
+  it("keeps season 0 for specials", () => {
+    expect(selectMediaFiles("series", specials)).toEqual([
+      {
+        id: 1,
+        path: "Show.S00E01.Special.mkv",
+        length: 100,
+        season: 0,
+        episode: 1,
+      },
+      {
+        id: 2,
+        path: "Show.S00E02.Special.mkv",
+        length: 100,
+        season: 0,
+        episode: 2,
+      },
+    ]);
+  });
+
+  it("survives the library schema, so the inspection cache can persist", () => {
+    expect(
+      inspectionCacheSchema.safeParse({
+        hash: "abc",
+        selectedFiles: selectMediaFiles("series", specials),
+        inspectedAt: new Date().toISOString(),
+      }).success,
+    ).toBe(true);
+  });
+
+  it("does not read a resolution as a season and episode", () => {
+    const [file] = selectMediaFiles("series", [
+      { id: 1, path: "Show.Pilot.1920x1080.mkv", length: 100 },
+    ]);
+    expect(file).toMatchObject({ season: 1, episode: 1 });
+  });
+
+  it("applies a season 0 override instead of dropping it", () => {
+    const [file] = selectMediaFiles(
+      "series",
+      [{ id: 1, path: "Show.Untitled.mkv", length: 100 }],
+      undefined,
+      [{ id: 1, included: true, season: 0, episode: 3 }],
+    );
+    expect(file).toMatchObject({ season: 0, episode: 3 });
   });
 });

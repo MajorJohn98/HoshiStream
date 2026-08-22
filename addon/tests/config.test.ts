@@ -1,8 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { parseConfig } from "../src/config-schema.js";
+import { homedir } from "node:os";
+import { join, win32 } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import {
+  containerHostnameWarning,
+  parseConfig,
+  stateRoot,
+} from "../src/config-schema.js";
 
 const valid = {
-  TORRSERVER_INTERNAL_URL: "http://torrserver:8090",
+  TORRSERVER_INTERNAL_URL: "http://127.0.0.1:8090",
   PUBLIC_TORRSERVER_URL: "http://192.168.1.50:8090",
   PUBLIC_ADDON_URL: "http://192.168.1.50:7000",
   ACCESS_TOKEN: "a-long-private-token-value",
@@ -14,7 +20,7 @@ describe("parseConfig", () => {
       ADDON_PORT: 7000,
       HOME_SPEED_MBPS: 10,
       LAN_REDIRECT: "auto",
-      LIBRARY_PATH: "/data/library.json",
+      LIBRARY_PATH: join(stateRoot(), "library.json"),
       LOG_LEVEL: "info",
     });
   });
@@ -31,5 +37,63 @@ describe("parseConfig", () => {
       parseConfig({ ...valid, PUBLIC_TORRSERVER_URL: "torrserver:8090" }),
     ).toThrow();
     expect(() => parseConfig({ ...valid, ACCESS_TOKEN: "short" })).toThrow();
+  });
+});
+
+describe("state root", () => {
+  it("uses Application Support on macOS", () => {
+    expect(stateRoot("darwin", {})).toBe(
+      join(homedir(), "Library", "Application Support", "HoshiStream"),
+    );
+  });
+
+  it("uses LOCALAPPDATA on Windows", () => {
+    expect(
+      stateRoot("win32", { LOCALAPPDATA: "C:\\Users\\me\\AppData\\Local" }),
+    ).toBe("C:\\Users\\me\\AppData\\Local\\HoshiStream");
+  });
+
+  it("falls back to a default when LOCALAPPDATA is unset", () => {
+    expect(stateRoot("win32", {})).toBe(
+      win32.join(homedir(), "AppData", "Local", "HoshiStream"),
+    );
+  });
+});
+
+// Compose is gone, so an inherited .env pointing at a container hostname would
+// otherwise fail late with an opaque connection error.
+describe("stale container hostname warning", () => {
+  it("flags Compose service hostnames", () => {
+    expect(
+      containerHostnameWarning(
+        "http://torrserver:8090",
+        "TORRSERVER_INTERNAL_URL",
+      ),
+    ).toContain("no longer runs in containers");
+    expect(
+      containerHostnameWarning("http://addon:7000", "PUBLIC_ADDON_URL"),
+    ).toBeDefined();
+  });
+
+  it("stays quiet for real hosts", () => {
+    expect(
+      containerHostnameWarning("http://127.0.0.1:8090", "X"),
+    ).toBeUndefined();
+    expect(
+      containerHostnameWarning("http://192.168.1.50:8090", "X"),
+    ).toBeUndefined();
+  });
+
+  it("warns during parseConfig instead of failing", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const config = parseConfig({
+      ...valid,
+      TORRSERVER_INTERNAL_URL: "http://torrserver:8090",
+    });
+
+    expect(config.TORRSERVER_INTERNAL_URL).toBe("http://torrserver:8090");
+    expect(logged).toHaveBeenCalledOnce();
+    expect(logged.mock.calls[0][0]).toContain("stale_container_hostname");
+    logged.mockRestore();
   });
 });

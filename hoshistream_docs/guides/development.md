@@ -20,20 +20,15 @@ Optional TorrServer integration test (health + empty list only; downloads nothin
 TORRSERVER_TEST_URL=http://127.0.0.1:8090 npm test
 ```
 
-Validate compose configuration from the repo root:
-
-```bash
-docker compose config -q     # or: docker-compose config -q
-```
-
 ## Working agreement (AGENTS.md)
 
 - Implement only the requested phase.
 - Verify TorrServer behavior against its source or Swagger before adding API calls ([ADR 0001](../decisions/0001-torrserver-matrix-141-pinning.md)).
 - Keep media legal, local-first, direct-play, and private by default.
 - Do not add torrent search, transcoding, a database, or a dashboard.
+- HoshiStream runs natively; do not reintroduce containers ([ADR 0009](../decisions/0009-native-only-deployment.md)).
 - Never log access tokens, authorization headers, or complete magnet URIs.
-- Run type checks and Docker Compose validation before finishing.
+- Run type checks, tests, lint, and format checks before finishing.
 
 ## Conventions
 

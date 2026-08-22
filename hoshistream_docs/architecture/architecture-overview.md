@@ -52,27 +52,32 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 4. The internal `/play/{hash}/{id}` URL is rewritten to `PUBLIC_TORRSERVER_URL` and returned with `behaviorHints` (filename, videoSize, bingeGroup).
 5. Nuvio streams directly from TorrServer; the add-on is not in the media path.
 
-## Deployment modes
+## Deployment
 
-### Docker Compose (`docker-compose.yml`)
-- `torrserver`: pinned `ghcr.io/yourok/torrserver:MatriX.141.1`, 1.3 GiB mem limit, healthchecked.
-- `addon`: built from `addon/Dockerfile`, 200 MiB mem limit, waits for TorrServer health.
-- Log rotation: 3 × 10 MiB per service.
+One mode: the native app. Containers were removed in 0.7.0 ([ADR 0009](../decisions/0009-native-only-deployment.md)).
 
-### Native macOS menu-bar app
-- Swift supervisor (`supervisor/macos`) bundles Node and TorrServer runtimes (`packaging/` lockfiles) and supervises both processes without Docker.
-- Provides native Finder pickers over a Unix socket (`NATIVE_PICKER_SOCKET`).
-- See `../plans/desktop-app-strategy.md` for the full strategy.
+Two processes are always supervised together:
+
+- **TorrServer** — the BitTorrent engine, pinned to MatriX.141.1 and started from a vendored binary.
+- **The Node add-on** — library, management UI, add-on protocol, local file serving, and host playback.
+
+- Supervision lives in `scripts/native-server.mjs`, which is plain cross-platform Node: ports, environment, state directories, TorrServer config, and process lifecycle.
+- The macOS shell is the Swift supervisor (`supervisor/macos`): menu bar, login item, sleep assertion, native Finder pickers over a Unix socket (`NATIVE_PICKER_SOCKET`), and log access.
+- Runtimes are vendored and pinned via `packaging/` lockfiles, which carry `darwin-arm64` and `win32-x64` entries.
+- See `../plans/desktop-app-strategy.md` for the app strategy and `../plans/2026-08-14-native-only-plan.md` for the Windows path.
 
 ## State layout
 
 | Location | Contents |
 |---|---|
-| `data/library.json` (Compose) | The library, a JSON array written atomically |
-| `data/media/` | Browser-uploaded managed media (`UPLOAD_ROOT`) |
-| `torrserver/config/settings.json` | Cache size, connection, and cleanup settings |
-| `torrserver/torrents/` | TorrServer disk cache (bounded, 2 GiB per active torrent) |
-| `~/Library/Application Support/HoshiStream` | Native app mutable state |
+| `<state dir>/library.json` | The library, a JSON array written atomically |
+| `<state dir>/media/` | Browser-uploaded managed media (`UPLOAD_ROOT`) |
+| `<state dir>/torrserver/config/settings.json` | Cache size, connection, and cleanup settings |
+| `<state dir>/torrserver/torrents/` | TorrServer disk cache |
+| `~/Library/Logs/HoshiStream/server.log` | Server logs (macOS) |
+
+`<state dir>` is `~/Library/Application Support/HoshiStream` on macOS and
+`%LOCALAPPDATA%\HoshiStream` on Windows, overridable with `HOSHISTREAM_STATE_DIR`.
 | `~/Library/Logs/HoshiStream/server.log` | Native app logs |
 
 ## Explicit non-goals

@@ -1,6 +1,7 @@
 import type { Library } from "./library.js";
 import type { SelectedFile } from "./media-file-selection.js";
 import { markStreamActivity } from "./activity.js";
+import { directPlayLabel } from "./direct-play.js";
 import { resolveStreamSource } from "./inspection.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 
@@ -30,12 +31,7 @@ export function resolvePublicUrls(
   } catch {
     return fallback;
   }
-  if (
-    !requested.hostname ||
-    ["addon", "torrserver"].includes(requested.hostname)
-  ) {
-    return fallback;
-  }
+  if (!requested.hostname) return fallback;
   const torrServer = new URL(fallback.torrServerUrl);
   torrServer.hostname = requested.hostname;
   return { addonUrl: requested.origin, torrServerUrl: torrServer.origin };
@@ -104,7 +100,7 @@ export async function getStreams(
       streams: [
         {
           name: "HoshiStream",
-          description: `Local • ${formatSize(file.length)}`,
+          description: describe("Local", file, entry),
           url: `${publicAddonUrl}/local/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${file.id}`,
           behaviorHints: streamBehaviorHints(entry.id, file),
         },
@@ -134,12 +130,23 @@ export async function getStreams(
     streams: [
       {
         name: "HoshiStream",
-        description: `Torrent • ${formatSize(file.length)}`,
+        description: describe("Torrent", file, entry),
         url,
         behaviorHints: streamBehaviorHints(entry.id, file),
       },
     ],
   };
+}
+
+function describe(
+  source: string,
+  file: SelectedFile,
+  entry: { directPlay?: Parameters<typeof directPlayLabel>[0] },
+): string {
+  const label = entry.directPlay && directPlayLabel(entry.directPlay);
+  return [`${source} • ${formatSize(file.length)}`, label]
+    .filter(Boolean)
+    .join(" • ");
 }
 
 function formatSize(bytes: number): string {

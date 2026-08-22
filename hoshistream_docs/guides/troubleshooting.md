@@ -13,8 +13,7 @@ macOS AirPlay Receiver owns the port. Turn off **System Settings → General →
 ## TorrServer unavailable
 
 ```bash
-docker compose ps
-docker compose logs torrserver
+tail -f ~/Library/Logs/HoshiStream/server.log
 ```
 
 Then open `http://127.0.0.1:8090/swagger/index.html`. The add-on's `/ready` endpoint also checks TorrServer `/echo`.

@@ -4,16 +4,19 @@ import {
   mkdir,
   readFile,
   rename,
+  stat,
   unlink,
   writeFile,
 } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
+import type { DirectPlay } from "./direct-play.js";
 import {
   libraryEntrySchema,
   type CreateEntry,
   type InspectionCache,
   type LibraryEntry,
+  type PlaybackState,
   type PatchEntry,
 } from "./types.js";
 
@@ -32,6 +35,7 @@ export class LibraryError extends Error {}
 
 export class Library {
   private queue: Promise<void> = Promise.resolve();
+  private cache?: { mtimeMs: number; size: number; entries: LibraryEntry[] };
 
   constructor(private readonly path: string) {}
 
@@ -73,8 +77,10 @@ export class Library {
       if (input.description === null) delete candidate.description;
       if (input.poster === null) delete candidate.poster;
       if (input.background === null) delete candidate.background;
-      if (CACHE_INVALIDATING_FIELDS.some((field) => field in input))
+      if (CACHE_INVALIDATING_FIELDS.some((field) => field in input)) {
         delete candidate.inspectionCache;
+        delete candidate.directPlay;
+      }
       const updated = libraryEntrySchema.parse(candidate);
       entries[index] = updated;
       return updated;
@@ -101,10 +107,43 @@ export class Library {
     });
   }
 
+  setPlayback(id: string, playback: PlaybackState): Promise<void> {
+    return this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return;
+      entries[index] = libraryEntrySchema.parse({
+        ...entries[index],
+        playback,
+      });
+    });
+  }
+
+  setDirectPlay(id: string, directPlay: DirectPlay): Promise<void> {
+    return this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return;
+      entries[index] = libraryEntrySchema.parse({
+        ...entries[index],
+        directPlay,
+      });
+    });
+  }
+
   private async read(): Promise<LibraryEntry[]> {
     try {
-      return await this.parse(this.path);
+      const info = await stat(this.path);
+      if (
+        this.cache &&
+        this.cache.mtimeMs === info.mtimeMs &&
+        this.cache.size === info.size
+      ) {
+        return structuredClone(this.cache.entries);
+      }
+      const entries = await this.parse(this.path);
+      this.cache = { mtimeMs: info.mtimeMs, size: info.size, entries };
+      return structuredClone(entries);
     } catch (error) {
+      this.cache = undefined;
       return this.recover(error);
     }
   }
@@ -174,8 +213,17 @@ export class Library {
         mode: 0o600,
       });
       await rename(temporaryPath, this.path);
+      const info = await stat(this.path).catch(() => undefined);
+      this.cache = info
+        ? {
+            mtimeMs: info.mtimeMs,
+            size: info.size,
+            entries: structuredClone(entries),
+          }
+        : undefined;
       await copyFile(this.path, this.backupPath).catch(() => undefined);
     } catch (error) {
+      this.cache = undefined;
       await unlink(temporaryPath).catch(() => undefined);
       throw error;
     }

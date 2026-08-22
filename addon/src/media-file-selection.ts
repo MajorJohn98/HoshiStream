@@ -33,7 +33,8 @@ function playable(file: TorrentFile): boolean {
 function episodeNumbers(
   path: string,
 ): { season: number; episode: number } | undefined {
-  const match = /s(\d{1,2})e(\d{1,3})|(\d{1,2})x(\d{1,3})/i.exec(path);
+  const match =
+    /s(\d{1,2})e(\d{1,3})(?!\d)|(?<!\d)(\d{1,2})x(\d{1,3})(?!\d)/i.exec(path);
   if (!match) return undefined;
   return {
     season: Number(match[1] ?? match[3]),
@@ -82,7 +83,7 @@ export function selectMediaFiles(
       const override = configured.get(file.id);
       return {
         ...file,
-        ...(override?.season && override.episode
+        ...(override?.season !== undefined && override.episode !== undefined
           ? { season: override.season, episode: override.episode }
           : (episodeNumbers(file.path) ?? { season: 1, episode: index + 1 })),
       };

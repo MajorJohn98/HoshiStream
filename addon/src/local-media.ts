@@ -9,7 +9,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { basename, extname, join, relative, resolve, sep } from "node:path";
+import { basename, extname, join, relative, resolve } from "node:path";
+import { containsPath, firstSegmentBelow } from "./path-safety.js";
 import { pipeline } from "node:stream/promises";
 import { isPlayablePath, selectMediaFiles } from "./media-file-selection.js";
 import type { LibraryEntry } from "./types.js";
@@ -26,6 +27,42 @@ const CONTENT_TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
 };
+
+// Media players issue many range requests per seek. Without this cache each one
+// re-walks the entry's directory tree and stats every file it contains.
+const INSPECTION_TTL_MS = 30_000;
+const INSPECTION_CACHE_LIMIT = 256;
+const MEDIA_HIGH_WATER_MARK = 4 * 1024 * 1024;
+
+type LocalInspection = {
+  files: Array<{ id: number; path: string; length: number; localPath: string }>;
+  selectedFiles: ReturnType<typeof selectMediaFiles>;
+};
+
+const inspectionCache = new Map<
+  string,
+  {
+    signature: string;
+    mtimeMs: number;
+    expiresAt: number;
+    value: LocalInspection;
+  }
+>();
+
+function selectionSignature(entry: LibraryEntry): string {
+  return JSON.stringify([
+    entry.type,
+    entry.localFilePath,
+    entry.localFolderPath,
+    entry.preferredFileIndex,
+    entry.fileOverrides,
+  ]);
+}
+
+export function clearLocalInspectionCache(entryId?: string): void {
+  if (entryId) inspectionCache.delete(entryId);
+  else inspectionCache.clear();
+}
 
 async function walk(directory: string): Promise<string[]> {
   const found: string[] = [];
@@ -44,7 +81,7 @@ export async function validateBrowserLocalPath(
   const actual = await realpath(path);
   for (const rootPath of [MEDIA_ROOT, UPLOAD_ROOT]) {
     const root = await realpath(rootPath).catch(() => undefined);
-    if (root && actual.startsWith(`${root}${sep}`)) {
+    if (root && containsPath(root, actual)) {
       const info = await stat(actual);
       if (kind === "file" && info.isFile() && isPlayablePath(actual))
         return actual;
@@ -63,7 +100,7 @@ export async function validateBrowserLocalPath(
 export async function isManagedMediaPath(path: string): Promise<boolean> {
   const actual = await realpath(path);
   const root = await realpath(UPLOAD_ROOT).catch(() => undefined);
-  return Boolean(root && actual.startsWith(`${root}${sep}`));
+  return Boolean(root && containsPath(root, actual));
 }
 
 export async function inspectLocalEntry(entry: LibraryEntry) {
@@ -71,6 +108,16 @@ export async function inspectLocalEntry(entry: LibraryEntry) {
   if (!source) return;
   const root = await realpath(source);
   const info = await stat(root);
+  const signature = selectionSignature(entry);
+  const cached = inspectionCache.get(entry.id);
+  if (
+    cached &&
+    cached.signature === signature &&
+    cached.mtimeMs === info.mtimeMs &&
+    cached.expiresAt > Date.now()
+  ) {
+    return cached.value;
+  }
   const paths = info.isDirectory() ? await walk(root) : [root];
   const files = await Promise.all(
     paths.map(async (path, id) => ({
@@ -82,7 +129,7 @@ export async function inspectLocalEntry(entry: LibraryEntry) {
       localPath: path,
     })),
   );
-  return {
+  const value = {
     files,
     selectedFiles: selectMediaFiles(
       entry.type,
@@ -91,6 +138,17 @@ export async function inspectLocalEntry(entry: LibraryEntry) {
       entry.fileOverrides,
     ),
   };
+  if (inspectionCache.size >= INSPECTION_CACHE_LIMIT) {
+    const oldest = inspectionCache.keys().next();
+    if (!oldest.done) inspectionCache.delete(oldest.value);
+  }
+  inspectionCache.set(entry.id, {
+    signature,
+    mtimeMs: info.mtimeMs,
+    expiresAt: Date.now() + INSPECTION_TTL_MS,
+    value,
+  });
+  return value;
 }
 
 export async function listLocalMedia(): Promise<string[]> {
@@ -106,10 +164,7 @@ export async function saveUpload(
     throw new SyntaxError("Invalid upload path");
   const batchRoot = resolve(UPLOAD_ROOT, batch);
   const destination = resolve(batchRoot, relativePath);
-  if (
-    !destination.startsWith(`${batchRoot}${sep}`) ||
-    !isPlayablePath(destination)
-  )
+  if (!containsPath(batchRoot, destination) || !isPlayablePath(destination))
     throw new SyntaxError("Invalid upload path");
   await mkdir(resolve(destination, ".."), { recursive: true });
   try {
@@ -145,9 +200,9 @@ export async function removeManagedMedia(entry: LibraryEntry): Promise<void> {
   if (!entry.managedMedia) return;
   const source =
     entry.localFolderPath ?? entry.localFilePath ?? entry.torrentFilePath;
-  if (!source?.startsWith(`${UPLOAD_ROOT}/`)) return;
-  const batch = relative(UPLOAD_ROOT, source).split(sep)[0];
-  if (UUID_V4.test(batch))
+  if (!source) return;
+  const batch = firstSegmentBelow(UPLOAD_ROOT, source);
+  if (batch && UUID_V4.test(batch))
     await rm(resolve(UPLOAD_ROOT, batch), { recursive: true, force: true });
 }
 
@@ -212,6 +267,7 @@ export async function serveLocalMedia(
     return;
   }
   const partial = Boolean(request.headers.range);
+  request.socket.setNoDelay(true);
   response.writeHead(
     partial ? 206 : 200,
     mediaHeaders(
@@ -226,5 +282,8 @@ export async function serveLocalMedia(
     response.end();
     return;
   }
-  createReadStream(local.localPath, range).pipe(response);
+  createReadStream(local.localPath, {
+    ...range,
+    highWaterMark: MEDIA_HIGH_WATER_MARK,
+  }).pipe(response);
 }

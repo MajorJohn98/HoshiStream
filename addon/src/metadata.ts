@@ -1,5 +1,5 @@
 import { toMetaPreview } from "./catalog.js";
-import { resolveStreamSource } from "./inspection.js";
+import { resolveStreamSource, warmStreamSource } from "./inspection.js";
 import type { Library } from "./library.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 
@@ -12,7 +12,10 @@ export async function getMetadata(
   const entry = await library.get(id);
   if (!entry || entry.type !== type) return { meta: null };
   const meta = toMetaPreview(entry);
-  if (entry.type === "movie") return { meta };
+  if (entry.type === "movie") {
+    warmStreamSource(entry, torrServer, library);
+    return { meta };
+  }
 
   const inspection = await resolveStreamSource(entry, torrServer, library);
   return {

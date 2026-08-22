@@ -4,6 +4,7 @@ import { createAddon } from "./addon.js";
 import { config } from "./config.js";
 import { Library } from "./library.js";
 import { NativePicker } from "./native-picker.js";
+import { Playback } from "./playback.js";
 import { createHandler } from "./routes.js";
 import { TorrServerClient } from "./torrserver-client.js";
 
@@ -31,6 +32,7 @@ export async function startHoshiStream(settings = config) {
         torrServerUrl: settings.PUBLIC_TORRSERVER_URL,
       },
       settings.LAN_REDIRECT,
+      new Playback(library, torrServer, settings.PLAYER),
     ),
   );
   await new Promise<void>((resolve, reject) => {

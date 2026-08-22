@@ -24,9 +24,15 @@ describe("resolvePublicUrls", () => {
     expect(resolvePublicUrls("bad host:99999", fallback)).toEqual(fallback);
   });
 
-  it("falls back for Docker-internal hostnames", () => {
-    expect(resolvePublicUrls("torrserver:8090", fallback)).toEqual(fallback);
-    expect(resolvePublicUrls("addon:7000", fallback)).toEqual(fallback);
+  it("keeps the TorrServer port while taking the requested hostname", () => {
+    expect(resolvePublicUrls("hoshi.example.com", fallback)).toEqual({
+      addonUrl: "http://hoshi.example.com",
+      torrServerUrl: "http://hoshi.example.com:8090",
+    });
+  });
+
+  it("falls back when the host header has no hostname", () => {
+    expect(resolvePublicUrls(":7000", fallback)).toEqual(fallback);
   });
 });
 
@@ -88,10 +94,10 @@ describe("resolveClientAwareUrls", () => {
 });
 
 describe("rewritePublicUrl", () => {
-  it("replaces Docker-internal origin and preserves the playback path", () => {
+  it("replaces the internal origin and preserves the playback path", () => {
     expect(
       rewritePublicUrl(
-        "http://torrserver:8090/play/abc/2",
+        "http://127.0.0.1:8090/play/abc/2",
         "http://192.168.1.50:8090",
       ),
     ).toBe("http://192.168.1.50:8090/play/abc/2");

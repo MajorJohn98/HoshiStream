@@ -77,11 +77,39 @@ export async function resolveStreamSource(
     return { hash: "", selectedFiles: local?.selectedFiles ?? [] };
   }
   if (entry.inspectionCache) {
-    await registerTorrent(entry, torrServer);
-    return {
-      hash: entry.inspectionCache.hash,
-      selectedFiles: entry.inspectionCache.selectedFiles,
-    };
+    const { hash, selectedFiles } = entry.inspectionCache;
+    // TorrServer already knows the torrent unless it restarted or dropped it,
+    // so only pay for re-registration when the lookup actually misses.
+    const known = await torrServer.get(hash).catch(() => undefined);
+    if (!known) await registerTorrent(entry, torrServer);
+    return { hash, selectedFiles };
   }
   return inspectEntry(entry, torrServer, library);
+}
+
+// Registers the torrent ahead of the play click so the swarm is already
+// connected when the stream request arrives. Failures are non-fatal because
+// the stream request resolves the source again anyway.
+const warming = new Set<string>();
+
+export function warmStreamSource(
+  entry: LibraryEntry,
+  torrServer: TorrServerClient,
+  library: Library,
+): void {
+  if (entry.localFilePath || entry.localFolderPath) return;
+  if (warming.has(entry.id)) return;
+  warming.add(entry.id);
+  void resolveStreamSource(entry, torrServer, library)
+    .catch((error: unknown) =>
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          event: "stream_prewarm_failed",
+          entryId: entry.id,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    )
+    .finally(() => warming.delete(entry.id));
 }

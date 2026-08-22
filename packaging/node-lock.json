@@ -4,5 +4,10 @@
     "name": "node-v26.3.1-darwin-arm64.tar.gz",
     "sha256": "3f624ab0d774553c0d28b968e141d8c676a35a2811fb0b7b356ba9cbdce15f74",
     "url": "https://nodejs.org/dist/v26.3.1/node-v26.3.1-darwin-arm64.tar.gz"
+  },
+  "win32-x64": {
+    "name": "node-v26.3.1-win-x64.zip",
+    "sha256": "45001b289ebffe7b22260898f3750059183d8246042b88e8ffa4337e65e6763e",
+    "url": "https://nodejs.org/dist/v26.3.1/node-v26.3.1-win-x64.zip"
   }
 }

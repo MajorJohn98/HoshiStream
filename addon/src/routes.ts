@@ -2,9 +2,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { z, ZodError } from "zod";
 import { markStreamActivity, recentStreamActivity } from "./activity.js";
+import { assessDirectPlay } from "./direct-play.js";
 import { inspectEntry } from "./inspection.js";
 import type { Library } from "./library.js";
 import { managementHtml } from "./management.js";
+import { Playback } from "./playback.js";
+import { PlayerError } from "./player.js";
 import { probeMedia } from "./media-probe.js";
 import {
   listLocalMedia,
@@ -37,6 +40,14 @@ const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
 };
 const catalogResponseSchema = z.object({ metas: z.array(z.unknown()) });
+const playRequestSchema = z.object({
+  entryId: z.string().min(1),
+  fileId: z.number().int().nonnegative().optional(),
+});
+const playerControlSchema = z.object({
+  action: z.enum(["pause", "resume", "stop", "seek"]),
+  value: z.number().nonnegative().optional(),
+});
 
 export function technicalProbeRequested(url: URL): boolean {
   return url.searchParams.get("probe") === "true";
@@ -136,6 +147,7 @@ export function createHandler(
   nativePicker: NativePicker,
   publicUrls: PublicUrls,
   lanRedirect: "auto" | "off" = "auto",
+  playback = new Playback(library, torrServer),
 ) {
   return async (request: IncomingMessage, response: ServerResponse) => {
     try {
@@ -285,6 +297,36 @@ export function createHandler(
                 .at(-1) ?? null,
           });
         }
+        if (url.pathname === "/api/player/play" && request.method === "POST") {
+          const value = await body(request);
+          const input = playRequestSchema.parse(value);
+          const result = await playback.play(input.entryId, input.fileId);
+          console.log(
+            JSON.stringify({
+              level: "info",
+              event: "player_started",
+              entryId: input.entryId,
+              mode: result.mode,
+            }),
+          );
+          return reply(response, 200, result);
+        }
+        if (
+          url.pathname === "/api/player/control" &&
+          request.method === "POST"
+        ) {
+          const value = await body(request);
+          const input = playerControlSchema.parse(value);
+          await playback.control(input.action, input.value);
+          return reply(response, 200, { ok: true });
+        }
+        if (url.pathname === "/api/player/status" && request.method === "GET") {
+          return reply(response, 200, {
+            ...(await playback.status()),
+            available: await playback.available(),
+            preference: playback.preference,
+          });
+        }
         if (url.pathname === "/api/status" && request.method === "GET") {
           const [entries, torrServerStatus, activeTorrents, pickerAvailable] =
             await Promise.all([
@@ -426,6 +468,22 @@ export function createHandler(
                 source.localPath ??
                 torrServer.streamUrl(inspection.hash, selected);
               technical = await probeMedia(input, source);
+              const directPlay = assessDirectPlay(technical, homeSpeedMbps);
+              await library.setDirectPlay(entry.id, directPlay).catch(() => {
+                console.error(
+                  JSON.stringify({
+                    level: "warn",
+                    event: "direct_play_write_failed",
+                    entryId: entry.id,
+                  }),
+                );
+              });
+              return reply(response, 200, {
+                ...inspection,
+                technical,
+                directPlay,
+                homeSpeedMbps,
+              });
             } catch {
               technical = { error: "Media details could not be read" };
             }
@@ -503,7 +561,8 @@ export function createHandler(
       const clientError =
         error instanceof ZodError ||
         error instanceof SyntaxError ||
-        error instanceof PickerCancelledError;
+        error instanceof PickerCancelledError ||
+        error instanceof PlayerError;
       const unavailable = error instanceof PickerUnavailableError;
       console.error(
         JSON.stringify({
@@ -516,7 +575,8 @@ export function createHandler(
       reply(response, unavailable ? 503 : clientError ? 400 : 500, {
         error:
           error instanceof PickerCancelledError ||
-          error instanceof PickerUnavailableError
+          error instanceof PickerUnavailableError ||
+          error instanceof PlayerError
             ? error.message
             : clientError
               ? "Invalid request"

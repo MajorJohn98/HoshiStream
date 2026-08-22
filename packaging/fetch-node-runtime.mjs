@@ -5,6 +5,7 @@ import {
   mkdir,
   readFile,
   rename,
+  rm,
   unlink,
   writeFile,
 } from "node:fs/promises";
@@ -19,9 +20,16 @@ const target = `${process.platform}-${process.arch}`;
 const asset = lock[target];
 if (!asset) throw new Error(`No pinned Node.js runtime for ${target}`);
 
-const output = join(root, "vendor/node", target, "node");
-const archive = `${output}.tar.gz`;
-const extracted = join(dirname(output), `${asset.name.slice(0, -7)}/bin/node`);
+// Windows ships a .zip with node.exe at the root of the extracted folder;
+// every other platform ships a .tar.gz with the binary under bin/.
+const isZip = asset.name.endsWith(".zip");
+const binaryName = process.platform === "win32" ? "node.exe" : "node";
+const output = join(root, "vendor/node", target, binaryName);
+const archive = `${output}${isZip ? ".zip" : ".tar.gz"}`;
+const unpacked = asset.name.replace(/\.(zip|tar\.gz)$/, "");
+const extracted = isZip
+  ? join(dirname(output), unpacked, binaryName)
+  : join(dirname(output), unpacked, "bin", binaryName);
 await mkdir(dirname(output), { recursive: true });
 
 const response = await fetch(asset.url, { redirect: "follow" });
@@ -33,19 +41,27 @@ if (digest !== asset.sha256)
 
 try {
   await writeFile(archive, bytes, { mode: 0o600 });
+  const [command, args] = isZip
+    ? ["tar", ["-xf", archive, "-C", dirname(output)]]
+    : ["tar", ["-xzf", archive, "-C", dirname(output)]];
   await new Promise((resolveExtract, rejectExtract) => {
-    const child = spawn("tar", ["-xzf", archive, "-C", dirname(output)]);
+    const child = spawn(command, args);
     child.once("error", rejectExtract);
     child.once("exit", (code) =>
       code === 0
         ? resolveExtract()
-        : rejectExtract(new Error(`tar exited with status ${code}`)),
+        : rejectExtract(new Error(`${command} exited with status ${code}`)),
     );
   });
   await rename(extracted, output);
   await chmod(output, 0o755);
 } finally {
   await unlink(archive).catch(() => undefined);
+  // The archive unpacks a full distribution; only the binary is kept.
+  await rm(join(dirname(output), unpacked), {
+    recursive: true,
+    force: true,
+  }).catch(() => undefined);
 }
 
 console.log(`Installed Node.js ${lock.version} for ${target}`);

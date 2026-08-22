@@ -118,15 +118,17 @@ async function migrateLibrary() {
 }
 
 async function seedTorrServerConfig() {
-  for (const name of ["settings.json", "config.db"]) {
-    const target = join(configRoot, name);
-    try {
-      await access(target);
-    } catch {
-      await copyFile(join(projectRoot, "torrserver/config", name), target);
-    }
-  }
+  // Ships with the app rather than living beside a deployment; TorrServer
+  // creates config.db itself when it is missing.
   const settingsPath = join(configRoot, "settings.json");
+  try {
+    await access(settingsPath);
+  } catch {
+    await copyFile(
+      join(runtimeRoot, "packaging/torrserver-settings.json"),
+      settingsPath,
+    );
+  }
   const settings = JSON.parse(await readFile(settingsPath, "utf8"));
   settings.BitTorr.TorrentsSavePath = torrentsRoot;
   await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, {
@@ -183,6 +185,7 @@ let stopping = false;
 async function stop(exitCode = 0) {
   if (stopping) return;
   stopping = true;
+  if (parentWatchdog) clearInterval(parentWatchdog);
   await addon?.close().catch(() => undefined);
   if (torrServer.exitCode === null) {
     torrServer.kill("SIGTERM");
@@ -196,8 +199,30 @@ async function stop(exitCode = 0) {
   process.exitCode = exitCode;
 }
 
+// The macOS app shuts this down cleanly on Quit, but a crash or a raw signal
+// bypasses AppKit's termination path entirely. Without this watchdog the
+// supervisor and TorrServer are orphaned, keep holding the ports, and a later
+// launch silently serves the old code while the new one fails to bind.
+const initialParentPid = process.ppid;
+const parentWatchdog =
+  initialParentPid > 1
+    ? setInterval(() => {
+        if (process.ppid === initialParentPid) return;
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            event: "parent_exited",
+            initialParentPid,
+          }),
+        );
+        void stop();
+      }, 2_000)
+    : undefined;
+parentWatchdog?.unref();
+
 process.once("SIGINT", () => void stop());
 process.once("SIGTERM", () => void stop());
+process.once("SIGHUP", () => void stop());
 torrServer.once("exit", (code) => {
   if (!stopping) void stop(code || 1);
 });
@@ -215,6 +240,10 @@ try {
     UPLOAD_ROOT: uploadRoot,
     NATIVE_PICKER_SOCKET: join(stateRoot, "run", "supervisor.sock"),
     HOME_SPEED_MBPS: projectEnvironment.HOME_SPEED_MBPS ?? "10",
+    PLAYER: projectEnvironment.PLAYER ?? "auto",
+    ...(projectEnvironment.PLAYER_PATH
+      ? { PLAYER_PATH: projectEnvironment.PLAYER_PATH }
+      : {}),
     LOG_LEVEL: "info",
   });
   const { startHoshiStream } = await import(

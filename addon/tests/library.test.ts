@@ -1,4 +1,10 @@
-import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  readdir,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -102,5 +108,63 @@ describe("Library", () => {
     const directory = await mkdtemp(join(tmpdir(), "hoshistream-"));
     const library = new Library(join(directory, "library.json"));
     expect(await library.list()).toEqual([]);
+  });
+
+  it("serves repeat reads from cache without re-parsing the file", async () => {
+    const { path, library } = await temporaryLibrary();
+    await library.create({
+      type: "movie",
+      name: "Cached",
+      magnetUri: "magnet:?xt=urn:btih:cached",
+    });
+
+    // Pin the timestamp to a whole millisecond so it round-trips through
+    // utimes exactly; sub-millisecond precision does not survive.
+    const pinned = new Date(Math.floor(Date.now() / 1000) * 1000);
+    await utimes(path, pinned, pinned);
+    expect((await library.list())[0].name).toBe("Cached");
+
+    // Rewrite with different content of identical size and restore the
+    // timestamp. A cache miss would surface the new name.
+    const original = await readFile(path, "utf8");
+    const tampered = original.replace('"Cached"', '"Xached"');
+    expect(Buffer.byteLength(tampered)).toBe(Buffer.byteLength(original));
+    await writeFile(path, tampered);
+    await utimes(path, pinned, pinned);
+
+    expect((await library.list())[0].name).toBe("Cached");
+  });
+
+  it("re-reads after the file changes underneath it", async () => {
+    const { path, library } = await temporaryLibrary();
+    await library.create({
+      type: "movie",
+      name: "First",
+      magnetUri: "magnet:?xt=urn:btih:first",
+    });
+    expect(await library.list()).toHaveLength(1);
+
+    const other = new Library(path);
+    await other.create({
+      type: "movie",
+      name: "Second",
+      magnetUri: "magnet:?xt=urn:btih:second",
+    });
+
+    expect(await library.list()).toHaveLength(2);
+  });
+
+  it("does not let callers mutate cached entries", async () => {
+    const { library } = await temporaryLibrary();
+    await library.create({
+      type: "movie",
+      name: "Original",
+      magnetUri: "magnet:?xt=urn:btih:original",
+    });
+
+    const entries = await library.list();
+    entries[0].name = "Tampered";
+
+    expect((await library.list())[0].name).toBe("Original");
   });
 });
