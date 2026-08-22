@@ -29,6 +29,20 @@ export function StatusView() {
               : "off"
           }
         <//>
+        ${
+          status.transcode?.enabled
+            ? html`<${Pill}
+                online=${Boolean(status.transcode.videoEncoder)}
+                warn=${!status.transcode.videoEncoder}
+              >
+                ${
+                  status.transcode.videoEncoder
+                    ? "HW video encoder"
+                    : "No HW video encoder"
+                }
+              <//>`
+            : null
+        }
       </div>
       <div class="metrics">
         <div class="panel">

@@ -5,7 +5,7 @@ import { api, notify } from "../api.js";
 import { useStore } from "../store.js";
 import { Shell, Pill } from "../components/shell.js";
 
-const TIER_LABELS = { remux: "Remux", audio: "Audio fix" };
+const TIER_LABELS = { remux: "Remux", audio: "Audio fix", video: "Video" };
 const STATE_LABELS = {
   running: "Running",
   finished: "Finished",

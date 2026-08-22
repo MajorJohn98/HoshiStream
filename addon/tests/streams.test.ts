@@ -123,10 +123,11 @@ describe("compatibleStreams", () => {
   const file = { id: 3, path: "Movie.mkv", length: 2_000_000_000 };
   const addonUrl = "http://192.168.1.50:7000";
   const token = "a-long-private-token-value";
+  const repair = { videoBitrateMbps: 8, remoteClient: false };
 
   it("offers a repaired stream when the verdict warrants one", () => {
     const [stream] = compatibleStreams(
-      true,
+      repair,
       addonUrl,
       token,
       { id: "hoshi:x", directPlay: { audioCodec: "dts" } },
@@ -134,7 +135,7 @@ describe("compatibleStreams", () => {
     );
     expect(stream.description).toContain("AC3");
     expect(stream.url).toBe(
-      `${addonUrl}/hls/${encodeURIComponent(token)}/hoshi%3Ax/3/index.m3u8`,
+      `${addonUrl}/hls/${encodeURIComponent(token)}/hoshi%3Ax/3/auto/index.m3u8`,
     );
     expect(stream.behaviorHints.bingeGroup).toBe("hoshistream-hoshi:x");
   });
@@ -142,7 +143,7 @@ describe("compatibleStreams", () => {
   it("stays silent when disabled or when direct play is fine", () => {
     expect(
       compatibleStreams(
-        false,
+        undefined,
         addonUrl,
         token,
         { id: "hoshi:x", directPlay: { audioCodec: "dts" } },
@@ -151,7 +152,7 @@ describe("compatibleStreams", () => {
     ).toEqual([]);
     expect(
       compatibleStreams(
-        true,
+        repair,
         addonUrl,
         token,
         { id: "hoshi:x", directPlay: { container: "mov", audioCodec: "aac" } },
@@ -159,13 +160,13 @@ describe("compatibleStreams", () => {
       ),
     ).toEqual([]);
     expect(
-      compatibleStreams(true, addonUrl, token, { id: "hoshi:x" }, file),
+      compatibleStreams(repair, addonUrl, token, { id: "hoshi:x" }, file),
     ).toEqual([]);
   });
 
   it("honors the per-entry forceTranscode override with a remux", () => {
     const [stream] = compatibleStreams(
-      true,
+      repair,
       addonUrl,
       token,
       {
@@ -176,5 +177,54 @@ describe("compatibleStreams", () => {
       file,
     );
     expect(stream.description).toContain("container");
+  });
+
+  it("offers a video re-encode only when a hardware encoder exists", () => {
+    const entry = { id: "hoshi:x", directPlay: { videoCodec: "av1" } };
+    expect(compatibleStreams(repair, addonUrl, token, entry, file)).toEqual([]);
+    const [stream] = compatibleStreams(
+      { ...repair, videoEncoder: "h264_videotoolbox" },
+      addonUrl,
+      token,
+      entry,
+      file,
+    );
+    expect(stream.description).toContain("re-encoded");
+    expect(stream.url).toContain("/auto/index.m3u8");
+  });
+
+  it("adds a lower-bitrate rendition for remote clients on heavy files", () => {
+    const entry = {
+      id: "hoshi:x",
+      directPlay: { container: "mov", audioCodec: "aac", bitrateMbps: 24 },
+    };
+    const streams = compatibleStreams(
+      {
+        videoEncoder: "h264_videotoolbox",
+        videoBitrateMbps: 8,
+        remoteClient: true,
+      },
+      addonUrl,
+      token,
+      entry,
+      file,
+    );
+    expect(streams).toHaveLength(1);
+    expect(streams[0].description).toContain("8 Mbps");
+    expect(streams[0].url).toContain("/video/index.m3u8");
+    // LAN clients and light files get no capped rendition.
+    expect(
+      compatibleStreams(
+        {
+          videoEncoder: "h264_videotoolbox",
+          videoBitrateMbps: 8,
+          remoteClient: false,
+        },
+        addonUrl,
+        token,
+        entry,
+        file,
+      ),
+    ).toEqual([]);
   });
 });

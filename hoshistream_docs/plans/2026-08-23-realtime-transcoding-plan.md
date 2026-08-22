@@ -87,20 +87,27 @@ user pick in the Stremio UI — cheapest possible UX for overrides.
    allowlist, reaper) plus config coverage; verified end-to-end with a real
    ffmpeg remux of an MKV through the HLS route.
 
-### Phase 2 — Tier V (video transcode)
-1. VideoToolbox availability check at startup (`ffmpeg -encoders` parse, cached).
-2. h264_videotoolbox encode path with bitrate presets (e.g. 4/8/12 Mbps).
-3. Tunnel-client bitrate cap: reuse ADR 0007 LAN detection — offer capped rendition to
-   non-LAN clients.
-4. On-TV validation matrix: MKV/H264+DTS, HEVC 10-bit, AV1 samples on the actual webOS
-   target; record results in this doc.
+### Phase 2 — Tier V (video transcode) — DONE 2026-08-23
+1. ~~VideoToolbox check~~ — `detectVideoEncoder()` parses `ffmpeg -encoders` at
+   startup (`h264_videotoolbox`, with `h264_mf` recognized for Windows later);
+   without a hardware encoder tier V is refused, never software-encoded.
+2. ~~Encode path~~ — `h264_videotoolbox` + AAC 256k at
+   `TRANSCODE_VIDEO_BITRATE_MBPS` (default 8). HLS URLs gained a variant
+   segment (`/hls/{token}/{entryId}/{fileId}/{auto|video}/{asset}`); sessions
+   are keyed per variant so a verdict repair and a capped rendition coexist.
+3. ~~Tunnel bitrate cap~~ — stream requests carrying a `cf-connecting-ip` that
+   differs from the server's public IP get an extra "Lower bitrate" stream
+   when the original exceeds the configured target (reuses ADR 0007 detection).
+4. On-TV validation matrix — **pending**: needs the actual webOS TV.
+   Record results here (MKV/H264+DTS, HEVC 10-bit, AV1 samples).
 
-### Phase 3 — Seek restart + polish
-1. `-ss` restart sessions keyed by offset; playlist stitching kept simple (new session
-   per far seek).
-2. Idle reaper tuning, disk usage logging (structured, no URLs/tokens).
-3. Management UI: per-entry transcode status + kill button.
-4. Changelog + architecture-overview update; flip docs from draft.
+### Phase 3 — Seek restart + polish — PARTIAL
+- `-ss` far-seek restart is deferred: tiers R/A finish faster than realtime so
+  the playlist becomes full VOD almost immediately, and tier V at several times
+  realtime leaves only early far-seeks affected. Revisit if TV testing shows it
+  matters.
+- Idle reaper, session cap, structured logs, management kill switch: shipped.
+- Docs updated; changelog in `changelog/0.8.0-ui-and-stream-repair.md`.
 
 ## Non-goals (unchanged)
 

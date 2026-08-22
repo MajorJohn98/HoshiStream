@@ -200,14 +200,13 @@ export function createHandler(
         const [, resource, type, rawId, rawExtra] = protocolMatch;
         if (resource === "stream") {
           const clientIp = request.headers["cf-connecting-ip"];
-          const resolved =
+          const ownIp =
             lanRedirect === "auto" && typeof clientIp === "string"
-              ? resolveClientAwareUrls(
-                  request.headers,
-                  publicUrls,
-                  await ownPublicIp(),
-                )
-              : resolvePublicUrls(request.headers.host, publicUrls);
+              ? await ownPublicIp()
+              : null;
+          const resolved = ownIp
+            ? resolveClientAwareUrls(request.headers, publicUrls, ownIp)
+            : resolvePublicUrls(request.headers.host, publicUrls);
           const result = await getStreams(
             library,
             torrServer,
@@ -216,7 +215,17 @@ export function createHandler(
             accessToken,
             type,
             decodeURIComponent(rawId),
-            Boolean(transcode),
+            transcode
+              ? {
+                  videoEncoder: transcode.videoEncoder,
+                  videoBitrateMbps: transcode.videoBitrateMbps,
+                  // Tunnel requests carry cf-connecting-ip; a mismatch with
+                  // this server's public IP means the client is remote.
+                  remoteClient: Boolean(
+                    typeof clientIp === "string" && ownIp && clientIp !== ownIp,
+                  ),
+                }
+              : undefined,
           );
           return noStoreReply(response, 200, result);
         }
@@ -238,7 +247,7 @@ export function createHandler(
       // Repaired-stream HLS sessions (ADR 0010). The session starts lazily on
       // the first playlist request and is reaped when segment requests stop.
       const hlsMatch =
-        /^\/hls\/([^/]+)\/([^/]+)\/(\d+)\/(index\.m3u8|init\.mp4|seg-\d+\.m4s)$/.exec(
+        /^\/hls\/([^/]+)\/([^/]+)\/(\d+)\/(auto|video)\/(index\.m3u8|init\.mp4|seg-\d+\.m4s)$/.exec(
           url.pathname,
         );
       if (
@@ -249,13 +258,17 @@ export function createHandler(
       ) {
         const entry = await library.get(decodeURIComponent(hlsMatch[2]));
         const fileId = Number(hlsMatch[3]);
-        const asset = hlsMatch[4];
+        const variant = hlsMatch[4] as "auto" | "video";
+        const asset = hlsMatch[5];
         if (!entry) return reply(response, 404, { error: "Unknown entry" });
-        let session = transcode.get(entry.id, fileId);
+        let session = transcode.get(entry.id, fileId, variant);
         if (!session || session.failed) {
-          // Entries without a probe verdict default to a remux, which never
-          // re-encodes anything.
-          const tier = repairTier(entry.directPlay) ?? "remux";
+          // The video variant is the remote lower-bitrate rendition; "auto"
+          // follows the probe verdict, defaulting to a copy-only remux.
+          const tier =
+            variant === "video"
+              ? "video"
+              : (repairTier(entry.directPlay) ?? "remux");
           let input: string | undefined;
           if (entry.localFilePath || entry.localFolderPath) {
             const inspection = await inspectLocalEntry(entry);
@@ -278,11 +291,17 @@ export function createHandler(
             session = await transcode.ensure({
               entryId: entry.id,
               fileId,
+              variant,
               tier,
               input,
             });
           } catch (error) {
             if (error instanceof TranscodeBusyError)
+              return reply(response, 503, { error: error.message });
+            if (
+              error instanceof Error &&
+              error.message.includes("video encoder")
+            )
               return reply(response, 503, { error: error.message });
             throw error;
           }
@@ -440,6 +459,7 @@ export function createHandler(
             transcode: {
               enabled: Boolean(transcode),
               activeSessions: transcode?.list().length ?? 0,
+              videoEncoder: transcode?.videoEncoder ?? null,
             },
           });
         }
@@ -453,6 +473,7 @@ export function createHandler(
             (transcode?.list() ?? []).map((session) => ({
               entryId: session.entryId,
               fileId: session.fileId,
+              variant: session.variant,
               tier: session.tier,
               startedAt: new Date(session.startedAt).toISOString(),
               lastAccess: new Date(session.lastAccess).toISOString(),
@@ -467,12 +488,11 @@ export function createHandler(
         const sessionMatch =
           /^\/api\/transcode\/sessions\/([^/]+)\/(\d+)$/.exec(url.pathname);
         if (sessionMatch && request.method === "DELETE") {
-          const session = transcode?.get(
+          const removed = await transcode?.removeAll(
             decodeURIComponent(sessionMatch[1]),
             Number(sessionMatch[2]),
           );
-          if (!session) return reply(response, 404, { error: "No session" });
-          await transcode?.remove(session);
+          if (!removed) return reply(response, 404, { error: "No session" });
           return reply(response, 204, null);
         }
         if (url.pathname === "/api/media-files" && request.method === "GET") {

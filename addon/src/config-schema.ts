@@ -66,6 +66,7 @@ export const configSchema = z.object({
     .default("false")
     .transform((value) => value === "true" || value === "1"),
   TRANSCODE_MAX_SESSIONS: z.coerce.number().int().min(1).max(8).default(2),
+  TRANSCODE_VIDEO_BITRATE_MBPS: z.coerce.number().min(1).max(40).default(8),
   TRANSCODE_DIR: z.string().min(1).default(join(root, "transcode")),
   FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
 });

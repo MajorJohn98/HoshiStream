@@ -29,6 +29,7 @@ describe("parseConfig", () => {
     const defaults = parseConfig(valid);
     expect(defaults.TRANSCODE_ENABLED).toBe(false);
     expect(defaults.TRANSCODE_MAX_SESSIONS).toBe(2);
+    expect(defaults.TRANSCODE_VIDEO_BITRATE_MBPS).toBe(8);
     expect(defaults.TRANSCODE_DIR).toBe(join(stateRoot(), "transcode"));
     expect(defaults.FFMPEG_PATH).toBe("ffmpeg");
     expect(

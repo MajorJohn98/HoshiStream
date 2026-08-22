@@ -7,7 +7,7 @@ import { NativePicker } from "./native-picker.js";
 import { Playback } from "./playback.js";
 import { createHandler } from "./routes.js";
 import { TorrServerClient } from "./torrserver-client.js";
-import { TranscodeManager } from "./transcode.js";
+import { TranscodeManager, detectVideoEncoder } from "./transcode.js";
 
 export async function startHoshiStream(settings = config) {
   const library = new Library(settings.LIBRARY_PATH);
@@ -15,10 +15,13 @@ export async function startHoshiStream(settings = config) {
   const nativePicker = new NativePicker(settings.NATIVE_PICKER_SOCKET);
   let transcode: TranscodeManager | undefined;
   if (settings.TRANSCODE_ENABLED) {
+    const videoEncoder = await detectVideoEncoder(settings.FFMPEG_PATH);
     transcode = new TranscodeManager({
       dir: settings.TRANSCODE_DIR,
       ffmpegPath: settings.FFMPEG_PATH,
       maxSessions: settings.TRANSCODE_MAX_SESSIONS,
+      videoEncoder,
+      videoBitrateMbps: settings.TRANSCODE_VIDEO_BITRATE_MBPS,
     });
     await transcode.start();
     console.log(
@@ -26,6 +29,7 @@ export async function startHoshiStream(settings = config) {
         level: "info",
         event: "transcode_enabled",
         maxSessions: settings.TRANSCODE_MAX_SESSIONS,
+        videoEncoder: videoEncoder ?? "none",
       }),
     );
   }

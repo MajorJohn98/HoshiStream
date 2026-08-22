@@ -115,12 +115,14 @@ describe("TranscodeManager", () => {
     const first = await manager.ensure({
       entryId: "hoshi:one",
       fileId: 1,
+      variant: "auto",
       tier: "remux",
       input: "http://127.0.0.1:8090/play/h/1",
     });
     const again = await manager.ensure({
       entryId: "hoshi:one",
       fileId: 1,
+      variant: "auto",
       tier: "remux",
       input: "http://127.0.0.1:8090/play/h/1",
     });
@@ -135,17 +137,25 @@ describe("TranscodeManager", () => {
     await manager.ensure({
       entryId: "a",
       fileId: 0,
+      variant: "auto",
       tier: "remux",
       input: "x",
     });
     await manager.ensure({
       entryId: "b",
       fileId: 0,
+      variant: "auto",
       tier: "remux",
       input: "x",
     });
     await expect(
-      manager.ensure({ entryId: "c", fileId: 0, tier: "remux", input: "x" }),
+      manager.ensure({
+        entryId: "c",
+        fileId: 0,
+        variant: "auto",
+        tier: "remux",
+        input: "x",
+      }),
     ).rejects.toBeInstanceOf(TranscodeBusyError);
   });
 
@@ -153,6 +163,7 @@ describe("TranscodeManager", () => {
     const session = await manager.ensure({
       entryId: "a",
       fileId: 0,
+      variant: "auto",
       tier: "remux",
       input: "x",
     });
@@ -171,6 +182,7 @@ describe("TranscodeManager", () => {
     const session = await manager.ensure({
       entryId: "a",
       fileId: 0,
+      variant: "auto",
       tier: "remux",
       input: "x",
     });
@@ -184,6 +196,7 @@ describe("TranscodeManager", () => {
     const session = await manager.ensure({
       entryId: "a",
       fileId: 0,
+      variant: "auto",
       tier: "remux",
       input: "x",
     });
@@ -194,6 +207,7 @@ describe("TranscodeManager", () => {
     const retry = await manager.ensure({
       entryId: "a",
       fileId: 0,
+      variant: "auto",
       tier: "remux",
       input: "x",
     });
@@ -205,6 +219,7 @@ describe("TranscodeManager", () => {
     const session = await manager.ensure({
       entryId: "a",
       fileId: 0,
+      variant: "auto",
       tier: "remux",
       input: "x",
     });
@@ -219,11 +234,88 @@ describe("TranscodeManager", () => {
     const session = await manager.ensure({
       entryId: "a",
       fileId: 0,
+      variant: "auto",
       tier: "remux",
       input: "x",
     });
     manager.touch(session);
     await manager.reap(Date.now() + 30_000);
     expect(manager.get("a", 0)).toBeDefined();
+  });
+});
+
+describe("video tier", () => {
+  it("repairTier prefers a video re-encode for undecodable codecs", () => {
+    expect(repairTier({ videoCodec: "av1", audioCodec: "dts" })).toBe("video");
+    expect(repairTier({ videoCodec: "vc1" })).toBe("video");
+    expect(repairTier({ videoCodec: "h264", audioCodec: "dts" })).toBe("audio");
+  });
+
+  it("ffmpegArgs uses the hardware encoder and AAC audio", () => {
+    const args = ffmpegArgs("video", "/media/movie.mkv", {
+      encoder: "h264_videotoolbox",
+      bitrateMbps: 8,
+    }).join(" ");
+    expect(args).toContain("-c:v h264_videotoolbox");
+    expect(args).toContain("-b:v 8000k");
+    expect(args).toContain("-c:a aac");
+    expect(args).not.toContain("libx264");
+  });
+
+  it("repairDescription labels the video tier", () => {
+    expect(repairDescription("video")).toContain("re-encoded");
+  });
+});
+
+describe("video sessions", () => {
+  it("refuses tier V without a hardware encoder and allows it with one", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hoshi-videotier-"));
+    const spawnFn = () => new FakeProcess() as unknown as ChildProcess;
+    const without = new TranscodeManager({
+      dir,
+      ffmpegPath: "ffmpeg",
+      maxSessions: 4,
+      spawnFn,
+    });
+    await without.start();
+    await expect(
+      without.ensure({
+        entryId: "a",
+        fileId: 0,
+        variant: "video",
+        tier: "video",
+        input: "x",
+      }),
+    ).rejects.toThrow("video encoder");
+    await without.close();
+
+    const withEncoder = new TranscodeManager({
+      dir,
+      ffmpegPath: "ffmpeg",
+      maxSessions: 4,
+      videoEncoder: "h264_videotoolbox",
+      spawnFn,
+    });
+    await withEncoder.start();
+    const auto = await withEncoder.ensure({
+      entryId: "a",
+      fileId: 0,
+      variant: "auto",
+      tier: "remux",
+      input: "x",
+    });
+    const video = await withEncoder.ensure({
+      entryId: "a",
+      fileId: 0,
+      variant: "video",
+      tier: "video",
+      input: "x",
+    });
+    // Same entry/file, separate sessions per variant.
+    expect(video.id).not.toBe(auto.id);
+    expect(withEncoder.get("a", 0, "video")?.id).toBe(video.id);
+    expect(await withEncoder.removeAll("a", 0)).toBe(2);
+    await withEncoder.close();
+    await rm(dir, { recursive: true, force: true });
   });
 });

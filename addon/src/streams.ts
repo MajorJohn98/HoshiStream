@@ -79,6 +79,14 @@ function requestedFile(
   };
 }
 
+export interface RepairOptions {
+  videoEncoder?: string;
+  videoBitrateMbps: number;
+  // True when the requesting client is not on the LAN (e.g. behind the
+  // Cloudflare Tunnel), which makes a lower-bitrate rendition worth offering.
+  remoteClient: boolean;
+}
+
 export async function getStreams(
   library: Library,
   torrServer: TorrServerClient,
@@ -87,7 +95,7 @@ export async function getStreams(
   accessToken: string,
   type: string,
   id: string,
-  transcodeEnabled = false,
+  repair?: RepairOptions,
 ) {
   const requested = requestedFile([], type, id);
   const entry = await library.get(requested.entryId);
@@ -106,13 +114,7 @@ export async function getStreams(
           url: `${publicAddonUrl}/local/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${file.id}`,
           behaviorHints: streamBehaviorHints(entry.id, file),
         },
-        ...compatibleStreams(
-          transcodeEnabled,
-          publicAddonUrl,
-          accessToken,
-          entry,
-          file,
-        ),
+        ...compatibleStreams(repair, publicAddonUrl, accessToken, entry, file),
       ],
     };
   }
@@ -143,44 +145,59 @@ export async function getStreams(
         url,
         behaviorHints: streamBehaviorHints(entry.id, file),
       },
-      ...compatibleStreams(
-        transcodeEnabled,
-        publicAddonUrl,
-        accessToken,
-        entry,
-        file,
-      ),
+      ...compatibleStreams(repair, publicAddonUrl, accessToken, entry, file),
     ],
   };
 }
 
-// The repaired rendition appears as a second stream in the Stremio picker, so
+// Repaired renditions appear as extra streams in the Stremio picker, so
 // choosing between "Direct" and "Compatible" needs no custom client UI. The
 // session itself starts lazily on the first playlist request.
 export function compatibleStreams(
-  enabled: boolean,
+  repair: RepairOptions | undefined,
   publicAddonUrl: string,
   accessToken: string,
   entry: {
     id: string;
-    directPlay?: Parameters<typeof repairTier>[0];
+    directPlay?: Parameters<typeof repairTier>[0] & { bitrateMbps?: number };
     forceTranscode?: boolean;
   },
   file: SelectedFile,
 ) {
-  const tier = enabled
-    ? (repairTier(entry.directPlay) ??
-      (entry.forceTranscode ? "remux" : undefined))
-    : undefined;
-  if (!tier) return [];
-  return [
-    {
+  if (!repair) return [];
+  const hlsUrl = (variant: string) =>
+    `${publicAddonUrl}/hls/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${file.id}/${variant}/index.m3u8`;
+  const streams = [];
+  let tier = repairTier(entry.directPlay);
+  // Tier V needs a hardware encoder (ADR 0010: no software fallback); without
+  // one an undecodable entry gets no repaired stream rather than a CPU burn.
+  if (tier === "video" && !repair.videoEncoder) tier = undefined;
+  if (!tier && entry.forceTranscode) tier = "remux";
+  if (tier) {
+    streams.push({
       name: "HoshiStream",
       description: repairDescription(tier),
-      url: `${publicAddonUrl}/hls/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${file.id}/index.m3u8`,
+      url: hlsUrl("auto"),
       behaviorHints: streamBehaviorHints(entry.id, file),
-    },
-  ];
+    });
+  }
+  // Remote clients on constrained links get a capped rendition when the
+  // original bitrate clearly exceeds the configured target.
+  const bitrate = entry.directPlay?.bitrateMbps;
+  if (
+    repair.remoteClient &&
+    repair.videoEncoder &&
+    bitrate &&
+    bitrate > repair.videoBitrateMbps
+  ) {
+    streams.push({
+      name: "HoshiStream",
+      description: `Lower bitrate • ${repair.videoBitrateMbps} Mbps for remote playback`,
+      url: hlsUrl("video"),
+      behaviorHints: streamBehaviorHints(entry.id, file),
+    });
+  }
+  return streams;
 }
 
 function describe(
