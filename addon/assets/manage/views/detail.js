@@ -1,5 +1,8 @@
 // Detail modal: overview, source, files, and playback tabs for one entry.
-import { state, api, esc, fmt, notify, token, headers } from "../app.js";
+// Rendered by App whenever state.selected is set; closing clears it.
+import { html, useRef, useState } from "../vendor/preact-htm.js";
+import { api, fmt, notify, token, headers } from "../api.js";
+import { setState, useStore } from "../store.js";
 
 function agoLabel(iso) {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
@@ -10,36 +13,27 @@ function agoLabel(iso) {
   return Math.round(hours / 24) + " days ago";
 }
 
-async function inspect(technical = false) {
-  const button = document.querySelector("#inspect");
-  const label = button?.textContent;
-  state.inspectionError = "";
-  if (button) {
-    button.disabled = true;
-    button.textContent = technical
-      ? "Analyzing playback…"
-      : "Inspecting files…";
-  }
+function closeDetail() {
+  setState({ selected: null, inspection: null, inspectionError: "" });
+}
+
+async function inspect(state, technical = false) {
+  setState({ inspectionError: "" });
   try {
-    state.inspection = await api(
+    const inspection = await api(
       "library/" +
         encodeURIComponent(state.selected.id) +
         "/inspect" +
         (technical ? "?probe=true" : ""),
       { method: "POST" },
     );
-    detailView();
+    setState({ inspection });
   } catch (error) {
-    state.inspectionError = error.message;
-    if (button) {
-      button.disabled = false;
-      button.textContent = label;
-    }
-    detailView();
+    setState({ inspectionError: error.message });
   }
 }
 
-async function patch(d) {
+async function patch(state, d) {
   return api("library/" + encodeURIComponent(state.selected.id), {
     method: "PATCH",
     headers: { "content-type": "application/json" },
@@ -47,291 +41,400 @@ async function patch(d) {
   });
 }
 
-async function playHere(fileId) {
-  const button = document.querySelector("#playhere");
-  const label = button?.textContent;
-  if (button) {
-    button.disabled = true;
-    button.textContent = "Starting…";
-  }
-  try {
-    const r = await fetch("/api/player/play", {
-      method: "POST",
-      headers: { ...headers, "content-type": "application/json" },
-      body: JSON.stringify({
-        entryId: state.selected.id,
-        ...(fileId === undefined ? {} : { fileId }),
-      }),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || "Playback failed");
-    const queued = d.queued
-      ? " · " +
-        d.queued +
-        " more episode" +
-        (d.queued === 1 ? "" : "s") +
-        " queued"
-      : "";
-    notify(
-      d.mode === "system"
-        ? "Opened " + d.title + " in your player"
-        : (d.resumedAt
-            ? "Resumed " + d.title + " at " + Math.round(d.resumedAt) + "s"
-            : "Playing " + d.title) + queued,
-    );
-  } catch (error) {
-    notify(error.message);
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = label;
-    }
-  }
-}
-
-function titleHead() {
-  return (
-    '<div class="title-row"><div class="title-summary">' +
-    (state.selected.poster
-      ? '<img class="poster" src="' + esc(state.selected.poster) + '" alt="">'
-      : '<div class="poster placeholder">★</div>') +
-    "<div><h1>" +
-    esc(state.selected.name) +
-    '</h1><span class="badge">' +
-    esc(state.selected.type) +
-    '</span> <span class="badge">' +
-    (state.selected.localFilePath || state.selected.localFolderPath
-      ? "Local"
-      : "Torrent") +
-    '</span></div></div><div class="head-actions"><button class="primary" id="playhere">' +
-    (state.selected.playback?.fileId !== undefined ||
-    state.selected.playback?.positionSeconds
-      ? "▶ Resume on this Mac"
-      : "▶ Play on this Mac") +
-    '</button></div></div><div class="tabs">' +
-    ["overview", "source", "files", "playback"]
-      .map(
-        (x) =>
-          '<button class="tab ' +
-          (state.tab === x ? "active" : "") +
-          '" data-tab="' +
-          x +
-          '">' +
-          x[0].toUpperCase() +
-          x.slice(1) +
-          "</button>",
-      )
-      .join("") +
-    "</div>"
+async function playHere(state, fileId) {
+  const r = await fetch("/api/player/play", {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({
+      entryId: state.selected.id,
+      ...(fileId === undefined ? {} : { fileId }),
+    }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "Playback failed");
+  const queued = d.queued
+    ? " · " +
+      d.queued +
+      " more episode" +
+      (d.queued === 1 ? "" : "s") +
+      " queued"
+    : "";
+  notify(
+    d.mode === "system"
+      ? "Opened " + d.title + " in your player"
+      : (d.resumedAt
+          ? "Resumed " + d.title + " at " + Math.round(d.resumedAt) + "s"
+          : "Playing " + d.title) + queued,
   );
 }
 
-function overview(body) {
-  body.innerHTML =
-    '<form id="editForm" class="panel form-grid"><label>Title<input name="name" value="' +
-    esc(state.selected.name) +
-    '"></label><label>Type<select name="type"><option ' +
-    (state.selected.type === "movie" ? "selected" : "") +
-    ' value="movie">Movie</option><option ' +
-    (state.selected.type === "series" ? "selected" : "") +
-    ' value="series">Series</option></select></label><label class="span2">Description<textarea name="description">' +
-    esc(state.selected.description || "") +
-    '</textarea></label><label>Poster URL<input name="poster" type="url" value="' +
-    esc(state.selected.poster || "") +
-    '"></label><label>Background URL<input name="background" type="url" value="' +
-    esc(state.selected.background || "") +
-    '"></label>' +
-    (state.selected.magnetUri
-      ? '<label class="span2">Magnet link<textarea name="magnetUri" required>' +
-        esc(state.selected.magnetUri) +
-        "</textarea></label>"
-      : "") +
-    '<div class="span2 row"><span></span><button class="primary">Save changes</button></div></form>';
-  document.querySelector("#editForm").onsubmit = async (e) => {
+function usePlayHere(state) {
+  const [playing, setPlaying] = useState(false);
+  const play = async (fileId) => {
+    setPlaying(true);
+    try {
+      await playHere(state, fileId);
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setPlaying(false);
+    }
+  };
+  return [playing, play];
+}
+
+function useInspect(state) {
+  const [busy, setBusy] = useState(false);
+  const run = async (technical) => {
+    setBusy(true);
+    try {
+      await inspect(state, technical);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return [busy, run];
+}
+
+function InspectionPrompt({ state, title, description, technical }) {
+  const [busy, run] = useInspect(state);
+  return html`
+    <div class="empty">
+      <h2>${title}</h2>
+      <p>${description}</p>
+      ${
+        state.inspectionError
+          ? html`<p class="danger">${state.inspectionError}</p>`
+          : null
+      }
+      <button class="primary" disabled=${busy} onClick=${() => run(technical)}>
+        ${
+          busy
+            ? technical
+              ? "Analyzing playback…"
+              : "Inspecting files…"
+            : technical
+              ? "Analyze playback"
+              : "Inspect source"
+        }
+      </button>
+    </div>
+  `;
+}
+
+function OverviewTab({ state }) {
+  const entry = state.selected;
+  const onSubmit = async (e) => {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(e.target));
     ["poster", "background", "description"].forEach((k) => {
       if (!d[k]) d[k] = null;
     });
-    state.selected = await api(
-      "library/" + encodeURIComponent(state.selected.id),
-      {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(d),
-      },
-    );
-    notify("Changes saved");
-    detailView();
-  };
-}
-
-function inspectionPrompt(body, title, description, technical) {
-  body.innerHTML =
-    '<div class="empty"><h2>' +
-    title +
-    "</h2><p>" +
-    description +
-    "</p>" +
-    (state.inspectionError
-      ? '<p class="danger">' + esc(state.inspectionError) + "</p>"
-      : "") +
-    '<button class="primary" id="inspect">' +
-    (technical ? "Analyze playback" : "Inspect source") +
-    "</button></div>";
-  document.querySelector("#inspect").onclick = () => inspect(technical);
-}
-
-function sourceView(body) {
-  const path =
-    state.selected.localFolderPath ||
-    state.selected.localFilePath ||
-    state.selected.torrentFilePath;
-  const relinkable =
-    Boolean(state.selected.localFilePath || state.selected.localFolderPath) &&
-    Boolean(state.status.nativePicker);
-  body.innerHTML =
-    '<div class="layout"><div class="panel"><h2>Source</h2><p class="muted">' +
-    (state.selected.magnetUri
-      ? "Authorized magnet link"
-      : state.selected.localFolderPath
-        ? "Linked series folder"
-        : state.selected.localFilePath
-          ? "Linked local file"
-          : ".torrent file") +
-    '</p><div class="metric"><span class="muted">Location</span><strong style="font-size:14px">' +
-    esc(path || "Editable on the Overview tab") +
-    "</strong></div>" +
-    (state.selected.inspectionCache
-      ? '<div class="metric" style="margin-top:12px"><span class="muted">Last inspected</span><strong style="font-size:14px">' +
-        esc(agoLabel(state.selected.inspectionCache.inspectedAt)) +
-        " · " +
-        state.selected.inspectionCache.selectedFiles.length +
-        " file" +
-        (state.selected.inspectionCache.selectedFiles.length === 1 ? "" : "s") +
-        " selected</strong></div>"
-      : "") +
-    (state.inspectionError
-      ? '<p class="danger">' + esc(state.inspectionError) + "</p>"
-      : "") +
-    '<div class="actions"><button class="primary" id="inspect">Inspect again</button>' +
-    (relinkable
-      ? '<button class="secondary" id="relink">Relink in Finder</button>'
-      : "") +
-    '</div></div><aside class="panel"><h3>Privacy</h3><p class="muted">Complete magnet URIs are visible only on the tokenized management page and are never written to logs.</p></aside></div>';
-  document.querySelector("#inspect").onclick = () => inspect(false);
-  const relink = document.querySelector("#relink");
-  if (relink)
-    relink.onclick = async () => {
-      relink.disabled = true;
-      relink.textContent = "Waiting for Finder…";
-      try {
-        state.selected = await api(
-          "library/" + encodeURIComponent(state.selected.id) + "/relink",
-          { method: "POST" },
-        );
-        state.inspection = null;
-        notify("Source relinked");
-        detailView();
-      } catch (error) {
-        notify(error.message);
-        relink.disabled = false;
-        relink.textContent = "Relink in Finder";
-      }
-    };
-}
-
-function filesView(body) {
-  if (!state.inspection) {
-    const cache = state.selected.inspectionCache;
-    if (!cache) {
-      inspectionPrompt(
-        body,
-        "Inspect files first",
-        "Load source metadata to choose files and map episodes.",
-        false,
-      );
-      return;
+    try {
+      setState({ selected: await patch(state, d) });
+      notify("Changes saved");
+    } catch (error) {
+      notify(error.message);
     }
-    body.innerHTML =
-      '<div class="toolbar"><div><h2>Selected files</h2><span class="muted">From the last inspection, ' +
-      esc(agoLabel(cache.inspectedAt)) +
-      '</span></div><button class="primary" id="inspect">Inspect to edit</button></div>' +
-      (state.inspectionError
-        ? '<p class="danger">' + esc(state.inspectionError) + "</p>"
-        : "") +
-      '<div class="panel tablewrap"><table class="files"><thead><tr><th>File</th><th>Size</th><th>Season</th><th>Episode</th><th></th></tr></thead><tbody>' +
-      cache.selectedFiles
-        .map(
-          (f) =>
-            '<tr><td class="filename">' +
-            esc(f.path) +
-            "</td><td>" +
-            fmt(f.length) +
-            "</td><td>" +
-            (f.season ?? "—") +
-            "</td><td>" +
-            (f.episode ?? "—") +
-            '</td><td><button class="secondary play-file" data-file="' +
-            f.id +
-            '" title="Play this file on this Mac">▶</button></td></tr>',
-        )
-        .join("") +
-      '</tbody></table><p class="muted" style="margin-bottom:0">Inspect again to change which files are used or remap episodes.</p></div>';
-    document.querySelector("#inspect").onclick = () => inspect(false);
-    document.querySelectorAll(".play-file").forEach((b) => {
-      b.onclick = () => playHere(Number(b.dataset.file));
-    });
-    return;
-  }
+  };
+  return html`
+    <form class="panel form-grid" key=${entry.id} onSubmit=${onSubmit}>
+      <label>Title<input name="name" value=${entry.name} /></label>
+      <label>
+        Type
+        <select name="type">
+          <option value="movie" selected=${entry.type === "movie"}>
+            Movie
+          </option>
+          <option value="series" selected=${entry.type === "series"}>
+            Series
+          </option>
+        </select>
+      </label>
+      <label class="span2">
+        Description
+        <textarea name="description">${entry.description || ""}</textarea>
+      </label>
+      <label>
+        Poster URL<input name="poster" type="url" value=${entry.poster || ""} />
+      </label>
+      <label>
+        Background URL
+        <input name="background" type="url" value=${entry.background || ""} />
+      </label>
+      ${
+        entry.magnetUri
+          ? html`<label class="span2">
+              Magnet link
+              <textarea name="magnetUri" required>${entry.magnetUri}</textarea>
+            </label>`
+          : null
+      }
+      <div class="span2 row">
+        <span></span>
+        <button class="primary">Save changes</button>
+      </div>
+    </form>
+  `;
+}
+
+function SourceTab({ state }) {
+  const entry = state.selected;
+  const [busy, run] = useInspect(state);
+  const [relinking, setRelinking] = useState(false);
+  const path =
+    entry.localFolderPath || entry.localFilePath || entry.torrentFilePath;
+  const relinkable =
+    Boolean(entry.localFilePath || entry.localFolderPath) &&
+    Boolean(state.status.nativePicker);
+  const cache = entry.inspectionCache;
+  const relink = async () => {
+    setRelinking(true);
+    try {
+      const selected = await api(
+        "library/" + encodeURIComponent(entry.id) + "/relink",
+        { method: "POST" },
+      );
+      setState({ selected, inspection: null });
+      notify("Source relinked");
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setRelinking(false);
+    }
+  };
+  return html`
+    <div class="layout">
+      <div class="panel">
+        <h2>Source</h2>
+        <p class="muted">
+          ${
+            entry.magnetUri
+              ? "Authorized magnet link"
+              : entry.localFolderPath
+                ? "Linked series folder"
+                : entry.localFilePath
+                  ? "Linked local file"
+                  : ".torrent file"
+          }
+        </p>
+        <div class="metric">
+          <span class="muted">Location</span>
+          <strong style="font-size:14px">
+            ${path || "Editable on the Overview tab"}
+          </strong>
+        </div>
+        ${
+          cache
+            ? html`<div class="metric" style="margin-top:12px">
+                <span class="muted">Last inspected</span>
+                <strong style="font-size:14px">
+                  ${agoLabel(cache.inspectedAt)} · ${cache.selectedFiles.length}
+                  ${" file" + (cache.selectedFiles.length === 1 ? "" : "s")}
+                  ${" selected"}
+                </strong>
+              </div>`
+            : null
+        }
+        ${
+          state.inspectionError
+            ? html`<p class="danger">${state.inspectionError}</p>`
+            : null
+        }
+        <div class="actions">
+          <button class="primary" disabled=${busy} onClick=${() => run(false)}>
+            ${busy ? "Inspecting files…" : "Inspect again"}
+          </button>
+          ${
+            relinkable
+              ? html`<button
+                  class="secondary"
+                  disabled=${relinking}
+                  onClick=${relink}
+                >
+                  ${relinking ? "Waiting for Finder…" : "Relink in Finder"}
+                </button>`
+              : null
+          }
+        </div>
+      </div>
+      <aside class="panel">
+        <h3>Privacy</h3>
+        <p class="muted">
+          Complete magnet URIs are visible only on the tokenized management page
+          and are never written to logs.
+        </p>
+      </aside>
+    </div>
+  `;
+}
+
+function CachedFilesTable({ state, cache }) {
+  const [busy, run] = useInspect(state);
+  const [, play] = usePlayHere(state);
+  return html`
+    <div class="toolbar">
+      <div>
+        <h2>Selected files</h2>
+        <span class="muted">
+          From the last inspection, ${agoLabel(cache.inspectedAt)}
+        </span>
+      </div>
+      <button class="primary" disabled=${busy} onClick=${() => run(false)}>
+        ${busy ? "Inspecting files…" : "Inspect to edit"}
+      </button>
+    </div>
+    ${
+      state.inspectionError
+        ? html`<p class="danger">${state.inspectionError}</p>`
+        : null
+    }
+    <div class="panel tablewrap">
+      <table class="files">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Size</th>
+            <th>Season</th>
+            <th>Episode</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${cache.selectedFiles.map(
+            (f) => html`
+              <tr key=${f.id}>
+                <td class="filename">${f.path}</td>
+                <td>${fmt(f.length)}</td>
+                <td>${f.season ?? "—"}</td>
+                <td>${f.episode ?? "—"}</td>
+                <td>
+                  <button
+                    class="secondary"
+                    title="Play this file on this Mac"
+                    onClick=${() => play(f.id)}
+                  >
+                    ▶
+                  </button>
+                </td>
+              </tr>
+            `,
+          )}
+        </tbody>
+      </table>
+      <p class="muted" style="margin-bottom:0">
+        Inspect again to change which files are used or remap episodes.
+      </p>
+    </div>
+  `;
+}
+
+function MappingTable({ state }) {
+  const tableRef = useRef(null);
+  const [busy, run] = useInspect(state);
   const overrides = new Map(
     (state.selected.fileOverrides || []).map((x) => [x.id, x]),
   );
-  body.innerHTML =
-    '<div class="toolbar"><div><h2>Files & episode mapping</h2><span class="muted">' +
-    state.inspection.files.length +
-    ' files found</span></div><button class="secondary" id="automap">Restore automatic mapping</button></div><div class="panel tablewrap"><table class="files"><thead><tr><th>Use</th><th>File</th><th>Size</th><th>Season</th><th>Episode</th></tr></thead><tbody>' +
-    state.inspection.files
-      .map((f, i) => {
-        const o = overrides.get(f.id);
-        const s = state.inspection.selectedFiles.find((x) => x.id === f.id);
-        return (
-          '<tr data-file="' +
-          f.id +
-          '"><td><input class="include" type="checkbox" ' +
-          ((o?.included ?? Boolean(s)) ? "checked" : "") +
-          '></td><td class="filename">' +
-          esc(f.path) +
-          "</td><td>" +
-          fmt(f.length) +
-          '</td><td><input class="season" type="number" min="1" value="' +
-          (o?.season || s?.season || 1) +
-          '"></td><td><input class="episode" type="number" min="1" value="' +
-          (o?.episode || s?.episode || i + 1) +
-          '"></td></tr>'
-        );
-      })
-      .join("") +
-    '</tbody></table><div class="row" style="margin-top:18px"><span></span><button class="primary" id="saveMap">Save mapping</button></div></div>';
-  document.querySelector("#automap").onclick = async () => {
-    state.selected = await patch({ fileOverrides: [] });
-    state.inspection = null;
-    await inspect(false);
+  const automap = async () => {
+    setState({
+      selected: await patch(state, { fileOverrides: [] }),
+      inspection: null,
+    });
+    await run(false);
   };
-  document.querySelector("#saveMap").onclick = async () => {
-    const fileOverrides = [...document.querySelectorAll("[data-file]")].map(
-      (r) => ({
-        id: Number(r.dataset.file),
-        included: r.querySelector(".include").checked,
-        season: Number(r.querySelector(".season").value),
-        episode: Number(r.querySelector(".episode").value),
-      }),
-    );
-    state.selected = await patch({ fileOverrides });
-    state.inspection = null;
+  const saveMap = async () => {
+    const fileOverrides = [
+      ...tableRef.current.querySelectorAll("[data-file]"),
+    ].map((r) => ({
+      id: Number(r.dataset.file),
+      included: r.querySelector(".include").checked,
+      season: Number(r.querySelector(".season").value),
+      episode: Number(r.querySelector(".episode").value),
+    }));
+    setState({
+      selected: await patch(state, { fileOverrides }),
+      inspection: null,
+    });
     notify("Mapping saved");
-    await inspect(false);
+    await run(false);
   };
+  return html`
+    <div class="toolbar">
+      <div>
+        <h2>Files & episode mapping</h2>
+        <span class="muted">${state.inspection.files.length} files found</span>
+      </div>
+      <button class="secondary" disabled=${busy} onClick=${automap}>
+        Restore automatic mapping
+      </button>
+    </div>
+    <div class="panel tablewrap">
+      <table class="files" ref=${tableRef}>
+        <thead>
+          <tr>
+            <th>Use</th>
+            <th>File</th>
+            <th>Size</th>
+            <th>Season</th>
+            <th>Episode</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${state.inspection.files.map((f, i) => {
+            const o = overrides.get(f.id);
+            const s = state.inspection.selectedFiles.find((x) => x.id === f.id);
+            return html`
+              <tr key=${f.id} data-file=${f.id}>
+                <td>
+                  <input
+                    class="include"
+                    type="checkbox"
+                    checked=${o?.included ?? Boolean(s)}
+                  />
+                </td>
+                <td class="filename">${f.path}</td>
+                <td>${fmt(f.length)}</td>
+                <td>
+                  <input
+                    class="season"
+                    type="number"
+                    min="1"
+                    value=${o?.season || s?.season || 1}
+                  />
+                </td>
+                <td>
+                  <input
+                    class="episode"
+                    type="number"
+                    min="1"
+                    value=${o?.episode || s?.episode || i + 1}
+                  />
+                </td>
+              </tr>
+            `;
+          })}
+        </tbody>
+      </table>
+      <div class="row" style="margin-top:18px">
+        <span></span>
+        <button class="primary" disabled=${busy} onClick=${saveMap}>
+          Save mapping
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function FilesTab({ state }) {
+  if (state.inspection) return html`<${MappingTable} state=${state} />`;
+  const cache = state.selected.inspectionCache;
+  if (cache) return html`<${CachedFilesTable} state=${state} cache=${cache} />`;
+  return html`<${InspectionPrompt}
+    state=${state}
+    title="Inspect files first"
+    description="Load source metadata to choose files and map episodes."
+    technical=${false}
+  />`;
 }
 
 const DIRECT_PLAY_TEXT = {
@@ -339,10 +442,6 @@ const DIRECT_PLAY_TEXT = {
   caution: "Check device",
   risky: "May stutter",
 };
-
-function directPlayText(compatibility) {
-  return DIRECT_PLAY_TEXT[compatibility] || "Unknown";
-}
 
 function verdictTitle(t, dp, ready, needed) {
   if (t.error) return "Analysis incomplete";
@@ -354,137 +453,227 @@ function verdictTitle(t, dp, ready, needed) {
 }
 
 function verdictBody(t, dp, ready, needed) {
-  if (dp?.warnings?.length) {
-    return (
-      '<ul class="muted">' +
-      dp.warnings.map((w) => "<li>" + esc(w) + "</li>").join("") +
-      "</ul>"
-    );
-  }
-  return (
-    '<p class="muted">' +
-    (ready
-      ? "Your configured home speed meets the recommended 1.5× bitrate target."
-      : needed
-        ? "Recommended speed is above your configured home speed. Playback may buffer."
-        : "A bitrate estimate was unavailable. Test playback on the target device.") +
-    "</p>"
-  );
+  if (dp?.warnings?.length)
+    return html`<ul class="muted">
+      ${dp.warnings.map((w) => html`<li>${w}</li>`)}
+    </ul>`;
+  return html`<p class="muted">
+    ${
+      ready
+        ? "Your configured home speed meets the recommended 1.5× bitrate target."
+        : needed
+          ? "Recommended speed is above your configured home speed. Playback may buffer."
+          : "A bitrate estimate was unavailable. Test playback on the target device."
+    }
+  </p>`;
 }
 
-function playback(body) {
-  if (!state.inspection?.technical) {
-    inspectionPrompt(
-      body,
-      state.inspection ? "Analyze playback" : "Inspect for playback",
-      state.inspection
-        ? "File metadata is ready. Analyze the selected video for compatibility and speed guidance."
-        : "Inspect files and analyze the selected video.",
-      true,
-    );
-    return;
-  }
+async function testPlayback(state) {
+  const f = state.inspection.selectedFiles[0];
+  const id =
+    state.selected.type === "series" && f
+      ? state.selected.id + ":" + f.season + ":" + f.episode
+      : state.selected.id;
+  const r = await fetch(
+    "/addon/" +
+      encodeURIComponent(token) +
+      "/stream/" +
+      state.selected.type +
+      "/" +
+      encodeURIComponent(id) +
+      ".json",
+  );
+  const s = (await r.json()).streams?.[0];
+  if (s) window.open(s.url, "_blank");
+  else notify("No playable stream");
+}
+
+function PlaybackTab({ state }) {
+  const [busy, run] = useInspect(state);
+  const [playing, play] = usePlayHere(state);
+  if (!state.inspection?.technical)
+    return html`<${InspectionPrompt}
+      state=${state}
+      title=${state.inspection ? "Analyze playback" : "Inspect for playback"}
+      description=${
+        state.inspection
+          ? "File metadata is ready. Analyze the selected video for compatibility and speed guidance."
+          : "Inspect files and analyze the selected video."
+      }
+      technical
+    />`;
   const f = state.inspection.selectedFiles[0];
   const t = state.inspection.technical || {};
   const dp = state.inspection.directPlay;
   const needed = t.recommendedMbps;
   const ready = needed && state.inspection.homeSpeedMbps >= needed;
-  body.innerHTML =
-    '<div class="layout"><div><div class="panel"><div class="head"><div><h2>Playback analysis</h2><p class="muted">' +
-    esc(f?.path || "No selected file") +
-    '</p></div><button class="secondary" id="inspect">Refresh analysis</button></div>' +
-    (t.error ? '<p class="danger">' + esc(t.error) + "</p>" : "") +
-    '<div class="metrics">' +
+  const metrics = [
+    ["Size", fmt(f?.length || 0)],
     [
-      ["Size", fmt(f?.length || 0)],
-      [
-        "Resolution",
-        t.width && t.height ? t.width + " × " + t.height : "Unknown",
-      ],
-      ["Video", (t.videoCodec || "Unknown").toUpperCase()],
-      ["Audio", (t.audioCodec || "Unknown").toUpperCase()],
-      [
-        "Average bitrate",
-        t.bitrateMbps ? t.bitrateMbps.toFixed(1) + " Mbps" : "Unknown",
-      ],
-      ["Recommended speed", needed ? needed.toFixed(1) + " Mbps" : "Unknown"],
-      ["Home speed", state.inspection.homeSpeedMbps + " Mbps"],
-      ["Direct play", dp ? directPlayText(dp.compatibility) : "Unknown"],
-      ["Selected files", state.inspection.selectedFiles.length],
-    ]
-      .map(
-        (x) =>
-          '<div class="metric"><span class="muted">' +
-          x[0] +
-          "</span><strong>" +
-          esc(x[1]) +
-          "</strong></div>",
-      )
-      .join("") +
-    '</div><div class="actions"><button class="primary" id="playselected">▶ Play this file</button><button class="secondary" id="test">Test playback</button></div></div><div class="panel route" style="margin-top:18px"><span>HoshiStream</span>→<span>' +
-    (state.selected.localFilePath || state.selected.localFolderPath
-      ? "Local file"
-      : "TorrServer") +
-    '</span>→<span>Player</span></div></div><aside class="panel"><h3>' +
-    verdictTitle(t, dp, ready, needed) +
-    "</h3>" +
-    verdictBody(t, dp, ready, needed) +
-    '<p class="muted">HoshiStream never transcodes; the player must support the listed codecs.</p></aside></div>';
-  document.querySelector("#inspect").onclick = () => inspect(true);
-  document.querySelector("#playselected").onclick = () => playHere(f?.id);
-  document.querySelector("#test").onclick = async () => {
-    const id =
-      state.selected.type === "series" && f
-        ? state.selected.id + ":" + f.season + ":" + f.episode
-        : state.selected.id;
-    const r = await fetch(
-      "/addon/" +
-        encodeURIComponent(token) +
-        "/stream/" +
-        state.selected.type +
-        "/" +
-        encodeURIComponent(id) +
-        ".json",
-    );
-    const s = (await r.json()).streams?.[0];
-    if (s) window.open(s.url, "_blank");
-    else notify("No playable stream");
-  };
+      "Resolution",
+      t.width && t.height ? t.width + " × " + t.height : "Unknown",
+    ],
+    ["Video", (t.videoCodec || "Unknown").toUpperCase()],
+    ["Audio", (t.audioCodec || "Unknown").toUpperCase()],
+    [
+      "Average bitrate",
+      t.bitrateMbps ? t.bitrateMbps.toFixed(1) + " Mbps" : "Unknown",
+    ],
+    ["Recommended speed", needed ? needed.toFixed(1) + " Mbps" : "Unknown"],
+    ["Home speed", state.inspection.homeSpeedMbps + " Mbps"],
+    [
+      "Direct play",
+      dp ? DIRECT_PLAY_TEXT[dp.compatibility] || "Unknown" : "Unknown",
+    ],
+    ["Selected files", state.inspection.selectedFiles.length],
+  ];
+  return html`
+    <div class="layout">
+      <div>
+        <div class="panel">
+          <div class="head">
+            <div>
+              <h2>Playback analysis</h2>
+              <p class="muted">${f?.path || "No selected file"}</p>
+            </div>
+            <button
+              class="secondary"
+              disabled=${busy}
+              onClick=${() => run(true)}
+            >
+              ${busy ? "Analyzing playback…" : "Refresh analysis"}
+            </button>
+          </div>
+          ${t.error ? html`<p class="danger">${t.error}</p>` : null}
+          <div class="metrics">
+            ${metrics.map(
+              ([label, value]) => html`
+                <div class="metric">
+                  <span class="muted">${label}</span>
+                  <strong>${value}</strong>
+                </div>
+              `,
+            )}
+          </div>
+          <div class="actions">
+            <button
+              class="primary"
+              disabled=${playing}
+              onClick=${() => play(f?.id)}
+            >
+              ${playing ? "Starting…" : "▶ Play this file"}
+            </button>
+            <button class="secondary" onClick=${() => testPlayback(state)}>
+              Test playback
+            </button>
+          </div>
+        </div>
+        <div class="panel route" style="margin-top:18px">
+          <span>HoshiStream</span>→<span>
+            ${
+              state.selected.localFilePath || state.selected.localFolderPath
+                ? "Local file"
+                : "TorrServer"
+            } </span
+          >→<span>Player</span>
+        </div>
+      </div>
+      <aside class="panel">
+        <h3>${verdictTitle(t, dp, ready, needed)}</h3>
+        ${verdictBody(t, dp, ready, needed)}
+        <p class="muted">
+          HoshiStream never transcodes; the player must support the listed
+          codecs.
+        </p>
+      </aside>
+    </div>
+  `;
 }
 
-export function detailView() {
-  document.querySelector(".modal-backdrop")?.remove();
-  const backdrop = document.createElement("div");
-  backdrop.className = "modal-backdrop";
-  backdrop.innerHTML =
-    '<section class="modal" role="dialog" aria-modal="true" aria-label="' +
-    esc(state.selected.name) +
-    ' details"><button class="modal-close" aria-label="Close">×</button>' +
-    titleHead() +
-    '<section id="tabBody"></section></section>';
-  document.body.append(backdrop);
-  const close = backdrop.querySelector(".modal-close");
-  backdrop.onclick = (e) => {
-    if (e.target === backdrop) backdrop.remove();
-  };
-  backdrop.onkeydown = (e) => {
-    if (e.key === "Escape") backdrop.remove();
-  };
-  close.onclick = () => backdrop.remove();
-  close.focus();
-  document.querySelectorAll("[data-tab]").forEach(
-    (b) =>
-      (b.onclick = () => {
-        state.tab = b.dataset.tab;
-        detailView();
-      }),
-  );
-  // Available from every tab: playing should not require running an analysis.
-  const play = document.querySelector("#playhere");
-  if (play) play.onclick = () => playHere();
-  const body = document.querySelector("#tabBody");
-  if (state.tab === "overview") overview(body);
-  if (state.tab === "source") sourceView(body);
-  if (state.tab === "files") filesView(body);
-  if (state.tab === "playback") playback(body);
+const TABS = {
+  overview: OverviewTab,
+  source: SourceTab,
+  files: FilesTab,
+  playback: PlaybackTab,
+};
+
+export function DetailModal() {
+  const state = useStore();
+  const entry = state.selected;
+  const [playing, play] = usePlayHere(state);
+  if (!entry) return null;
+  const Tab = TABS[state.tab] || OverviewTab;
+  const resume =
+    entry.playback?.fileId !== undefined || entry.playback?.positionSeconds;
+  return html`
+    <div
+      class="modal-backdrop"
+      onClick=${(e) => {
+        if (e.target === e.currentTarget) closeDetail();
+      }}
+      onKeyDown=${(e) => {
+        if (e.key === "Escape") closeDetail();
+      }}
+    >
+      <section
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label=${entry.name + " details"}
+      >
+        <button
+          class="modal-close"
+          aria-label="Close"
+          ref=${(el) => el?.focus()}
+          onClick=${closeDetail}
+        >
+          ×
+        </button>
+        <div class="title-row">
+          <div class="title-summary">
+            ${
+              entry.poster
+                ? html`<img class="poster" src=${entry.poster} alt="" />`
+                : html`<div class="poster placeholder">★</div>`
+            }
+            <div>
+              <h1>${entry.name}</h1>
+              <span class="badge">${entry.type}</span>${" "}
+              <span class="badge">
+                ${
+                  entry.localFilePath || entry.localFolderPath
+                    ? "Local"
+                    : "Torrent"
+                }
+              </span>
+            </div>
+          </div>
+          <div class="head-actions">
+            <button class="primary" disabled=${playing} onClick=${() => play()}>
+              ${
+                playing
+                  ? "Starting…"
+                  : resume
+                    ? "▶ Resume on this Mac"
+                    : "▶ Play on this Mac"
+              }
+            </button>
+          </div>
+        </div>
+        <div class="tabs">
+          ${Object.keys(TABS).map(
+            (tab) => html`
+              <button
+                class="tab ${state.tab === tab ? "active" : ""}"
+                onClick=${() => setState({ tab })}
+              >
+                ${tab[0].toUpperCase() + tab.slice(1)}
+              </button>
+            `,
+          )}
+        </div>
+        <section><${Tab} state=${state} /></section>
+      </section>
+    </div>
+  `;
 }

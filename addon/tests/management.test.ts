@@ -29,17 +29,14 @@ describe("management page shell", () => {
 });
 
 describe("management assets", () => {
-  it("app module wires the router and legacy re-exports", async () => {
+  it("app module wires the router and detail modal", async () => {
     const appJs = await asset("app.js");
     expect(appJs).toContain('from "./vendor/preact-htm.js"');
     expect(appJs).toContain('import { LibraryView } from "./views/library.js"');
     expect(appJs).toContain('import { AddView } from "./views/add.js"');
     expect(appJs).toContain('import { StatusView } from "./views/status.js"');
+    expect(appJs).toContain('import { DetailModal } from "./views/detail.js"');
     expect(appJs).toContain("hashchange");
-    // Legacy re-exports the unmigrated detail modal still depends on.
-    expect(appJs).toContain(
-      "export { state, load, api, esc, fmt, notify, token, headers }",
-    );
     expect(appJs).not.toContain("ACCESS_TOKEN");
   });
 

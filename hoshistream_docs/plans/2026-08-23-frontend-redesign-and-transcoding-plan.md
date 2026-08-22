@@ -96,10 +96,14 @@ Backend and frontend interleave so each phase is demoable in dev mode:
    modals stay as body-level DOM (outside the preact root), same pattern as the
    detail modal, so they carry over unchanged.
 
-### Phase F2 — Detail view migration
-1. Rebuild `detail.js` (490 lines — the main beneficiary) as components:
-   FileList, OverridesPanel, ProbePanel.
-2. Delete `classify-imports.js`-era dead code if any remains after migration.
+### Phase F2 — Detail view migration — DONE 2026-08-23
+1. ~~Rebuild `detail.js`~~ — done. Now a `DetailModal` component rendered by App
+   whenever `state.selected` is set (state-driven; the imperative `detailView()`
+   entry point is gone). Tabs are components: OverviewTab, SourceTab, FilesTab
+   (cached table + mapping table + inspect prompt), PlaybackTab. Shared busy-state
+   hooks (`useInspect`, `usePlayHere`) replace manual button-label juggling.
+2. ~~Dead code~~ — legacy re-exports removed from `app.js`; `classify-imports.js`
+   retained (pure logic, still used by the import-review flow).
 
 ### Phase B1 — Transcoding backend (= transcoding plan Phase 1)
 Tier R/A: vendored ffmpeg, session registry, HLS routes, "Compatible" stream entries.

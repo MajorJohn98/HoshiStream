@@ -6,7 +6,6 @@ import { api, esc, notify, token } from "../api.js";
 import { state, setState, useStore, load } from "../store.js";
 import { Shell, Pill } from "../components/shell.js";
 import { classifyLibraryImports } from "../classify-imports.js";
-import { detailView } from "./detail.js";
 
 function exportLibrary() {
   const library = state.entries.map(
@@ -158,7 +157,6 @@ function openDetail(entry) {
     inspection: null,
     inspectionError: "",
   });
-  detailView();
 }
 
 const Card = ({ entry }) => html`
