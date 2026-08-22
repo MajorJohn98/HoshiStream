@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  compatibleStreams,
   resolveClientAwareUrls,
   resolvePublicUrls,
   rewritePublicUrl,
@@ -115,5 +116,65 @@ describe("rewritePublicUrl", () => {
       videoSize: 1_000,
       bingeGroup: "hoshistream-hoshi:test",
     });
+  });
+});
+
+describe("compatibleStreams", () => {
+  const file = { id: 3, path: "Movie.mkv", length: 2_000_000_000 };
+  const addonUrl = "http://192.168.1.50:7000";
+  const token = "a-long-private-token-value";
+
+  it("offers a repaired stream when the verdict warrants one", () => {
+    const [stream] = compatibleStreams(
+      true,
+      addonUrl,
+      token,
+      { id: "hoshi:x", directPlay: { audioCodec: "dts" } },
+      file,
+    );
+    expect(stream.description).toContain("AC3");
+    expect(stream.url).toBe(
+      `${addonUrl}/hls/${encodeURIComponent(token)}/hoshi%3Ax/3/index.m3u8`,
+    );
+    expect(stream.behaviorHints.bingeGroup).toBe("hoshistream-hoshi:x");
+  });
+
+  it("stays silent when disabled or when direct play is fine", () => {
+    expect(
+      compatibleStreams(
+        false,
+        addonUrl,
+        token,
+        { id: "hoshi:x", directPlay: { audioCodec: "dts" } },
+        file,
+      ),
+    ).toEqual([]);
+    expect(
+      compatibleStreams(
+        true,
+        addonUrl,
+        token,
+        { id: "hoshi:x", directPlay: { container: "mov", audioCodec: "aac" } },
+        file,
+      ),
+    ).toEqual([]);
+    expect(
+      compatibleStreams(true, addonUrl, token, { id: "hoshi:x" }, file),
+    ).toEqual([]);
+  });
+
+  it("honors the per-entry forceTranscode override with a remux", () => {
+    const [stream] = compatibleStreams(
+      true,
+      addonUrl,
+      token,
+      {
+        id: "hoshi:x",
+        directPlay: { container: "mov", audioCodec: "aac" },
+        forceTranscode: true,
+      },
+      file,
+    );
+    expect(stream.description).toContain("container");
   });
 });

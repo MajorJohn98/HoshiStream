@@ -6,9 +6,15 @@ import { setState, useStore, load } from "./store.js";
 import { LibraryView } from "./views/library.js";
 import { AddView } from "./views/add.js";
 import { StatusView } from "./views/status.js";
+import { SessionsView } from "./views/sessions.js";
 import { DetailModal } from "./views/detail.js";
 
-const VIEWS = { library: LibraryView, add: AddView, status: StatusView };
+const VIEWS = {
+  library: LibraryView,
+  add: AddView,
+  sessions: SessionsView,
+  status: StatusView,
+};
 
 function currentRoute() {
   const match = /^#\/([a-z]+)/.exec(location.hash);

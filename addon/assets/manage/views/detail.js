@@ -582,9 +582,37 @@ function PlaybackTab({ state }) {
         <h3>${verdictTitle(t, dp, ready, needed)}</h3>
         ${verdictBody(t, dp, ready, needed)}
         <p class="muted">
-          HoshiStream never transcodes; the player must support the listed
-          codecs.
+          Direct play needs the player to support the listed codecs. When stream
+          repair is enabled, incompatible entries also get a "Compatible" stream
+          in Stremio.
         </p>
+        ${
+          state.status.transcode?.enabled
+            ? html`<label class="picker-row" style="margin-top:8px">
+                <input
+                  type="checkbox"
+                  checked=${Boolean(state.selected.forceTranscode)}
+                  onChange=${async (e) => {
+                    try {
+                      setState({
+                        selected: await patch(state, {
+                          forceTranscode: e.target.checked,
+                        }),
+                      });
+                      notify(
+                        e.target.checked
+                          ? "Compatible stream always offered"
+                          : "Compatible stream only on predicted failure",
+                      );
+                    } catch (error) {
+                      notify(error.message);
+                    }
+                  }}
+                />
+                <span class="muted">Always offer the Compatible stream</span>
+              </label>`
+            : null
+        }
       </aside>
     </div>
   `;

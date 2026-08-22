@@ -110,10 +110,16 @@ Tier R/A shipped: vendored ffmpeg, lazy sessions, HLS routes, "Compatible"
 stream entries. Details in
 [2026-08-23-realtime-transcoding-plan.md](2026-08-23-realtime-transcoding-plan.md).
 
-### Phase FB2 — Transcoding UI
-1. Sessions view + management API endpoints (list/kill).
-2. Verdict badges in Library/Detail; `forceTranscode` toggle.
-3. Status view: ffmpeg/VideoToolbox indicators.
+### Phase FB2 — Transcoding UI — DONE 2026-08-23
+1. ~~Sessions view + endpoints~~ — "Stream Repair" nav view polling
+   `GET /api/transcode/sessions` every 2 s (paused when hidden) with a Stop
+   button (`DELETE /api/transcode/sessions/{entryId}/{fileId}`).
+2. ~~Verdict badges~~ — library cards show Direct play / Check device /
+   May not play from the probe verdict; detail Playback tab gains an
+   "Always offer the Compatible stream" toggle (`forceTranscode` on the entry,
+   honored by `compatibleStreams` as a remux fallback).
+3. ~~Status view~~ — stream-repair pill (on/off + active session count) from
+   the new `transcode` field on `/api/status`.
 
 ### Phase B2 — Tier V + polish (= transcoding plan Phases 2–3)
 Video transcode, bitrate presets in Detail, seek-restart, on-TV validation.

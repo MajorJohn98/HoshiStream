@@ -17,6 +17,7 @@ export const managementHtml = `<!doctype html>
         <nav>
           <button data-view="library" class="active"><span class="nav-icon">▦</span>Library</button>
           <button data-view="add"><span class="nav-icon">＋</span>Add Media</button>
+          <button data-view="sessions"><span class="nav-icon">⇄</span>Stream Repair</button>
           <button data-view="status"><span class="nav-icon">⌁</span>System Status</button>
         </nav>
       </aside>

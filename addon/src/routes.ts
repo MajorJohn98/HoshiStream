@@ -437,7 +437,43 @@ export function createHandler(
             nativePicker: pickerAvailable,
             streamingActive: recentStreamActivity() || activeTorrents > 0,
             uptimeSeconds: Math.floor(process.uptime()),
+            transcode: {
+              enabled: Boolean(transcode),
+              activeSessions: transcode?.list().length ?? 0,
+            },
           });
+        }
+        if (
+          url.pathname === "/api/transcode/sessions" &&
+          request.method === "GET"
+        ) {
+          return reply(
+            response,
+            200,
+            (transcode?.list() ?? []).map((session) => ({
+              entryId: session.entryId,
+              fileId: session.fileId,
+              tier: session.tier,
+              startedAt: new Date(session.startedAt).toISOString(),
+              lastAccess: new Date(session.lastAccess).toISOString(),
+              state: session.failed
+                ? "failed"
+                : session.exited
+                  ? "finished"
+                  : "running",
+            })),
+          );
+        }
+        const sessionMatch =
+          /^\/api\/transcode\/sessions\/([^/]+)\/(\d+)$/.exec(url.pathname);
+        if (sessionMatch && request.method === "DELETE") {
+          const session = transcode?.get(
+            decodeURIComponent(sessionMatch[1]),
+            Number(sessionMatch[2]),
+          );
+          if (!session) return reply(response, 404, { error: "No session" });
+          await transcode?.remove(session);
+          return reply(response, 204, null);
         }
         if (url.pathname === "/api/media-files" && request.method === "GET") {
           return reply(response, 200, await listLocalMedia());

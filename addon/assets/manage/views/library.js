@@ -159,6 +159,12 @@ function openDetail(entry) {
   });
 }
 
+const VERDICT_BADGES = {
+  direct: ["Direct play", "badge"],
+  caution: ["Check device", "badge warn"],
+  risky: ["May not play", "badge warn"],
+};
+
 const Card = ({ entry }) => html`
   <article class="card" onClick=${() => openDetail(entry)}>
     <div class="art">
@@ -175,6 +181,15 @@ const Card = ({ entry }) => html`
       <span class="badge">
         ${entry.localFilePath || entry.localFolderPath ? "Local" : "Torrent"}
       </span>
+      ${
+        entry.directPlay
+          ? html`<span
+              class=${VERDICT_BADGES[entry.directPlay.compatibility][1]}
+            >
+              ${VERDICT_BADGES[entry.directPlay.compatibility][0]}
+            </span>`
+          : null
+      }
       <div class="actions">
         <button>Open details</button>
         <button

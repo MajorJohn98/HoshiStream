@@ -21,6 +21,14 @@ export function StatusView() {
           ${streaming ? "● Streaming now" : "○ Idle"}
         <//>
         <${Pill}>${native ? "Native macOS app" : "Docker mode"}<//>
+        <${Pill} online=${status.transcode?.enabled}>
+          Stream repair
+          ${
+            status.transcode?.enabled
+              ? "on · " + status.transcode.activeSessions + " active"
+              : "off"
+          }
+        <//>
       </div>
       <div class="metrics">
         <div class="panel">

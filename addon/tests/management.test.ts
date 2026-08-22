@@ -20,6 +20,7 @@ describe("management page shell", () => {
     expect(managementHtml).toContain('<div id="toast" class="toast">');
     expect(managementHtml).toContain('data-view="library"');
     expect(managementHtml).toContain('data-view="add"');
+    expect(managementHtml).toContain('data-view="sessions"');
     expect(managementHtml).toContain('data-view="status"');
     expect(managementHtml).not.toContain("Settings");
     expect(managementHtml).not.toContain("<style>");
@@ -35,6 +36,9 @@ describe("management assets", () => {
     expect(appJs).toContain('import { LibraryView } from "./views/library.js"');
     expect(appJs).toContain('import { AddView } from "./views/add.js"');
     expect(appJs).toContain('import { StatusView } from "./views/status.js"');
+    expect(appJs).toContain(
+      'import { SessionsView } from "./views/sessions.js"',
+    );
     expect(appJs).toContain('import { DetailModal } from "./views/detail.js"');
     expect(appJs).toContain("hashchange");
     expect(appJs).not.toContain("ACCESS_TOKEN");
@@ -126,6 +130,14 @@ describe("management assets", () => {
     expect(statusJs).toContain("Kept awake automatically during playback");
     expect(statusJs).toContain("Run caffeinate or keep the Mac awake");
     expect(statusJs).not.toContain('"diagnostics"');
+  });
+
+  it("sessions view polls the transcode API and can stop sessions", async () => {
+    const sessionsJs = await asset("views/sessions.js");
+    expect(sessionsJs).toContain('api("transcode/sessions")');
+    expect(sessionsJs).toContain('method: "DELETE"');
+    expect(sessionsJs).toContain("TRANSCODE_ENABLED=true");
+    expect(sessionsJs).toContain("setInterval(poll, 2000)");
   });
 
   it("stylesheet keeps the disabled-button affordance", async () => {

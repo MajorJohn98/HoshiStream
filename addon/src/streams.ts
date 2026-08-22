@@ -157,14 +157,21 @@ export async function getStreams(
 // The repaired rendition appears as a second stream in the Stremio picker, so
 // choosing between "Direct" and "Compatible" needs no custom client UI. The
 // session itself starts lazily on the first playlist request.
-function compatibleStreams(
+export function compatibleStreams(
   enabled: boolean,
   publicAddonUrl: string,
   accessToken: string,
-  entry: { id: string; directPlay?: Parameters<typeof repairTier>[0] },
+  entry: {
+    id: string;
+    directPlay?: Parameters<typeof repairTier>[0];
+    forceTranscode?: boolean;
+  },
   file: SelectedFile,
 ) {
-  const tier = enabled ? repairTier(entry.directPlay) : undefined;
+  const tier = enabled
+    ? (repairTier(entry.directPlay) ??
+      (entry.forceTranscode ? "remux" : undefined))
+    : undefined;
   if (!tier) return [];
   return [
     {

@@ -47,6 +47,9 @@ export const libraryEntrySchema = z
     managedMedia: z.boolean().optional(),
     preferredFileIndex: z.number().int().nonnegative().optional(),
     fileOverrides: z.array(fileOverrideSchema).optional(),
+    // Always offer the repaired "Compatible" stream, even when the probe
+    // verdict predicts direct play would work (ADR 0010).
+    forceTranscode: z.boolean().optional(),
     inspectionCache: inspectionCacheSchema.optional(),
     directPlay: directPlaySchema.optional(),
     playback: playbackStateSchema.optional(),
