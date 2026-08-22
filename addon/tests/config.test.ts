@@ -25,6 +25,26 @@ describe("parseConfig", () => {
     });
   });
 
+  it("keeps stream repair off by default and parses its settings", () => {
+    const defaults = parseConfig(valid);
+    expect(defaults.TRANSCODE_ENABLED).toBe(false);
+    expect(defaults.TRANSCODE_MAX_SESSIONS).toBe(2);
+    expect(defaults.TRANSCODE_DIR).toBe(join(stateRoot(), "transcode"));
+    expect(defaults.FFMPEG_PATH).toBe("ffmpeg");
+    expect(
+      parseConfig({ ...valid, TRANSCODE_ENABLED: "true" }).TRANSCODE_ENABLED,
+    ).toBe(true);
+    expect(
+      parseConfig({ ...valid, TRANSCODE_ENABLED: "1" }).TRANSCODE_ENABLED,
+    ).toBe(true);
+    expect(
+      parseConfig({ ...valid, TRANSCODE_ENABLED: "no" }).TRANSCODE_ENABLED,
+    ).toBe(false);
+    expect(() =>
+      parseConfig({ ...valid, TRANSCODE_MAX_SESSIONS: "0" }),
+    ).toThrow();
+  });
+
   it("accepts disabling LAN redirect and rejects unknown values", () => {
     expect(parseConfig({ ...valid, LAN_REDIRECT: "off" }).LAN_REDIRECT).toBe(
       "off",

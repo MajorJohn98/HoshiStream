@@ -7,11 +7,28 @@ import { NativePicker } from "./native-picker.js";
 import { Playback } from "./playback.js";
 import { createHandler } from "./routes.js";
 import { TorrServerClient } from "./torrserver-client.js";
+import { TranscodeManager } from "./transcode.js";
 
 export async function startHoshiStream(settings = config) {
   const library = new Library(settings.LIBRARY_PATH);
   const torrServer = new TorrServerClient(settings.TORRSERVER_INTERNAL_URL);
   const nativePicker = new NativePicker(settings.NATIVE_PICKER_SOCKET);
+  let transcode: TranscodeManager | undefined;
+  if (settings.TRANSCODE_ENABLED) {
+    transcode = new TranscodeManager({
+      dir: settings.TRANSCODE_DIR,
+      ffmpegPath: settings.FFMPEG_PATH,
+      maxSessions: settings.TRANSCODE_MAX_SESSIONS,
+    });
+    await transcode.start();
+    console.log(
+      JSON.stringify({
+        level: "info",
+        event: "transcode_enabled",
+        maxSessions: settings.TRANSCODE_MAX_SESSIONS,
+      }),
+    );
+  }
   const addon = createAddon(
     library,
     torrServer,
@@ -33,6 +50,7 @@ export async function startHoshiStream(settings = config) {
       },
       settings.LAN_REDIRECT,
       new Playback(library, torrServer, settings.PLAYER),
+      transcode,
     ),
   );
   await new Promise<void>((resolve, reject) => {
@@ -50,10 +68,12 @@ export async function startHoshiStream(settings = config) {
     }),
   );
   return {
-    close: () =>
-      new Promise<void>((resolve, reject) =>
+    close: async () => {
+      await transcode?.close();
+      await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
-      ),
+      );
+    },
   };
 }
 

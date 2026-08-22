@@ -3,6 +3,7 @@ import type { SelectedFile } from "./media-file-selection.js";
 import { markStreamActivity } from "./activity.js";
 import { directPlayLabel } from "./direct-play.js";
 import { resolveStreamSource } from "./inspection.js";
+import { repairTier, repairDescription } from "./transcode.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 
 const episodeId = /^(hoshi:[^:]+):(\d+):(\d+)$/;
@@ -86,6 +87,7 @@ export async function getStreams(
   accessToken: string,
   type: string,
   id: string,
+  transcodeEnabled = false,
 ) {
   const requested = requestedFile([], type, id);
   const entry = await library.get(requested.entryId);
@@ -104,6 +106,13 @@ export async function getStreams(
           url: `${publicAddonUrl}/local/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${file.id}`,
           behaviorHints: streamBehaviorHints(entry.id, file),
         },
+        ...compatibleStreams(
+          transcodeEnabled,
+          publicAddonUrl,
+          accessToken,
+          entry,
+          file,
+        ),
       ],
     };
   }
@@ -134,8 +143,37 @@ export async function getStreams(
         url,
         behaviorHints: streamBehaviorHints(entry.id, file),
       },
+      ...compatibleStreams(
+        transcodeEnabled,
+        publicAddonUrl,
+        accessToken,
+        entry,
+        file,
+      ),
     ],
   };
+}
+
+// The repaired rendition appears as a second stream in the Stremio picker, so
+// choosing between "Direct" and "Compatible" needs no custom client UI. The
+// session itself starts lazily on the first playlist request.
+function compatibleStreams(
+  enabled: boolean,
+  publicAddonUrl: string,
+  accessToken: string,
+  entry: { id: string; directPlay?: Parameters<typeof repairTier>[0] },
+  file: SelectedFile,
+) {
+  const tier = enabled ? repairTier(entry.directPlay) : undefined;
+  if (!tier) return [];
+  return [
+    {
+      name: "HoshiStream",
+      description: repairDescription(tier),
+      url: `${publicAddonUrl}/hls/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${file.id}/index.m3u8`,
+      behaviorHints: streamBehaviorHints(entry.id, file),
+    },
+  ];
 }
 
 function describe(

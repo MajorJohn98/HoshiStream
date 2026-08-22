@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { z, ZodError } from "zod";
 import { markStreamActivity, recentStreamActivity } from "./activity.js";
 import { assessDirectPlay } from "./direct-play.js";
-import { inspectEntry } from "./inspection.js";
+import { inspectEntry, resolveStreamSource } from "./inspection.js";
 import type { Library } from "./library.js";
 import { managementHtml } from "./management.js";
 import { Playback } from "./playback.js";
@@ -11,6 +11,7 @@ import { PlayerError } from "./player.js";
 import { probeMedia } from "./media-probe.js";
 import {
   listLocalMedia,
+  inspectLocalEntry,
   isManagedMediaPath,
   removeManagedMedia,
   saveTorrentUpload,
@@ -32,6 +33,11 @@ import {
   type PublicUrls,
 } from "./streams.js";
 import { ownPublicIp } from "./public-ip.js";
+import {
+  repairTier,
+  TranscodeBusyError,
+  type TranscodeManager,
+} from "./transcode.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 import { createEntrySchema, patchEntrySchema } from "./types.js";
 
@@ -149,6 +155,7 @@ export function createHandler(
   publicUrls: PublicUrls,
   lanRedirect: "auto" | "off" = "auto",
   playback = new Playback(library, torrServer),
+  transcode?: TranscodeManager,
 ) {
   return async (request: IncomingMessage, response: ServerResponse) => {
     try {
@@ -209,6 +216,7 @@ export function createHandler(
             accessToken,
             type,
             decodeURIComponent(rawId),
+            Boolean(transcode),
           );
           return noStoreReply(response, 200, result);
         }
@@ -225,6 +233,85 @@ export function createHandler(
 
       if (url.pathname === "/manifest.json") {
         return reply(response, 401, { error: "Use the tokenized add-on URL" });
+      }
+
+      // Repaired-stream HLS sessions (ADR 0010). The session starts lazily on
+      // the first playlist request and is reaped when segment requests stop.
+      const hlsMatch =
+        /^\/hls\/([^/]+)\/([^/]+)\/(\d+)\/(index\.m3u8|init\.mp4|seg-\d+\.m4s)$/.exec(
+          url.pathname,
+        );
+      if (
+        hlsMatch &&
+        ["GET", "HEAD"].includes(request.method ?? "") &&
+        transcode &&
+        validToken(decodeURIComponent(hlsMatch[1]), accessToken)
+      ) {
+        const entry = await library.get(decodeURIComponent(hlsMatch[2]));
+        const fileId = Number(hlsMatch[3]);
+        const asset = hlsMatch[4];
+        if (!entry) return reply(response, 404, { error: "Unknown entry" });
+        let session = transcode.get(entry.id, fileId);
+        if (!session || session.failed) {
+          // Entries without a probe verdict default to a remux, which never
+          // re-encodes anything.
+          const tier = repairTier(entry.directPlay) ?? "remux";
+          let input: string | undefined;
+          if (entry.localFilePath || entry.localFolderPath) {
+            const inspection = await inspectLocalEntry(entry);
+            input = inspection?.files.find(
+              (file) => file.id === fileId,
+            )?.localPath;
+          } else {
+            const source = await resolveStreamSource(
+              entry,
+              torrServer,
+              library,
+            );
+            const file = source.selectedFiles.find(
+              (candidate) => candidate.id === fileId,
+            );
+            if (file) input = torrServer.streamUrl(source.hash, file);
+          }
+          if (!input) return reply(response, 404, { error: "Unknown file" });
+          try {
+            session = await transcode.ensure({
+              entryId: entry.id,
+              fileId,
+              tier,
+              input,
+            });
+          } catch (error) {
+            if (error instanceof TranscodeBusyError)
+              return reply(response, 503, { error: error.message });
+            throw error;
+          }
+        }
+        transcode.touch(session);
+        markStreamActivity();
+        if (asset === "index.m3u8") {
+          try {
+            await transcode.waitForPlaylist(session);
+          } catch (error) {
+            return reply(response, 502, {
+              error: error instanceof Error ? error.message : "Repair failed",
+            });
+          }
+        }
+        const content = await transcode.readAsset(session, asset);
+        if (!content) return reply(response, 404, { error: "Not found" });
+        response.writeHead(200, {
+          "content-type":
+            asset === "index.m3u8"
+              ? "application/vnd.apple.mpegurl"
+              : asset === "init.mp4"
+                ? "video/mp4"
+                : "video/iso.segment",
+          "content-length": content.length,
+          "cache-control": asset === "index.m3u8" ? "no-store" : "max-age=60",
+          "access-control-allow-origin": "*",
+        });
+        return response.end(request.method === "HEAD" ? undefined : content);
       }
 
       const localMatch = /^\/local\/([^/]+)\/([^/]+)(?:\/(\d+))?$/.exec(

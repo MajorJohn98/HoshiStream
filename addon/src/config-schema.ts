@@ -59,6 +59,15 @@ export const configSchema = z.object({
   HOME_SPEED_MBPS: z.coerce.number().positive().default(10),
   LAN_REDIRECT: z.enum(["auto", "off"]).default("auto"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  // Opt-in stream repair (ADR 0010). Off by default: direct play is always
+  // preferred and the repair pipeline only runs when explicitly enabled.
+  TRANSCODE_ENABLED: z
+    .string()
+    .default("false")
+    .transform((value) => value === "true" || value === "1"),
+  TRANSCODE_MAX_SESSIONS: z.coerce.number().int().min(1).max(8).default(2),
+  TRANSCODE_DIR: z.string().min(1).default(join(root, "transcode")),
+  FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
 });
 
 // Compose used to resolve `torrserver` and `addon` as container hostnames. They

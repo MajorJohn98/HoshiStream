@@ -58,6 +58,23 @@ const binary = join(
   "TorrServer",
 );
 
+// The vendored, pinned ffmpeg when fetch-ffmpeg.mjs has installed it,
+// otherwise "ffmpeg" from PATH so dev setups keep working.
+async function ffmpegBinary() {
+  const vendored = join(
+    runtimeRoot,
+    "vendor/ffmpeg",
+    `${process.platform}-${process.arch}`,
+    process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
+  );
+  try {
+    await access(vendored);
+    return vendored;
+  } catch {
+    return "ffmpeg";
+  }
+}
+
 function existingToken() {
   const token = projectEnvironment.ACCESS_TOKEN;
   if (!token || token.length < 20)
@@ -245,6 +262,14 @@ try {
       ? { PLAYER_PATH: projectEnvironment.PLAYER_PATH }
       : {}),
     LOG_LEVEL: "info",
+    // Opt-in stream repair (ADR 0010): forwarded from .env, defaulting to
+    // off. The vendored ffmpeg wins over PATH when it has been fetched.
+    TRANSCODE_ENABLED: projectEnvironment.TRANSCODE_ENABLED ?? "false",
+    ...(projectEnvironment.TRANSCODE_MAX_SESSIONS
+      ? { TRANSCODE_MAX_SESSIONS: projectEnvironment.TRANSCODE_MAX_SESSIONS }
+      : {}),
+    TRANSCODE_DIR: join(stateRoot, "transcode"),
+    FFMPEG_PATH: await ffmpegBinary(),
   });
   const { startHoshiStream } = await import(
     new URL("addon/dist/index.js", `${pathToFileURL(runtimeRoot)}/`)

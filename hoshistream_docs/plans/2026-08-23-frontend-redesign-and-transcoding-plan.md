@@ -105,9 +105,10 @@ Backend and frontend interleave so each phase is demoable in dev mode:
 2. ~~Dead code~~ — legacy re-exports removed from `app.js`; `classify-imports.js`
    retained (pure logic, still used by the import-review flow).
 
-### Phase B1 — Transcoding backend (= transcoding plan Phase 1)
-Tier R/A: vendored ffmpeg, session registry, HLS routes, "Compatible" stream entries.
-See [2026-08-23-realtime-transcoding-plan.md](2026-08-23-realtime-transcoding-plan.md).
+### Phase B1 — Transcoding backend (= transcoding plan Phase 1) — DONE 2026-08-23
+Tier R/A shipped: vendored ffmpeg, lazy sessions, HLS routes, "Compatible"
+stream entries. Details in
+[2026-08-23-realtime-transcoding-plan.md](2026-08-23-realtime-transcoding-plan.md).
 
 ### Phase FB2 — Transcoding UI
 1. Sessions view + management API endpoints (list/kill).

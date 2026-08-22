@@ -68,15 +68,24 @@ user pick in the Stremio UI — cheapest possible UX for overrides.
 
 ## Work phases
 
-### Phase 1 — Vendor ffmpeg + tier R/A (remux & audio fix)
-1. Add ffmpeg to `packaging/` lockfiles (darwin-arm64, win32-x64), pinned build
-   (BtbN static or evermeet), checksum-verified like TorrServer.
-2. `transcode.ts`: session registry, ffmpeg spawn/reap, HLS output, startup sweep.
-3. Routes: `/hls/{token}/{session}/index.m3u8` and segment serving (token-gated,
-   path-safety checked).
-4. `streams.ts`: offer "Compatible" stream when probe verdict warrants tier R/A.
-5. Config: `TRANSCODE_ENABLED` (default false), `TRANSCODE_MAX_SESSIONS`.
-6. Tests: session lifecycle (mock ffmpeg), route auth, playlist serving, sweep.
+### Phase 1 — Vendor ffmpeg + tier R/A (remux & audio fix) — DONE 2026-08-23
+1. ~~Vendor ffmpeg~~ — `packaging/ffmpeg-lock.json` + `fetch-ffmpeg.mjs`
+   (darwin-arm64: Martin Riedl 9.0.1 release zips incl. ffprobe; win32-x64:
+   BtbN n8.1.2 pinned autobuild), checksum-verified like TorrServer.
+   `native-server.mjs` prefers the vendored binary and falls back to PATH.
+2. ~~`transcode.ts`~~ — `TranscodeManager` (session registry keyed by
+   entry+file, injectable spawn for tests, idle reaper, startup sweep,
+   session cap), pure `repairTier`/`ffmpegArgs` helpers.
+3. ~~Routes~~ — `/hls/{token}/{entryId}/{fileId}/{asset}` with a strict asset
+   allowlist (`index.m3u8`, `init.mp4`, `seg-N.m4s`); sessions start lazily on
+   the first playlist request, so listing streams never spawns ffmpeg.
+4. ~~`streams.ts`~~ — "Compatible" second stream when the probe verdict
+   warrants a repair and `TRANSCODE_ENABLED` is on.
+5. ~~Config~~ — `TRANSCODE_ENABLED` (default false), `TRANSCODE_MAX_SESSIONS`
+   (default 2), `TRANSCODE_DIR`, `FFMPEG_PATH`; documented in `.env.example`.
+6. ~~Tests~~ — 15 transcode tests (tier selection, args, lifecycle, cap,
+   allowlist, reaper) plus config coverage; verified end-to-end with a real
+   ffmpeg remux of an MKV through the HLS route.
 
 ### Phase 2 — Tier V (video transcode)
 1. VideoToolbox availability check at startup (`ffmpeg -encoders` parse, cached).

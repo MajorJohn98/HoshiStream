@@ -1,6 +1,6 @@
 # 0010 — Opt-in real-time transcoding via vendored ffmpeg
 
-Status: proposed
+Status: accepted
 Date: 2026-08-23
 Amends: the "no transcoding" non-goal stated in the MVP scope and
 [architecture-overview.md](../architecture/architecture-overview.md)
