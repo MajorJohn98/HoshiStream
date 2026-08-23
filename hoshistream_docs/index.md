@@ -22,6 +22,7 @@
 ## Guides
 
 - [guides/setup-native-macos.md](guides/setup-native-macos.md) — Build and install the native app, configure `.env`, tune TorrServer, and forward the peer port.
+- [guides/distributing-macos-app.md](guides/distributing-macos-app.md) — Build a `.dmg`, the Gatekeeper quarantine workaround, first-run behavior, and signing limitations.
 - [guides/adding-media.md](guides/adding-media.md) — Add magnets, `.torrent` files, and local media; inspection and viability.
 - [guides/development.md](guides/development.md) — Dev commands, working agreement, and code conventions.
 - [guides/troubleshooting.md](guides/troubleshooting.md) — AirPlay port conflict, LAN reachability, stalls, corrupt library.
@@ -54,3 +55,4 @@
 - [changelog/0.7.0-native-only.md](changelog/0.7.0-native-only.md) — Docker removed; native app is the only deployment mode, config retargeted to real paths, TorrServer defaults shipped with the app.
 - [changelog/0.6.0-performance.md](changelog/0.6.0-performance.md) — TorrServer throughput tuning, hot-path caching, larger read buffers, stream prewarming, direct-play detection, a built-in mpv player, and Windows vendoring groundwork.
 - [changelog/0.8.0-ui-and-stream-repair.md](changelog/0.8.0-ui-and-stream-repair.md) — Preact rebuild + Cinema redesign of the management UI, opt-in stream repair, mDNS LAN discovery, and the in-browser player.
+- [changelog/0.8.1-portable-macos-build.md](changelog/0.8.1-portable-macos-build.md) — Runtime state-directory resolution, first-run `.env` and token generation, and `.dmg` packaging.

@@ -11,6 +11,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { defaultMediaDir, ensureFirstRunSetup } from "./bootstrap.mjs";
 import { lanIp } from "./lan-ip.mjs";
 
 const runtimeRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -28,15 +29,12 @@ const projectRoot = resolve(options["project-root"] ?? runtimeRoot);
 const stateRoot = resolve(
   options["state-dir"] ?? join(projectRoot, "native-data"),
 );
-const projectEnvironment = Object.fromEntries(
-  (await readFile(join(projectRoot, ".env"), "utf8"))
-    .split(/\r?\n/)
-    .filter((line) => line && !line.startsWith("#") && line.includes("="))
-    .map((line) => {
-      const index = line.indexOf("=");
-      return [line.slice(0, index), line.slice(index + 1)];
-    }),
-);
+// First run on a new machine has no .env: create the state directory and a
+// generated access token rather than failing to start.
+const { environment: projectEnvironment } = await ensureFirstRunSetup({
+  projectRoot,
+  mediaDir: defaultMediaDir(),
+});
 const addonPort = Number(
   options["addon-port"] ?? projectEnvironment.ADDON_PORT ?? 7001,
 );
@@ -102,7 +100,9 @@ async function migrateLibrary() {
     return;
   } catch {}
   const sourcePath = join(projectRoot, "data/library.json");
-  const entries = JSON.parse(await readFile(sourcePath, "utf8"));
+  // A fresh install has nothing to migrate; start from an empty library.
+  const source = await readFile(sourcePath, "utf8").catch(() => "[]");
+  const entries = JSON.parse(source);
   const migrated = entries.map((entry) => ({
     ...entry,
     ...(entry.localFilePath && {
@@ -176,6 +176,7 @@ async function waitFor(url, timeoutMs = 30_000) {
 await access(binary);
 const accessToken = existingToken();
 await mkdir(uploadRoot, { recursive: true });
+await mkdir(mediaRoot, { recursive: true });
 await mkdir(configRoot, { recursive: true });
 await mkdir(torrentsRoot, { recursive: true });
 await migrateLibrary();

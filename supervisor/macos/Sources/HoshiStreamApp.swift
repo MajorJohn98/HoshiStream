@@ -18,8 +18,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sleepAssertion: IOPMAssertionID = 0
     private var sleepAssertionHeld = false
 
+    // Resolved at runtime so the bundle is portable across machines. The
+    // Info.plist key stays as a development override; the shipped build leaves
+    // it at its placeholder and falls back to the per-user state directory.
     private var projectRoot: String {
-        Bundle.main.object(forInfoDictionaryKey: "HoshiStreamProjectRoot") as! String
+        let override = Bundle.main.object(forInfoDictionaryKey: "HoshiStreamProjectRoot") as? String
+        if let override, !override.isEmpty, override != "PROJECT_ROOT" { return override }
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return support.appendingPathComponent("HoshiStream").path
     }
 
     private func environmentValue(_ key: String) -> String? {
@@ -133,6 +139,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startServer() {
         guard service == nil else { return }
         setStatus("Starting…")
+        // Process.run() fails outright when the working directory is missing,
+        // which is the normal state on a first launch.
+        try? FileManager.default.createDirectory(
+            at: URL(fileURLWithPath: projectRoot),
+            withIntermediateDirectories: true
+        )
         let resources = Bundle.main.resourceURL!.appendingPathComponent("runtime")
         let process = Process()
         process.executableURL = resources.appendingPathComponent("bin/node")
@@ -195,7 +207,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkHealth() {
-        guard let token else { return setStatus("Error — missing access token") }
+        // On a first launch the server writes .env itself, so a missing token
+        // is expected briefly rather than an error.
+        guard let token else {
+            return setStatus(service?.isRunning == true ? "Starting…" : "Error — missing access token")
+        }
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(addonPort)/api/status")!)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in

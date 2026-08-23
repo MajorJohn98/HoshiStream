@@ -2,7 +2,6 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-DATA_ROOT="/Users/majorjohn/Library/Application Support/HoshiStream"
 APP="$ROOT/build/HoshiStream.app"
 CONTENTS="$APP/Contents"
 RUNTIME="$CONTENTS/Resources/runtime"
@@ -28,9 +27,18 @@ xcrun swiftc -parse-as-library \
   -o "$CONTENTS/MacOS/HoshiStream"
 
 cp "$ROOT/supervisor/macos/Info.plist" "$CONTENTS/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :HoshiStreamProjectRoot $DATA_ROOT" "$CONTENTS/Info.plist"
+# HoshiStreamProjectRoot stays at its PROJECT_ROOT placeholder: the supervisor
+# then resolves ~/Library/Application Support/HoshiStream at runtime, which is
+# what makes the bundle portable to other Macs. Set it only for a dev build
+# pointed at a checkout:
+#   HOSHISTREAM_PROJECT_ROOT=/path/to/checkout packaging/build-macos-app.sh
+if [ -n "${HOSHISTREAM_PROJECT_ROOT:-}" ]; then
+  /usr/libexec/PlistBuddy -c \
+    "Set :HoshiStreamProjectRoot $HOSHISTREAM_PROJECT_ROOT" "$CONTENTS/Info.plist"
+fi
 cp "$ROOT/vendor/node/darwin-arm64/node" "$RUNTIME/bin/node"
 cp "$ROOT/scripts/native-server.mjs" "$RUNTIME/scripts/native-server.mjs"
+cp "$ROOT/scripts/bootstrap.mjs" "$RUNTIME/scripts/bootstrap.mjs"
 cp "$ROOT/scripts/lan-ip.mjs" "$RUNTIME/scripts/lan-ip.mjs"
 cp "$ROOT/packaging/torrserver-settings.json" \
   "$RUNTIME/packaging/torrserver-settings.json"
@@ -53,5 +61,16 @@ fi
 
 chmod 755 "$CONTENTS/MacOS/HoshiStream" "$RUNTIME/bin/node" \
   "$RUNTIME/vendor/torrserver/darwin-arm64/TorrServer"
-codesign --force --deep --sign - "$APP"
+
+# Sign inside out. `--deep` is deprecated and routinely produces bundles that
+# Gatekeeper reports as "damaged", so each nested executable is signed first
+# and the bundle last.
+for BINARY in \
+  "$RUNTIME/bin/node" \
+  "$RUNTIME/vendor/torrserver/darwin-arm64/TorrServer" \
+  "$RUNTIME/vendor/ffmpeg/darwin-arm64/ffmpeg" \
+  "$RUNTIME/vendor/ffmpeg/darwin-arm64/ffprobe"; do
+  [ -x "$BINARY" ] && codesign --force --sign - "$BINARY"
+done
+codesign --force --sign - "$APP"
 echo "$APP"

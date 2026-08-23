@@ -18,6 +18,23 @@ open ~/Applications/HoshiStream.app
 
 Runtime downloads are pinned by `packaging/node-lock.json` and `packaging/torrserver-lock.json`.
 
+To hand the app to another Mac, build a disk image instead — see
+[distributing-macos-app.md](distributing-macos-app.md).
+
+## First run
+
+The app resolves its state directory at runtime, so the bundle is portable across Macs. On
+first launch it creates `~/Library/Application Support/HoshiStream` with a `.env` (mode
+`0600`) containing a generated `ACCESS_TOKEN` and a `MEDIA_DIR` defaulting to `~/Movies`,
+plus an empty library and TorrServer's data directories. Editing `.env` before the first
+launch is optional.
+
+A build can be pinned to a checkout for development:
+
+```bash
+HOSHISTREAM_PROJECT_ROOT=/path/to/checkout ./packaging/build-macos-app.sh
+```
+
 ## Menu-bar controls
 
 - Open HoshiStream (management page in the default browser)
@@ -42,7 +59,8 @@ Deleting a Finder-linked entry never deletes its source file. The browser upload
 
 ## Configuration
 
-Copy `.env.example` to `.env`. The native app reads `ACCESS_TOKEN`, `MEDIA_DIR`,
+Copy `.env.example` to `.env` — or let the first launch generate one. The native app reads
+`ACCESS_TOKEN`, `MEDIA_DIR`,
 `HOSHISTREAM_STATE_DIR`, `ADDON_PORT`, `HOME_SPEED_MBPS`, `PLAYER_PATH`, `LAN_REDIRECT`,
 `TRANSCODE_ENABLED`, and `TRANSCODE_MAX_SESSIONS`,
 and derives the rest — including `TORRSERVER_INTERNAL_URL`, the public URLs, and the
