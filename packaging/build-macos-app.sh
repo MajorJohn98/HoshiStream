@@ -44,7 +44,15 @@ cp "$ROOT/packaging/torrserver-settings.json" \
   "$RUNTIME/packaging/torrserver-settings.json"
 cp -R "$ROOT/addon/dist" "$RUNTIME/addon/dist"
 cp -R "$ROOT/addon/assets" "$RUNTIME/addon/assets"
-cp -R "$ROOT/addon/node_modules" "$RUNTIME/addon/node_modules"
+# Production-only dependencies. The checkout's node_modules carries the seven
+# devDependencies (vitest, eslint, typescript, vite, ...) that nothing needs at
+# runtime, and the UI is prebuilt into addon/assets, so shipping them only
+# inflates the download. Install from the lockfile into a staging dir instead.
+DEPS_STAGE="$ROOT/build/deps-stage"
+mkdir -p "$DEPS_STAGE"
+cp "$ROOT/addon/package.json" "$ROOT/addon/package-lock.json" "$DEPS_STAGE/"
+(cd "$DEPS_STAGE" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null)
+cp -R "$DEPS_STAGE/node_modules" "$RUNTIME/addon/node_modules"
 cp "$ROOT/vendor/torrserver/darwin-arm64/TorrServer" \
   "$RUNTIME/vendor/torrserver/darwin-arm64/TorrServer"
 

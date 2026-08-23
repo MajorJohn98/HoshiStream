@@ -56,3 +56,4 @@
 - [changelog/0.6.0-performance.md](changelog/0.6.0-performance.md) — TorrServer throughput tuning, hot-path caching, larger read buffers, stream prewarming, direct-play detection, a built-in mpv player, and Windows vendoring groundwork.
 - [changelog/0.8.0-ui-and-stream-repair.md](changelog/0.8.0-ui-and-stream-repair.md) — Preact rebuild + Cinema redesign of the management UI, opt-in stream repair, mDNS LAN discovery, and the in-browser player.
 - [changelog/0.8.1-portable-macos-build.md](changelog/0.8.1-portable-macos-build.md) — Runtime state-directory resolution, first-run `.env` and token generation, and `.dmg` packaging.
+- [changelog/0.8.2-shutdown-and-bundle-size.md](changelog/0.8.2-shutdown-and-bundle-size.md) — Fixes the server outliving its supervisor (leaked mDNS socket) and prunes devDependencies from the shipped bundle.
