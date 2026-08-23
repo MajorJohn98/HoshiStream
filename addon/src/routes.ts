@@ -33,6 +33,7 @@ import {
   type PublicUrls,
 } from "./streams.js";
 import { ownPublicIp } from "./public-ip.js";
+import { resourceReport, type ResourceDirs } from "./resources.js";
 import {
   currentSpeed,
   homeSpeedMbps,
@@ -165,6 +166,7 @@ export function createHandler(
   lanRedirect: "auto" | "off" = "auto",
   playback = new Playback(library, torrServer),
   transcode?: TranscodeManager,
+  resourceDirs?: ResourceDirs,
 ) {
   setConfiguredSpeed(configuredHomeSpeedMbps);
   return async (request: IncomingMessage, response: ServerResponse) => {
@@ -473,6 +475,15 @@ export function createHandler(
               videoEncoder: transcode?.videoEncoder ?? null,
             },
           });
+        }
+        if (url.pathname === "/api/resources" && request.method === "GET") {
+          return reply(
+            response,
+            200,
+            await resourceReport(
+              resourceDirs ?? { torrentCache: "", transcode: "", uploads: "" },
+            ),
+          );
         }
         if (url.pathname === "/api/speedtest" && request.method === "POST") {
           try {

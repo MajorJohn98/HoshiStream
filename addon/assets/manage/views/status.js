@@ -1,6 +1,7 @@
-// System Status view: service health, library stats, and troubleshooting.
-import { html, useState } from "../vendor/preact-htm.js";
-import { api, notify } from "../api.js";
+// System Status view: service health, library stats, resource usage, and
+// troubleshooting.
+import { html, useEffect, useState } from "../vendor/preact-htm.js";
+import { api, fmt, notify } from "../api.js";
 import { useStore, load } from "../store.js";
 import { Shell, Pill } from "../components/shell.js";
 
@@ -9,6 +10,90 @@ function agoLabel(iso) {
   if (minutes < 1) return "just now";
   if (minutes < 60) return minutes + " min ago";
   return Math.round(minutes / 60) + " h ago";
+}
+
+function ResourceCell({ label, stats }) {
+  return html`
+    <div class="metric">
+      <span class="muted">${label}</span>
+      <strong>
+        ${
+          stats && stats.processes > 0
+            ? stats.cpuPercent + "% CPU · " + fmt(stats.rssBytes) + " RAM"
+            : "Not running"
+        }
+      </strong>
+    </div>
+  `;
+}
+
+function Resources() {
+  const [report, setReport] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      if (document.hidden) return;
+      try {
+        const next = await api("resources");
+        if (alive) setReport(next);
+      } catch {
+        // transient failures keep the last report
+      }
+    };
+    void poll();
+    const timer = setInterval(poll, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+  if (!report) return null;
+  const disk = report.disk;
+  const totalDisk =
+    disk.torrentCacheBytes + disk.transcodeBytes + disk.uploadsBytes;
+  return html`
+    <div class="panel" style="margin-top:18px">
+      <h2>Resource usage</h2>
+      ${
+        report.processes.available
+          ? html`<div class="metrics">
+              <${ResourceCell}
+                label="Add-on server"
+                stats=${report.processes.addon}
+              />
+              <${ResourceCell}
+                label="TorrServer"
+                stats=${report.processes.torrServer}
+              />
+              <${ResourceCell}
+                label="ffmpeg repair sessions"
+                stats=${report.processes.ffmpeg}
+              />
+            </div>`
+          : html`<p class="muted">
+              Process statistics are not available on this platform.
+            </p>`
+      }
+      <div class="metrics">
+        <div class="metric">
+          <span class="muted">Torrent cache on disk</span>
+          <strong>${fmt(disk.torrentCacheBytes)}</strong>
+        </div>
+        <div class="metric">
+          <span class="muted">Stream-repair sessions</span>
+          <strong>${fmt(disk.transcodeBytes)}</strong>
+        </div>
+        <div class="metric">
+          <span class="muted">Managed uploads</span>
+          <strong>${fmt(disk.uploadsBytes)}</strong>
+        </div>
+        <div class="metric">
+          <span class="muted">Total cache</span>
+          <strong>${fmt(totalDisk)}</strong>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 export function StatusView() {
@@ -101,6 +186,7 @@ export function StatusView() {
           </button>
         </div>
       </div>
+      <${Resources} />
       <div class="panel" style="margin-top:18px">
         <h2>Troubleshooting</h2>
         <div class="metrics">

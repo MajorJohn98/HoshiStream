@@ -279,6 +279,7 @@ try {
       ? { TRANSCODE_MAX_SESSIONS: projectEnvironment.TRANSCODE_MAX_SESSIONS }
       : {}),
     TRANSCODE_DIR: join(stateRoot, "transcode"),
+    TORRSERVER_CACHE_DIR: torrentsRoot,
     FFMPEG_PATH: await ffmpegBinary(),
     FFPROBE_PATH: await ffprobeBinary(),
   });

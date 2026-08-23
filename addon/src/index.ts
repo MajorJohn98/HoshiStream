@@ -57,6 +57,11 @@ export async function startHoshiStream(settings = config) {
       settings.LAN_REDIRECT,
       new Playback(library, torrServer, settings.PLAYER),
       transcode,
+      {
+        torrentCache: settings.TORRSERVER_CACHE_DIR,
+        transcode: settings.TRANSCODE_DIR,
+        uploads: settings.UPLOAD_ROOT,
+      },
     ),
   );
   await new Promise<void>((resolve, reject) => {

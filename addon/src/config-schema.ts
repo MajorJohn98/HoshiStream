@@ -69,6 +69,11 @@ export const configSchema = z.object({
   TRANSCODE_VIDEO_BITRATE_MBPS: z.coerce.number().min(1).max(40).default(8),
   TRANSCODE_DIR: z.string().min(1).default(join(root, "transcode")),
   FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
+  // Where TorrServer keeps its disk cache; reported on the status page.
+  TORRSERVER_CACHE_DIR: z
+    .string()
+    .min(1)
+    .default(join(root, "torrserver", "torrents")),
   // LAN discovery (ADR 0011): advertise _hoshistream._tcp so setup helpers
   // can find the box. LAN-multicast only; never carries the token.
   MDNS_ENABLED: z
