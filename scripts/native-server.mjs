@@ -220,9 +220,11 @@ async function stop(exitCode = 0) {
 // bypasses AppKit's termination path entirely. Without this watchdog the
 // supervisor and TorrServer are orphaned, keep holding the ports, and a later
 // launch silently serves the old code while the new one fails to bind.
+// start-native.sh launches with --detached, where re-parenting to PID 1 is
+// expected and the watchdog must stay off.
 const initialParentPid = process.ppid;
 const parentWatchdog =
-  initialParentPid > 1
+  initialParentPid > 1 && options.detached !== "true"
     ? setInterval(() => {
         if (process.ppid === initialParentPid) return;
         console.error(

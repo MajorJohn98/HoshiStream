@@ -13,7 +13,7 @@ if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
 fi
 
 (cd "$ROOT/addon" && npm run build)
-nohup node "$ROOT/scripts/native-server.mjs" --state-dir="$STATE_DIR" "$@" >>"$LOG_DIR/hoshistream.log" 2>&1 &
+nohup node "$ROOT/scripts/native-server.mjs" --state-dir="$STATE_DIR" --detached "$@" >>"$LOG_DIR/hoshistream.log" 2>&1 &
 
 for _ in $(seq 1 60); do
   if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
