@@ -34,6 +34,12 @@ import {
 } from "./streams.js";
 import { ownPublicIp } from "./public-ip.js";
 import {
+  currentSpeed,
+  homeSpeedMbps,
+  runSpeedTest,
+  setConfiguredSpeed,
+} from "./speedtest.js";
+import {
   repairTier,
   TranscodeBusyError,
   type TranscodeManager,
@@ -153,13 +159,14 @@ export function createHandler(
   addon: AddonInterface,
   torrServer: TorrServerClient,
   accessToken: string,
-  homeSpeedMbps: number,
+  configuredHomeSpeedMbps: number,
   nativePicker: NativePicker,
   publicUrls: PublicUrls,
   lanRedirect: "auto" | "off" = "auto",
   playback = new Playback(library, torrServer),
   transcode?: TranscodeManager,
 ) {
+  setConfiguredSpeed(configuredHomeSpeedMbps);
   return async (request: IncomingMessage, response: ServerResponse) => {
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
@@ -455,7 +462,8 @@ export function createHandler(
             status: "online",
             torrServer: torrServerStatus,
             libraryCount: entries.length,
-            homeSpeedMbps,
+            homeSpeedMbps: homeSpeedMbps(),
+            speed: currentSpeed(),
             nativePicker: pickerAvailable,
             streamingActive: recentStreamActivity() || activeTorrents > 0,
             uptimeSeconds: Math.floor(process.uptime()),
@@ -465,6 +473,17 @@ export function createHandler(
               videoEncoder: transcode?.videoEncoder ?? null,
             },
           });
+        }
+        if (url.pathname === "/api/speedtest" && request.method === "POST") {
+          try {
+            const result = await runSpeedTest();
+            return reply(response, 200, { ...result, source: "measured" });
+          } catch (error) {
+            return reply(response, 502, {
+              error:
+                error instanceof Error ? error.message : "Speed test failed",
+            });
+          }
         }
         if (
           url.pathname === "/api/transcode/sessions" &&
@@ -615,7 +634,7 @@ export function createHandler(
                 source.localPath ??
                 torrServer.streamUrl(inspection.hash, selected);
               technical = await probeMedia(input, source);
-              const directPlay = assessDirectPlay(technical, homeSpeedMbps);
+              const directPlay = assessDirectPlay(technical, homeSpeedMbps());
               await library.setDirectPlay(entry.id, directPlay).catch(() => {
                 console.error(
                   JSON.stringify({
@@ -629,7 +648,7 @@ export function createHandler(
                 ...inspection,
                 technical,
                 directPlay,
-                homeSpeedMbps,
+                homeSpeedMbps: homeSpeedMbps(),
               });
             } catch {
               technical = { error: "Media details could not be read" };
@@ -638,7 +657,7 @@ export function createHandler(
           return reply(response, 200, {
             ...inspection,
             technical,
-            homeSpeedMbps,
+            homeSpeedMbps: homeSpeedMbps(),
           });
         }
         if (itemMatch && request.method === "GET") {

@@ -83,7 +83,8 @@ Available only when `TRANSCODE_ENABLED=true`; the UI's "Stream Repair" view is b
 
 | Method & path | Description |
 |---|---|
-| `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps`, `nativePicker` (supervisor socket present, so Finder pickers work), `streamingActive` (recent stream activity or active TorrServer torrents), `uptimeSeconds`, `transcode {enabled, activeSessions, videoEncoder}` |
+| `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps` (measured link speed when available, else the configured fallback), `speed {mbps, source, measuredAt}`, `nativePicker` (supervisor socket present, so Finder pickers work), `streamingActive` (recent stream activity or active TorrServer torrents), `uptimeSeconds`, `transcode {enabled, activeSessions, videoEncoder}` |
+| `POST /api/speedtest` | Measure download speed against Cloudflare's open speed-test endpoint (~8 s) → `{mbps, measuredAt, source}`; also runs once at startup. The result replaces `HOME_SPEED_MBPS` in all direct-play guidance until the next run |
 | `POST /api/stremio-refresh` | Recount catalogs → `{movies, series, total, updatedAt}` (no-store) |
 | `GET /api/media-files` | List files available under the read-only media mount |
 | `POST /api/upload?batch=&path=` | Browser upload of a video into managed storage → `204` |

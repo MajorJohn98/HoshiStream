@@ -1,13 +1,34 @@
 // System Status view: service health, library stats, and troubleshooting.
-import { html } from "../vendor/preact-htm.js";
+import { html, useState } from "../vendor/preact-htm.js";
+import { api, notify } from "../api.js";
 import { useStore, load } from "../store.js";
 import { Shell, Pill } from "../components/shell.js";
 
+function agoLabel(iso) {
+  const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return minutes + " min ago";
+  return Math.round(minutes / 60) + " h ago";
+}
+
 export function StatusView() {
   const { status } = useStore();
+  const [testing, setTesting] = useState(false);
   const ts = status.torrServer?.online;
   const native = Boolean(status.nativePicker);
   const streaming = Boolean(status.streamingActive);
+  const runSpeedTest = async () => {
+    setTesting(true);
+    try {
+      const result = await api("speedtest", { method: "POST" });
+      notify("Measured " + result.mbps + " Mbps");
+      await load();
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setTesting(false);
+    }
+  };
   return html`
     <${Shell}
       title="System Status"
@@ -61,9 +82,23 @@ export function StatusView() {
           <p class="muted">Atomic JSON storage</p>
         </div>
         <div class="panel">
-          <h3>Home connection</h3>
+          <h3>Connection speed</h3>
           <strong>${status.homeSpeedMbps} Mbps</strong>
-          <p class="muted">Used for direct-play guidance</p>
+          <p class="muted">
+            ${
+              status.speed?.source === "measured"
+                ? "Measured " + agoLabel(status.speed.measuredAt)
+                : "Configured fallback — not yet measured"
+            }
+          </p>
+          <button
+            class="secondary"
+            style="margin-top:8px"
+            disabled=${testing}
+            onClick=${runSpeedTest}
+          >
+            ${testing ? "Measuring…" : "Run speed test"}
+          </button>
         </div>
       </div>
       <div class="panel" style="margin-top:18px">

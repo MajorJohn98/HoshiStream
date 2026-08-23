@@ -9,6 +9,7 @@ import { createHandler } from "./routes.js";
 import { TorrServerClient } from "./torrserver-client.js";
 import { TranscodeManager, detectVideoEncoder } from "./transcode.js";
 import { MdnsResponder } from "./mdns.js";
+import { runSpeedTest } from "./speedtest.js";
 
 export async function startHoshiStream(settings = config) {
   const library = new Library(settings.LIBRARY_PATH);
@@ -77,6 +78,17 @@ export async function startHoshiStream(settings = config) {
     mdns = new MdnsResponder({ port: settings.ADDON_PORT });
     mdns.start();
   }
+  // Measure the real link speed once at startup; failures keep the
+  // configured HOME_SPEED_MBPS fallback and are only logged.
+  void runSpeedTest().catch((error: unknown) =>
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        event: "speedtest_failed",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    ),
+  );
   return {
     close: async () => {
       mdns?.close();

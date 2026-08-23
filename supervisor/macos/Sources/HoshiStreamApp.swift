@@ -86,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Open HoshiStream", action: #selector(openLibrary), keyEquivalent: "o").target = self
         menu.addItem(withTitle: "Copy Stremio URL", action: #selector(copyStremioURL), keyEquivalent: "c").target = self
         menu.addItem(startItem)
+        menu.addItem(withTitle: "Check Speed", action: #selector(checkSpeed), keyEquivalent: "s").target = self
         menu.addItem(loginItem)
         menu.addItem(withTitle: "Show Logs", action: #selector(showLogs), keyEquivalent: "l").target = self
         menu.addItem(.separator())
@@ -235,6 +236,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
         }
+    }
+
+    @objc private func checkSpeed() {
+        guard let token else { return setStatus("Error — missing access token") }
+        setStatus("Measuring connection speed…")
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(addonPort)/api/speedtest")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 30
+        URLSession.shared.dataTask(with: request) { [weak self] _, _, _ in
+            DispatchQueue.main.async { self?.checkHealth() }
+        }.resume()
     }
 
     @objc private func restartServer() {
