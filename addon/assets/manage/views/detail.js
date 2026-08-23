@@ -309,13 +309,28 @@ function CachedFilesTable({ state, cache }) {
                 <td>${f.season ?? "—"}</td>
                 <td>${f.episode ?? "—"}</td>
                 <td>
-                  <button
-                    class="secondary"
-                    title="Play this file on this Mac"
-                    onClick=${() => play(f.id)}
-                  >
-                    ▶
-                  </button>
+                  <div class="row" style="gap:6px;flex-wrap:nowrap">
+                    <button
+                      class="secondary"
+                      title="Play this file on this Mac"
+                      onClick=${() => play(f.id)}
+                    >
+                      ▶
+                    </button>
+                    <button
+                      class="secondary"
+                      title="Play this file in the browser"
+                      onClick=${() => {
+                        location.hash =
+                          "#/play/" +
+                          encodeURIComponent(state.selected.id) +
+                          "/" +
+                          f.id;
+                      }}
+                    >
+                      ⧉
+                    </button>
+                  </div>
                 </td>
               </tr>
             `,
@@ -681,7 +696,9 @@ export function DetailModal() {
               class="secondary"
               onClick=${() => {
                 const fileId =
-                  entry.inspectionCache?.selectedFiles?.[0]?.id ?? 0;
+                  entry.playback?.fileId ??
+                  entry.inspectionCache?.selectedFiles?.[0]?.id ??
+                  0;
                 location.hash =
                   "#/play/" + encodeURIComponent(entry.id) + "/" + fileId;
               }}

@@ -722,6 +722,30 @@ table.files input[type="number"] {
 video {
   outline: none;
 }
+.episode-rail {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.episode {
+  min-width: 46px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.episode.active {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: #fff;
+}
+.episode:hover:not(.active) {
+  background: var(--surface2);
+  color: var(--text);
+}
 
 /* ---------- toast ---------- */
 .toast {

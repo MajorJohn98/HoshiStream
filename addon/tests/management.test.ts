@@ -149,6 +149,15 @@ describe("management assets", () => {
     expect(appJs).toContain("play: PlayerView");
   });
 
+  it("player view switches episodes and can autoplay the next one", async () => {
+    const playerJs = await asset("views/player.js");
+    expect(playerJs).toContain("EpisodeRail");
+    expect(playerJs).toContain("hashchange");
+    expect(playerJs).toContain("goEpisode");
+    expect(playerJs).toContain("autoNext && next");
+    expect(playerJs).toContain("entry.playback?.fileId");
+  });
+
   it("stylesheet keeps the disabled-button affordance", async () => {
     const css = await asset("styles.css");
     expect(css).toContain("color: #151719");

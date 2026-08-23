@@ -260,7 +260,9 @@ function Hero({ entry }) {
               class="secondary"
               onClick=${() => {
                 const fileId =
-                  entry.inspectionCache?.selectedFiles?.[0]?.id ?? 0;
+                  entry.playback?.fileId ??
+                  entry.inspectionCache?.selectedFiles?.[0]?.id ??
+                  0;
                 location.hash =
                   "#/play/" + encodeURIComponent(entry.id) + "/" + fileId;
               }}
