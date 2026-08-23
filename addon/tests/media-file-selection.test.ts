@@ -102,3 +102,33 @@ describe("season numbering edge cases", () => {
     expect(file).toMatchObject({ season: 0, episode: 3 });
   });
 });
+
+describe("extras exclusion", () => {
+  it("prefers real episodes over bonus files that match the episode pattern", () => {
+    const files = [
+      {
+        id: 0,
+        path: "Pack/Featurettes/Season 2/Deleted Scenes/S02E05 The Mole.mkv",
+        length: 2_193_861,
+      },
+      { id: 1, path: "Pack/Season 2/S02E05 The Mole.mkv", length: 800_000_000 },
+      {
+        id: 2,
+        path: "Pack/Season 2/S02E06 Jake and Sophia.mkv",
+        length: 799_000_000,
+      },
+    ];
+    const selected = selectMediaFiles("series", files);
+    expect(selected.map((f) => f.id)).toEqual([1, 2]);
+    expect(
+      selected.find((f) => f.season === 2 && f.episode === 5)?.length,
+    ).toBe(800_000_000);
+  });
+
+  it("falls back to extras when nothing else is playable", () => {
+    const files = [
+      { id: 0, path: "Pack/Extras/S01E01 Featurette.mkv", length: 5_000_000 },
+    ];
+    expect(selectMediaFiles("series", files)).toHaveLength(1);
+  });
+});

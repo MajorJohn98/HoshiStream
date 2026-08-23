@@ -10,6 +10,11 @@ export const VIDEO_EXTENSIONS = new Set([
   ".m4v",
 ]);
 const SAMPLE = /(?:^|[._\s-])(sample|trailer)(?:[._\s-]|$)/i;
+// Bonus-content folders in season packs contain files whose names still match
+// the episode pattern ("Deleted Scenes/S02E05 The Mole.mkv") and would
+// otherwise shadow the real episode.
+const EXTRAS_DIR =
+  /(?:^|\/)(?:featurettes?|extras?|deleted[ ._-]scenes?|behind[ ._-]the[ ._-]scenes|bonus(?:es)?|interviews?|specials?|shorts?)\//i;
 
 export type TorrentFile = { id: number; path: string; length: number };
 export type SelectedFile = TorrentFile & { season?: number; episode?: number };
@@ -65,7 +70,14 @@ export function selectMediaFiles(
     (file) => playable(file) && configured.get(file.id)?.included !== false,
   );
   const withoutSamples = videos.filter((file) => !SAMPLE.test(file.path));
-  const candidates = withoutSamples.length ? withoutSamples : videos;
+  const mainCandidates = withoutSamples.filter(
+    (file) => !EXTRAS_DIR.test(file.path),
+  );
+  const candidates = mainCandidates.length
+    ? mainCandidates
+    : withoutSamples.length
+      ? withoutSamples
+      : videos;
   if (!candidates.length)
     throw new MediaSelectionError("Torrent contains no playable video files");
 
