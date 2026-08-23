@@ -134,44 +134,23 @@ npm run format:check`, a changelog note when shipped, and index.md updates.
 - No build step for the frontend; assets remain static files served from disk.
 - Token/auth model, structured logging rules, and direct-play-first behavior unchanged.
 
-## In-browser video player (appended 2026-08-23)
+## In-browser video player (appended 2026-08-23) — DONE
 
-Goal: watch library entries directly in the management UI — no handoff to mpv/VLC for
-browser-side playback. Architecture impact is minimal: the player consumes URLs the
-server already produces (TorrServer `/play`, `/local/{token}/…`, and — once B1 lands —
-`/hls/{token}/…`). No new server routes are strictly required.
+Shipped with the hls.js fallback path (Video.js v10 was not yet published to
+npm when this was built):
 
-**Choice: Video.js v10** (Apache 2.0). In 2026 the ecosystem consolidated — Plyr,
-Vidstack, and media-chrome merged into Video.js v10, making it the maintained
-open-source player. Modular builds run ~25 kB gzipped (≈38 kB with HLS), usable from
-static files with no build step, which fits the vendoring model.
-
-- Vendor the pinned player build into `assets/manage/vendor/videojs/` next to
-  preact/htm; record the version in `vendor/VERSIONS`. If v10 is not yet GA-stable when
-  this phase starts, fall back to **media-chrome + hls.js** (both stable, tiny,
-  web-component-based, and on the v10 migration path).
-- Extend `manageAssetPath` to serve the vendored player files.
-
-**Player view** (`views/player.js`, route `#/play/{entryId}/{fileId}`):
-
-1. Ask the server for the stream URL (same resolution path Stremio clients use).
-2. Source selection mirrors the TV logic:
-   - MP4/H.264 local or torrent file → native `<video>` source (direct play).
-   - HLS repair/transcode session → HLS source (Safari native; other browsers via the
-     player's HLS module).
-   - MKV/DTS originals do not play in any browser — the UI shows the verdict badge and
-     offers the "Compatible" (tier R/A/V) stream instead. Browser playback is therefore
-     a natural consumer of the transcoding pipeline, not a new requirement on it.
-3. Resume position kept in `localStorage` (browser-side only; no server state).
-
-**Relation to ADR 0008 (bundled mpv):** unchanged. mpv remains the host-playback path
-launched from the app; the browser player covers preview/watch-in-UI. If browser
-playback proves sufficient day-to-day, retiring mpv would be a future ADR, not part of
-this plan.
-
-**Scheduling:** implement after Phase FB2 (needs the HLS routes from B1 for full
-usefulness), before or alongside B2. Direct-play-only preview (MP4 sources) could ship
-as early as F2 if wanted.
+- Vendored **hls.js 1.7.1** into `assets/manage/vendor/hls.js` (pinned in
+  `VERSIONS`); UI chrome is the native `<video controls>` element — smallest
+  possible no-build option, revisit Video.js v10 when it reaches GA.
+- `views/player.js` (`#/play/{entryId}/{fileId}`): resolves streams through
+  the same tokenized stream endpoint the TV uses, so Direct/Compatible/Lower
+  bitrate all appear as switchable chips. HLS plays natively on Safari and
+  through hls.js (lazy-imported) elsewhere; MP4-class sources play natively.
+- Resume positions in `localStorage` per entry+file, saved every 5 s,
+  cleared on ended.
+- "▶ Watch in browser" button in the detail modal title row.
+- The management page CSP gained `media-src 'self' http: https: blob:` and
+  `worker-src blob:` for TorrServer-origin direct play and hls.js MSE.
 
 
 

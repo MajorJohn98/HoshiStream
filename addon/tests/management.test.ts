@@ -140,6 +140,17 @@ describe("management assets", () => {
     expect(sessionsJs).toContain("setInterval(poll, 2000)");
   });
 
+  it("player view resolves streams and supports HLS via vendored hls.js", async () => {
+    const playerJs = await asset("views/player.js");
+    expect(playerJs).toContain('import("../vendor/hls.js")');
+    expect(playerJs).toContain("application/vnd.apple.mpegurl");
+    expect(playerJs).toContain("/stream/");
+    expect(playerJs).toContain("localStorage");
+    const appJs = await asset("app.js");
+    expect(appJs).toContain('import { PlayerView } from "./views/player.js"');
+    expect(appJs).toContain("play: PlayerView");
+  });
+
   it("stylesheet keeps the disabled-button affordance", async () => {
     const css = await asset("styles.css");
     expect(css).toContain("color: #151719");

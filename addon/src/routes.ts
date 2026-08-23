@@ -83,7 +83,10 @@ function noStoreReply(
 function html(response: ServerResponse, value: string): void {
   response.writeHead(200, {
     "content-security-policy":
-      "default-src 'self'; img-src 'self' https: data:; script-src 'self'; style-src 'self'",
+      // media-src covers direct play from TorrServer's origin; blob: and
+      // worker-src blob: cover hls.js's MediaSource playback of repaired
+      // streams in the in-browser player.
+      "default-src 'self'; img-src 'self' https: data:; script-src 'self'; style-src 'self'; media-src 'self' http: https: blob:; worker-src 'self' blob:",
     "content-type": "text/html; charset=utf-8",
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",

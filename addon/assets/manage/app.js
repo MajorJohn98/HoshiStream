@@ -7,6 +7,7 @@ import { LibraryView } from "./views/library.js";
 import { AddView } from "./views/add.js";
 import { StatusView } from "./views/status.js";
 import { SessionsView } from "./views/sessions.js";
+import { PlayerView } from "./views/player.js";
 import { DetailModal } from "./views/detail.js";
 
 const VIEWS = {
@@ -14,6 +15,7 @@ const VIEWS = {
   add: AddView,
   sessions: SessionsView,
   status: StatusView,
+  play: PlayerView,
 };
 
 function currentRoute() {

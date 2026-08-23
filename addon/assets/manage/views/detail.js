@@ -677,6 +677,17 @@ export function DetailModal() {
             </div>
           </div>
           <div class="head-actions">
+            <button
+              class="secondary"
+              onClick=${() => {
+                const fileId =
+                  entry.inspectionCache?.selectedFiles?.[0]?.id ?? 0;
+                location.hash =
+                  "#/play/" + encodeURIComponent(entry.id) + "/" + fileId;
+              }}
+            >
+              ▶ Watch in browser
+            </button>
             <button class="primary" disabled=${playing} onClick=${() => play()}>
               ${
                 playing
