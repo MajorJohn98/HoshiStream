@@ -16,12 +16,10 @@ describe("management page shell", () => {
     expect(managementHtml).toContain(
       '<script type="module" src="/manage-assets/app.js"></script>',
     );
-    expect(managementHtml).toContain('<main id="app">');
+    expect(managementHtml).toContain('<div id="app">');
     expect(managementHtml).toContain('<div id="toast" class="toast">');
-    expect(managementHtml).toContain('data-view="library"');
-    expect(managementHtml).toContain('data-view="add"');
-    expect(managementHtml).toContain('data-view="sessions"');
-    expect(managementHtml).toContain('data-view="status"');
+    // Navigation is rendered by the preact app, not the HTML shell.
+    expect(managementHtml).not.toContain("data-view");
     expect(managementHtml).not.toContain("Settings");
     expect(managementHtml).not.toContain("<style>");
     expect(managementHtml).not.toMatch(/<script>[^<]/);

@@ -1,6 +1,6 @@
-// HoshiStream management UI entry point: preact root, hash router, and nav
-// wiring. Views are preact components in ./views/; the detail modal renders
-// whenever state.selected is set.
+// HoshiStream management UI entry point: preact root, glass top bar, and the
+// hash router. Views are preact components in ./views/; the detail modal
+// renders whenever state.selected is set.
 import { html, render, useEffect, useState } from "./vendor/preact-htm.js";
 import { setState, useStore, load } from "./store.js";
 import { LibraryView } from "./views/library.js";
@@ -18,20 +18,51 @@ const VIEWS = {
   play: PlayerView,
 };
 
+const NAV = [
+  ["library", "Library"],
+  ["add", "Add Media"],
+  ["sessions", "Stream Repair"],
+  ["status", "Status"],
+];
+
 function currentRoute() {
   const match = /^#\/([a-z]+)/.exec(location.hash);
   return match && VIEWS[match[1]] ? match[1] : "library";
 }
 
 export function go(next) {
-  document.querySelector(".modal-backdrop")?.remove();
   location.hash = "#/" + next;
 }
 
-function syncNav(route) {
-  document
-    .querySelectorAll("[data-view]")
-    .forEach((b) => b.classList.toggle("active", b.dataset.view === route));
+function TopBar({ route }) {
+  const { query } = useStore();
+  return html`
+    <header class="bar">
+      <a class="brand" href="#/library" aria-label="HoshiStream">
+        <img src="/assets/hoshistream-logo.png" alt="" />
+        <span>Hoshi<em>Stream</em></span>
+      </a>
+      <nav class="bar-nav">
+        ${NAV.map(
+          ([key, label]) => html`
+            <a class=${route === key ? "on" : ""} href=${"#/" + key}>
+              ${label}
+            </a>
+          `,
+        )}
+      </nav>
+      <input
+        class="bar-search"
+        type="search"
+        placeholder="Search movies and series…"
+        value=${query}
+        onInput=${(event) => {
+          setState({ query: event.target.value });
+          if (currentRoute() !== "library") go("library");
+        }}
+      />
+    </header>
+  `;
 }
 
 function App() {
@@ -47,20 +78,25 @@ function App() {
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
   }, []);
-  useEffect(() => syncNav(route), [route]);
   useEffect(() => {
-    load().catch((e) => setState({ loadError: e.message }));
+    load().catch((error) => setState({ loadError: error.message }));
   }, []);
-  if (store.loadError)
-    return html`<div class="empty">
-      Unable to load HoshiStream: ${store.loadError}
-    </div>`;
-  if (!store.loaded) return html`<div class="empty">Loading…</div>`;
   const View = VIEWS[route];
-  return html`<${View} /><${DetailModal} />`;
+  return html`
+    <${TopBar} route=${route} />
+    <main class=${route === "library" ? "content wide" : "content"}>
+      ${
+        store.loadError
+          ? html`<div class="empty">
+              Unable to load HoshiStream: ${store.loadError}
+            </div>`
+          : !store.loaded
+            ? html`<div class="empty">Loading…</div>`
+            : html`<${View} />`
+      }
+    </main>
+    <${DetailModal} />
+  `;
 }
 
-document
-  .querySelectorAll("[data-view]")
-  .forEach((b) => (b.onclick = () => go(b.dataset.view)));
 render(html`<${App} />`, document.querySelector("#app"));

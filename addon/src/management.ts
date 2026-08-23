@@ -1,5 +1,5 @@
-// The management page is a thin HTML shell; all behavior lives in static ES
-// modules under assets/manage/, served from /manage-assets/.
+// The management page is a thin HTML shell; the entire UI, including the top
+// navigation bar, is rendered by the preact app in assets/manage/app.js.
 export const managementHtml = `<!doctype html>
 <html lang="en">
   <head>
@@ -9,20 +9,7 @@ export const managementHtml = `<!doctype html>
     <link rel="stylesheet" href="/manage-assets/styles.css" />
   </head>
   <body>
-    <div class="shell">
-      <aside>
-        <div class="brand">
-          <img src="/assets/hoshistream-logo.png" alt="HoshiStream" />
-        </div>
-        <nav>
-          <button data-view="library" class="active"><span class="nav-icon">▦</span>Library</button>
-          <button data-view="add"><span class="nav-icon">＋</span>Add Media</button>
-          <button data-view="sessions"><span class="nav-icon">⇄</span>Stream Repair</button>
-          <button data-view="status"><span class="nav-icon">⌁</span>System Status</button>
-        </nav>
-      </aside>
-      <main id="app"></main>
-    </div>
+    <div id="app"></div>
     <div id="toast" class="toast"></div>
     <script type="module" src="/manage-assets/app.js"></script>
   </body>

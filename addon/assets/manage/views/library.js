@@ -2,7 +2,7 @@
 // Stremio catalog refresh flow. The import-review and Stremio modals stay as
 // body-level DOM (outside the preact root), same as the detail modal.
 import { html, useState } from "../vendor/preact-htm.js";
-import { api, esc, notify, token } from "../api.js";
+import { api, esc, headers, notify, token } from "../api.js";
 import { state, setState, useStore, load } from "../store.js";
 import { Shell, Pill } from "../components/shell.js";
 import { classifyLibraryImports } from "../classify-imports.js";
@@ -159,11 +159,123 @@ function openDetail(entry) {
   });
 }
 
-const VERDICT_BADGES = {
-  direct: ["Direct play", "badge"],
-  caution: ["Check device", "badge warn"],
-  risky: ["May not play", "badge warn"],
+const VERDICT_DOTS = {
+  direct: ["Direct play", "v direct"],
+  caution: ["Check device", "v caution"],
+  risky: ["May not play", "v risky"],
 };
+
+async function playHere(entry) {
+  const response = await fetch("/api/player/play", {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ entryId: entry.id }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Playback failed");
+  notify(
+    data.resumedAt
+      ? "Resumed " + data.title + " at " + Math.round(data.resumedAt) + "s"
+      : "Playing " + data.title,
+  );
+}
+
+// The hero spotlights the most recently played title, falling back to the
+// first entry with artwork.
+function heroEntry(entries) {
+  const played = entries
+    .filter((entry) => entry.playback?.positionSeconds)
+    .sort(
+      (a, b) =>
+        Date.parse(b.playback?.updatedAt ?? 0) -
+        Date.parse(a.playback?.updatedAt ?? 0),
+    );
+  return played[0] ?? entries.find((entry) => entry.poster) ?? entries[0];
+}
+
+function Hero({ entry }) {
+  const [starting, setStarting] = useState(false);
+  if (!entry) return null;
+  const verdict = entry.directPlay
+    ? VERDICT_DOTS[entry.directPlay.compatibility]
+    : undefined;
+  const resume = Boolean(entry.playback?.positionSeconds);
+  return html`
+    <section class="hero">
+      <div class="hero-glow"></div>
+      <div class="hero-in">
+        ${
+          entry.poster
+            ? html`<img class="hero-poster" src=${entry.poster} alt="" />`
+            : html`<div class="hero-poster placeholder">★</div>`
+        }
+        <div>
+          <div class="kicker">
+            ${resume ? "Continue watching" : "From your library"}
+          </div>
+          <h1>${entry.name}</h1>
+          <div class="hero-meta">
+            ${
+              verdict
+                ? html`<span class="badge ${entry.directPlay.compatibility}">
+                    ● ${verdict[0]}
+                  </span>`
+                : null
+            }
+            <span class="badge">
+              ${
+                entry.localFilePath || entry.localFolderPath
+                  ? "Local"
+                  : "Torrent"
+              }
+            </span>
+            <span class="muted">
+              ${entry.type === "series" ? "Series" : "Movie"}
+            </span>
+          </div>
+          <div class="hero-cta">
+            <button
+              class="primary"
+              disabled=${starting}
+              onClick=${async () => {
+                setStarting(true);
+                try {
+                  await playHere(entry);
+                } catch (error) {
+                  notify(error.message);
+                } finally {
+                  setStarting(false);
+                }
+              }}
+            >
+              ${
+                starting
+                  ? "Starting…"
+                  : resume
+                    ? "▶ Resume on this Mac"
+                    : "▶ Play on this Mac"
+              }
+            </button>
+            <button
+              class="secondary"
+              onClick=${() => {
+                const fileId =
+                  entry.inspectionCache?.selectedFiles?.[0]?.id ?? 0;
+                location.hash =
+                  "#/play/" + encodeURIComponent(entry.id) + "/" + fileId;
+              }}
+            >
+              Watch in browser
+            </button>
+            <button class="secondary" onClick=${() => openDetail(entry)}>
+              Details
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
 
 const Card = ({ entry }) => html`
   <article class="card" onClick=${() => openDetail(entry)}>
@@ -173,36 +285,32 @@ const Card = ({ entry }) => html`
           ? html`<img src=${entry.poster} alt="" />`
           : html`<span class="placeholder">★</span>`
       }
-      <span class="badge">Available</span>
-    </div>
-    <div class="body">
-      <h2>${entry.name}</h2>
-      <div class="muted">${entry.type === "series" ? "Series" : "Movie"}</div>
-      <span class="badge">
-        ${entry.localFilePath || entry.localFolderPath ? "Local" : "Torrent"}
-      </span>
       ${
         entry.directPlay
           ? html`<span
-              class=${VERDICT_BADGES[entry.directPlay.compatibility][1]}
-            >
-              ${VERDICT_BADGES[entry.directPlay.compatibility][0]}
-            </span>`
+              class=${VERDICT_DOTS[entry.directPlay.compatibility][1]}
+              title=${VERDICT_DOTS[entry.directPlay.compatibility][0]}
+            ></span>`
           : null
       }
-      <div class="actions">
-        <button>Open details</button>
+      <div class="hover-actions">
         <button
           class="danger"
+          title="Delete"
           onClick=${(e) => {
             e.stopPropagation();
             remove(entry.id).catch((error) => notify(error.message));
           }}
         >
-          Delete
+          ✕
         </button>
       </div>
     </div>
+    <h3>${entry.name}</h3>
+    <p class="muted">
+      ${entry.type === "series" ? "Series" : "Movie"} ·${" "}
+      ${entry.localFilePath || entry.localFolderPath ? "Local" : "Torrent"}
+    </p>
   </article>
 `;
 
@@ -227,6 +335,7 @@ export function LibraryView() {
     }
   };
   return html`
+    <${Hero} entry=${heroEntry(entries)} />
     <${Shell}
       title="Your Library"
       actions=${html`
@@ -263,25 +372,16 @@ export function LibraryView() {
         </div>
       `}
     >
-      <div class="statusbar">
-        <${Pill} online>● HoshiStream online<//>
-        <${Pill}
-          online=${status.torrServer?.online}
-          warn=${!status.torrServer?.online}
-        >
-          TorrServer ${status.torrServer?.online ? "online" : "offline"}
-        <//>
-        <${Pill}>${entries.length} titles<//>
-        <${Pill}>Home ${status.homeSpeedMbps} Mbps<//>
-      </div>
       <div class="controls">
-        <input
-          class="field"
-          type="search"
-          placeholder="Search movies and series…"
-          value=${query}
-          onInput=${(e) => setState({ query: e.target.value })}
-        />
+        <div class="statusbar">
+          <${Pill}
+            online=${status.torrServer?.online}
+            warn=${!status.torrServer?.online}
+          >
+            TorrServer ${status.torrServer?.online ? "online" : "offline"}
+          <//>
+          <${Pill}>${entries.length} titles<//>
+        </div>
         <div class="chips">
           ${Object.entries(FILTERS).map(
             ([key, label]) => html`
