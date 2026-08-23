@@ -1,6 +1,6 @@
 # Windows Launcher Plan
 
-Status: W1 shipped (repo suite green; win32-x64 vendor tree assembles from macOS); W2 next
+Status: W1 + W2 shipped (zip builds from macOS: `HoshiStream-0.8.2-win-x64.zip`, 192 MB); W3 needs a Windows machine
 Date: 2026-08-23
 Implements: Phase B of [2026-08-14-native-only-plan.md](2026-08-14-native-only-plan.md), per [ADR 0009](../decisions/0009-native-only-deployment.md)
 
@@ -73,6 +73,7 @@ Per the native-only plan: *"Phase B should not be declared done on the basis of 
 that compiles; it needs a real run."*
 
 Checklist on Windows 10/11 x64:
+- [ ] PowerShell scripts parse and run (no pwsh on the dev Mac — unvalidated syntax)
 - [ ] Fetchers install all three runtimes into `vendor/*/win32-x64`
 - [ ] First run creates `%LOCALAPPDATA%\HoshiStream`, `.env`, and a generated token
 - [ ] TorrServer starts, `/echo` answers; add-on `/ready` answers
