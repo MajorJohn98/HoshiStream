@@ -61,17 +61,25 @@ const binary = join(
 // The vendored, pinned ffmpeg when fetch-ffmpeg.mjs has installed it,
 // otherwise "ffmpeg" from PATH so dev setups keep working.
 async function ffmpegBinary() {
+  return vendoredTool("ffmpeg");
+}
+
+async function ffprobeBinary() {
+  return vendoredTool("ffprobe");
+}
+
+async function vendoredTool(tool) {
   const vendored = join(
     runtimeRoot,
     "vendor/ffmpeg",
     `${process.platform}-${process.arch}`,
-    process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
+    process.platform === "win32" ? `${tool}.exe` : tool,
   );
   try {
     await access(vendored);
     return vendored;
   } catch {
-    return "ffmpeg";
+    return tool;
   }
 }
 
@@ -272,6 +280,7 @@ try {
       : {}),
     TRANSCODE_DIR: join(stateRoot, "transcode"),
     FFMPEG_PATH: await ffmpegBinary(),
+    FFPROBE_PATH: await ffprobeBinary(),
   });
   const { startHoshiStream } = await import(
     new URL("addon/dist/index.js", `${pathToFileURL(runtimeRoot)}/`)

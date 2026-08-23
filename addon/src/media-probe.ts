@@ -3,6 +3,10 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+// The supervisor points this at the vendored ffprobe; a bare "ffprobe" from
+// PATH keeps dev setups working.
+const FFPROBE = process.env.FFPROBE_PATH ?? "ffprobe";
+
 type Probe = {
   format?: { duration?: string; bit_rate?: string; format_name?: string };
   streams?: Array<{
@@ -41,8 +45,11 @@ export async function probeMedia(
   input: string,
   file: { id: number; length: number; localPath?: string },
 ) {
+  // Torrent-backed probes read through TorrServer, which may need a minute to
+  // fetch the header pieces from a cold swarm; local files answer instantly.
+  const timeout = input.startsWith("http") ? 180_000 : 45_000;
   const { stdout } = await execFileAsync(
-    "ffprobe",
+    FFPROBE,
     [
       "-v",
       "error",
@@ -52,7 +59,7 @@ export async function probeMedia(
       "json",
       input,
     ],
-    { timeout: 45_000, maxBuffer: 1_000_000 },
+    { timeout, maxBuffer: 1_000_000 },
   );
   return summarizeProbe(JSON.parse(stdout) as Probe, file.length);
 }
