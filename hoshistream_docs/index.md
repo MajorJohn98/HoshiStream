@@ -53,4 +53,4 @@
 - [changelog/0.5.0-tunnel-lan-detection.md](changelog/0.5.0-tunnel-lan-detection.md) — Cloudflare Tunnel support with LAN-aware stream URLs for at-home clients.
 - [changelog/0.7.0-native-only.md](changelog/0.7.0-native-only.md) — Docker removed; native app is the only deployment mode, config retargeted to real paths, TorrServer defaults shipped with the app.
 - [changelog/0.6.0-performance.md](changelog/0.6.0-performance.md) — TorrServer throughput tuning, hot-path caching, larger read buffers, stream prewarming, direct-play detection, a built-in mpv player, and Windows vendoring groundwork.
-- [changelog/0.8.0-ui-and-stream-repair.md](changelog/0.8.0-ui-and-stream-repair.md) — Preact management UI rebuild and opt-in real-time stream repair (remux, audio fix, hardware video re-encode).
+- [changelog/0.8.0-ui-and-stream-repair.md](changelog/0.8.0-ui-and-stream-repair.md) — Preact rebuild + Cinema redesign of the management UI, opt-in stream repair, mDNS LAN discovery, and the in-browser player.

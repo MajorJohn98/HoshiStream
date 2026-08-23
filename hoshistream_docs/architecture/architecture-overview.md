@@ -40,9 +40,10 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 | `media-file-selection.ts` | Playable-extension filtering, series episode mapping (`S01E02`, `1x02`) |
 | `media-probe.ts` | ffprobe-based resolution/codec/bitrate probe with speed verdict |
 | `transcode.ts` | Opt-in stream repair (ADR 0010): ffmpeg HLS sessions for remux, audio fix, and hardware video re-encode |
+| `mdns.ts` | LAN discovery (ADR 0011): dependency-free mDNS responder advertising `_hoshistream._tcp` |
 | `local-media.ts` | Local file/folder validation, managed uploads, range-request serving |
 | `native-picker.ts` | Native Finder picker bridge over the supervisor Unix socket |
-| `management.ts` | Embedded single-page management UI (HTML) |
+| `management.ts` | Thin HTML shell for the management UI; views live in `assets/manage/` as preact components (no build step) |
 | `security.ts` | Constant-time token comparison (SHA-256 digest + `timingSafeEqual`), bearer parsing |
 
 ## Data flow: playing a torrent entry
@@ -75,6 +76,7 @@ Two processes are always supervised together:
 | `<state dir>/media/` | Browser-uploaded managed media (`UPLOAD_ROOT`) |
 | `<state dir>/torrserver/config/settings.json` | Cache size, connection, and cleanup settings |
 | `<state dir>/torrserver/torrents/` | TorrServer disk cache |
+| `<state dir>/transcode/` | Stream-repair HLS sessions (swept at startup) |
 | `~/Library/Logs/HoshiStream/server.log` | Server logs (macOS) |
 
 `<state dir>` is `~/Library/Application Support/HoshiStream` on macOS and

@@ -1,6 +1,6 @@
 export const manifest = {
   id: "com.john.private-torrent-streamer",
-  version: "0.2.0",
+  version: "0.8.0",
   name: "HoshiStream",
   description: "Private local library for legally owned or authorized media",
   resources: ["catalog", "meta", "stream"],
