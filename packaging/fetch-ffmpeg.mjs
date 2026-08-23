@@ -12,7 +12,11 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const lock = JSON.parse(
   await readFile(join(root, "packaging/ffmpeg-lock.json"), "utf8"),
 );
-const target = `${process.platform}-${process.arch}`;
+// HOSHISTREAM_TARGET (e.g. win32-x64) assembles another platform's vendor
+// tree from this machine; defaults to the host platform.
+const target =
+  process.env.HOSHISTREAM_TARGET ?? `${process.platform}-${process.arch}`;
+const targetPlatform = target.split("-")[0];
 const pin = lock[target];
 if (!pin) throw new Error(`No pinned ffmpeg build for ${target}`);
 
@@ -30,7 +34,7 @@ async function download(asset) {
   return bytes;
 }
 
-if (process.platform === "darwin") {
+if (targetPlatform === "darwin") {
   // Riedl builds ship one zip per tool containing a single binary.
   for (const tool of ["ffmpeg", "ffprobe"]) {
     const archive = join(outputDir, `${tool}.zip`);

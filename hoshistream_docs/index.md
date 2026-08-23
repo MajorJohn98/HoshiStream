@@ -45,6 +45,7 @@
 - [plans/desktop-app-strategy.md](plans/desktop-app-strategy.md) — Installed-app strategy: native supervisor, bundled runtimes, ship order.
 - [plans/2026-08-23-realtime-transcoding-plan.md](plans/2026-08-23-realtime-transcoding-plan.md) — Opt-in real-time stream repair: pipeline, session model, seek handling, phased rollout.
 - [plans/2026-08-23-frontend-redesign-and-transcoding-plan.md](plans/2026-08-23-frontend-redesign-and-transcoding-plan.md) — Preact+htm management UI redesign, transcoding UI surface, and the no-Docker dev loop.
+- [plans/2026-08-23-windows-launcher-plan.md](plans/2026-08-23-windows-launcher-plan.md) — Windows v1: portability fixes, PowerShell launcher, zip packaging, on-hardware verification.
 
 ## Changelog
 

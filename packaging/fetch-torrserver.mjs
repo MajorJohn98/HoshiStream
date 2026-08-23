@@ -7,7 +7,11 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const lock = JSON.parse(
   await readFile(join(root, "packaging/torrserver-lock.json"), "utf8"),
 );
-const target = `${process.platform}-${process.arch}`;
+// HOSHISTREAM_TARGET (e.g. win32-x64) assembles another platform's vendor
+// tree from this machine; defaults to the host platform.
+const target =
+  process.env.HOSHISTREAM_TARGET ?? `${process.platform}-${process.arch}`;
+const targetPlatform = target.split("-")[0];
 const asset = lock[target];
 if (!asset) throw new Error(`No pinned TorrServer binary for ${target}`);
 
@@ -15,7 +19,7 @@ const output = join(
   root,
   "vendor/torrserver",
   target,
-  process.platform === "win32" ? "TorrServer.exe" : "TorrServer",
+  targetPlatform === "win32" ? "TorrServer.exe" : "TorrServer",
 );
 const temporary = `${output}.download`;
 await mkdir(dirname(output), { recursive: true });

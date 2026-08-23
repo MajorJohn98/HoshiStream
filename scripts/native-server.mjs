@@ -55,7 +55,7 @@ const binary = join(
   runtimeRoot,
   "vendor/torrserver",
   `${process.platform}-${process.arch}`,
-  "TorrServer",
+  process.platform === "win32" ? "TorrServer.exe" : "TorrServer",
 );
 
 // The vendored, pinned ffmpeg when fetch-ffmpeg.mjs has installed it,
@@ -279,7 +279,11 @@ try {
     LIBRARY_PATH: libraryPath,
     MEDIA_ROOT: mediaRoot,
     UPLOAD_ROOT: uploadRoot,
-    NATIVE_PICKER_SOCKET: join(stateRoot, "run", "supervisor.sock"),
+    // Unix-socket Finder picker; Windows has no supervisor socket, so the
+    // add-on reports the picker unavailable and the UI uses browser paths.
+    ...(process.platform !== "win32"
+      ? { NATIVE_PICKER_SOCKET: join(stateRoot, "run", "supervisor.sock") }
+      : {}),
     HOME_SPEED_MBPS: projectEnvironment.HOME_SPEED_MBPS ?? "10",
     PLAYER: projectEnvironment.PLAYER ?? "auto",
     ...(projectEnvironment.PLAYER_PATH
