@@ -25,23 +25,42 @@ is also the artifact a notarization ticket is stapled to once a Developer ID exi
 
 ## What the recipient does
 
-1. Drag `HoshiStream.app` onto `Applications`.
-2. Clear the quarantine flag once:
+Because this build carries an ad-hoc signature rather than an Apple Developer ID, macOS
+quarantines it. Dragging it into Applications and double-clicking is blocked: macOS 15 and
+later report "Apple could not verify HoshiStream is free of malware", earlier versions
+report that the app is damaged.
 
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/HoshiStream.app
-   ```
+Clear the quarantine flag **before** the app reaches `/Applications`:
 
-3. Launch it from Applications. It appears in the menu bar, not the Dock.
+```bash
+hdiutil attach ~/Downloads/HoshiStream-<version>.dmg
+ditto /Volumes/HoshiStream/HoshiStream.app ~/Downloads/HoshiStream.app
+xattr -dr com.apple.quarantine ~/Downloads/HoshiStream.app
+mv ~/Downloads/HoshiStream.app /Applications/
+hdiutil detach /Volumes/HoshiStream
+open /Applications/HoshiStream.app
+```
 
-Step 2 is required because this build carries an ad-hoc signature rather than an Apple
-Developer ID. Gatekeeper quarantines the app and its nested binaries, and typically reports
-"HoshiStream is damaged and can't be opened" — a dialog with no "Open Anyway" button, so
-the Privacy & Security override does not help. The `-r` flag matters: it clears the flag
-from the bundled executables, not just the outer bundle.
+The order is not incidental. Running `xattr` against an app already inside `/Applications`
+fails with "Operation not permitted" on every file it touches, because macOS Sonoma and
+later require the App Management permission to modify an installed bundle. The command
+appears to run, changes nothing, and the app still refuses to launch. Granting Terminal
+App Management under **System Settings → Privacy & Security** also works, but asking a
+tester to hand a terminal that privilege is a worse trade than staging the copy.
+
+The `-r` flag matters as well: it clears the flag from the bundled `node`, `TorrServer`,
+and `ffmpeg` binaries rather than only the outer bundle. On a fresh copy this clears
+around ten thousand files.
+
+Without a Terminal, drag the app to Applications, double-click it, dismiss the warning,
+then approve it under **System Settings → Privacy & Security → Open Anyway**.
 
 Installing to `/Applications` also avoids Gatekeeper path randomization, which runs a
 quarantined app from a read-only temporary location where it cannot see its own resources.
+
+Note that `spctl --assess` continues to report `rejected` after the flag is cleared. That
+is expected: the assessment reflects the missing Developer ID signature, not a launch
+block. Without the quarantine flag, Gatekeeper does not consult it.
 
 ## First run
 

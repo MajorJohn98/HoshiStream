@@ -1,27 +1,42 @@
 HoshiStream — install notes
 ===========================
 
-1. Drag HoshiStream.app onto the Applications folder in this window.
+This build is signed with an ad-hoc signature rather than an Apple Developer
+ID, so macOS quarantines it. Dragging it to Applications and double-clicking
+will be blocked with "Apple could not verify HoshiStream is free of malware"
+(or, on older macOS, a claim that the app is damaged).
 
-2. This build is signed with an ad-hoc signature rather than an Apple
-   Developer ID, so macOS quarantines it and may report it as "damaged".
-   Clear the quarantine flag once, in Terminal:
+Install it with Terminal instead. Copy and paste this whole block:
 
-       xattr -dr com.apple.quarantine /Applications/HoshiStream.app
+    ditto /Volumes/HoshiStream/HoshiStream.app ~/Downloads/HoshiStream.app
+    xattr -dr com.apple.quarantine ~/Downloads/HoshiStream.app
+    mv ~/Downloads/HoshiStream.app /Applications/
+    open /Applications/HoshiStream.app
 
-   The -r matters: it also clears the flag from the bundled node,
-   TorrServer, and ffmpeg binaries.
+The order matters: macOS blocks the xattr command once the app is already in
+/Applications, so the flag has to be cleared while the copy is still in
+Downloads.
 
-3. Launch HoshiStream from Applications. It appears in the menu bar, not
-   the Dock. The first launch creates:
+No Terminal? Drag HoshiStream.app onto the Applications folder in this
+window, double-click it, dismiss the warning, then go to
+System Settings -> Privacy & Security and click "Open Anyway".
 
-       ~/Library/Application Support/HoshiStream
+After launching
+---------------
 
-   containing a .env with a freshly generated access token, plus the
-   library and TorrServer data.
+HoshiStream appears in the menu bar, not the Dock. macOS will ask to allow
+incoming connections — accept, or other devices on your network cannot reach
+it.
 
-4. Open the menu-bar icon and choose "Open HoshiStream" for the library,
-   or "Copy Stremio URL" to add the add-on to Nuvio or Stremio.
+The first launch creates:
+
+    ~/Library/Application Support/HoshiStream
+
+containing a .env with a freshly generated access token, plus the library and
+TorrServer data. Nothing needs configuring first.
+
+Open the menu-bar icon and choose "Open HoshiStream" for the library, or
+"Copy Stremio URL" to add the add-on to Nuvio or Stremio.
 
 To point the app at a different media folder, edit MEDIA_DIR in
 ~/Library/Application Support/HoshiStream/.env and choose "Restart Server".

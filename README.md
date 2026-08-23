@@ -45,18 +45,24 @@ Node.js 22 and TorrServer are vendored into the app bundle; a host Node installa
 
 The released `.dmg` is the normal way to install, on your own Mac or someone else's.
 
-1. Open `HoshiStream-<version>.dmg` and drag **HoshiStream.app** onto **Applications**.
-2. Clear the quarantine flag once, since the build carries an ad-hoc signature rather than an Apple Developer ID:
+Because the build carries an ad-hoc signature rather than an Apple Developer ID, macOS quarantines it. Dragging it straight into Applications and double-clicking is blocked: macOS 15 and later report "Apple could not verify HoshiStream is free of malware", and earlier versions report that the app is damaged.
 
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/HoshiStream.app
-   ```
+Clear the quarantine flag **before** the app reaches `/Applications`:
 
-   Without this, macOS usually reports "HoshiStream is damaged and can't be opened" — a dialog with no "Open Anyway" button, so the Privacy & Security override does not help. The `-r` matters: it also clears the flag from the bundled `node`, `TorrServer`, and `ffmpeg` binaries.
+```bash
+hdiutil attach ~/Downloads/HoshiStream-<version>.dmg
+ditto /Volumes/HoshiStream/HoshiStream.app ~/Downloads/HoshiStream.app
+xattr -dr com.apple.quarantine ~/Downloads/HoshiStream.app
+mv ~/Downloads/HoshiStream.app /Applications/
+hdiutil detach /Volumes/HoshiStream
+open /Applications/HoshiStream.app
+```
 
-3. Launch it from Applications. It appears in the menu bar, not the Dock.
+The order matters. Running `xattr` on an app already inside `/Applications` fails with "Operation not permitted" on every file, because macOS Sonoma and later require the App Management permission to modify an installed bundle — so the flag stays and the app still refuses to launch. The `-r` matters too: it clears the flag from the bundled `node`, `TorrServer`, and `ffmpeg` binaries, not just the outer bundle.
 
-No configuration is needed first. The first launch creates `~/Library/Application Support/HoshiStream` containing a `.env` (mode `0600`) with a freshly generated `ACCESS_TOKEN`, a `MEDIA_DIR` defaulting to `~/Movies`, an empty library, and TorrServer's data directories.
+Without a Terminal, drag the app to Applications, double-click it, dismiss the warning, then approve it under **System Settings → Privacy & Security → Open Anyway**.
+
+The app appears in the menu bar, not the Dock. No configuration is needed first: the first launch creates `~/Library/Application Support/HoshiStream` containing a `.env` (mode `0600`) with a freshly generated `ACCESS_TOKEN`, a `MEDIA_DIR` defaulting to `~/Movies`, an empty library, and TorrServer's data directories.
 
 See [guides/distributing-macos-app.md](hoshistream_docs/guides/distributing-macos-app.md) for building a disk image and the signing limitations.
 
