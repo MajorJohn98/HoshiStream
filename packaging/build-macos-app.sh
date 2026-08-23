@@ -10,7 +10,8 @@ RUNTIME="$CONTENTS/Resources/runtime"
 (cd "$ROOT/addon" && npm run build)
 rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$RUNTIME/bin" "$RUNTIME/scripts" \
-  "$RUNTIME/addon" "$RUNTIME/packaging" "$RUNTIME/vendor/torrserver/darwin-arm64"
+  "$RUNTIME/addon" "$RUNTIME/packaging" "$RUNTIME/vendor/torrserver/darwin-arm64" \
+  "$RUNTIME/vendor/ffmpeg/darwin-arm64"
 
 # Prefer a full Xcode when present, otherwise fall back to the Command Line
 # Tools, which carry an SDK sufficient for AppKit and ServiceManagement.
@@ -38,6 +39,17 @@ cp -R "$ROOT/addon/assets" "$RUNTIME/addon/assets"
 cp -R "$ROOT/addon/node_modules" "$RUNTIME/addon/node_modules"
 cp "$ROOT/vendor/torrserver/darwin-arm64/TorrServer" \
   "$RUNTIME/vendor/torrserver/darwin-arm64/TorrServer"
+
+# Vendored ffmpeg/ffprobe for stream repair (ADR 0010); optional so the app
+# still builds before fetch-ffmpeg.mjs has run — repair then uses PATH.
+if [ -x "$ROOT/vendor/ffmpeg/darwin-arm64/ffmpeg" ]; then
+  cp "$ROOT/vendor/ffmpeg/darwin-arm64/ffmpeg" \
+    "$RUNTIME/vendor/ffmpeg/darwin-arm64/ffmpeg"
+  cp "$ROOT/vendor/ffmpeg/darwin-arm64/ffprobe" \
+    "$RUNTIME/vendor/ffmpeg/darwin-arm64/ffprobe"
+  chmod 755 "$RUNTIME/vendor/ffmpeg/darwin-arm64/ffmpeg" \
+    "$RUNTIME/vendor/ffmpeg/darwin-arm64/ffprobe"
+fi
 
 chmod 755 "$CONTENTS/MacOS/HoshiStream" "$RUNTIME/bin/node" \
   "$RUNTIME/vendor/torrserver/darwin-arm64/TorrServer"
