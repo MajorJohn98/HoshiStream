@@ -10,7 +10,7 @@ Full project documentation lives in [`hoshistream_docs/`](hoshistream_docs/index
 
 ```text
 Nuvio on Mac ───────┐
-                    ├── LAN ──> HoshiStream :7000 ──> TorrServer API
+                    ├── LAN ──> HoshiStream :7001 ──> TorrServer API
 Nuvio on webOS TV ──┘                  │
                                       └── returns direct :8090/play/... URL
                                                        │
@@ -29,7 +29,7 @@ The five MVP implementation phases are complete:
 
 No graphical dashboard, database, external metadata provider, torrent search, or transcoder is included.
 
-Live Mac/webOS playback still requires testing with media you are authorized to access. No test magnet is bundled, and macOS AirPlay Receiver must release port 7000 as described below.
+Live Mac/webOS playback still requires testing with media you are authorized to access. No test magnet is bundled.
 
 ## Prerequisites
 
@@ -37,49 +37,50 @@ Live Mac/webOS playback still requires testing with media you are authorized to 
 - Mac and playback devices on the same trusted LAN
 - Nuvio on the LG webOS TV, or nothing at all to watch on the Mac itself
 
-Node.js 22 and TorrServer are vendored into the app bundle; a host Node installation is only needed for local development.
+Node.js 22 and TorrServer are vendored into the app bundle; a host Node installation is only needed for local development or to build from source.
 
-## Configure
+## Install
 
-```bash
-cp .env.example .env
-./scripts/find-lan-ip.sh
-```
+### From a disk image
 
-Edit `.env`:
+The released `.dmg` is the normal way to install, on your own Mac or someone else's.
 
-```env
-ADDON_PORT=7000
-TORRSERVER_INTERNAL_URL=http://torrserver:8090
-PUBLIC_TORRSERVER_URL=http://192.168.1.50:8090
-PUBLIC_ADDON_URL=http://192.168.1.50:7000
-ACCESS_TOKEN=replace-with-a-long-random-secret
-LIBRARY_PATH=/data/library.json
-LOG_LEVEL=info
-HOME_SPEED_MBPS=10
-```
+1. Open `HoshiStream-<version>.dmg` and drag **HoshiStream.app** onto **Applications**.
+2. Clear the quarantine flag once, since the build carries an ad-hoc signature rather than an Apple Developer ID:
 
-Use the Mac’s current LAN IP for both public URLs. Generate a token with:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/HoshiStream.app
+   ```
 
-```bash
-openssl rand -hex 32
-```
+   Without this, macOS usually reports "HoshiStream is damaged and can't be opened" — a dialog with no "Open Anyway" button, so the Privacy & Security override does not help. The `-r` matters: it also clears the flag from the bundled `node`, `TorrServer`, and `ffmpeg` binaries.
 
-## Run
+3. Launch it from Applications. It appears in the menu bar, not the Dock.
 
-### Install
+No configuration is needed first. The first launch creates `~/Library/Application Support/HoshiStream` containing a `.env` (mode `0600`) with a freshly generated `ACCESS_TOKEN`, a `MEDIA_DIR` defaulting to `~/Movies`, an empty library, and TorrServer's data directories.
 
-The native menu-bar app bundles Node and TorrServer, preserves the library and
-tokenized URLs, and supervises both services.
+See [guides/distributing-macos-app.md](hoshistream_docs/guides/distributing-macos-app.md) for building a disk image and the signing limitations.
+
+### From source
 
 ```bash
+cd addon && npm ci && cd ..
 node packaging/fetch-node-runtime.mjs
 node packaging/fetch-torrserver.mjs
+node packaging/fetch-ffmpeg.mjs
 ./packaging/build-macos-app.sh
-mkdir -p ~/Applications
-ditto build/HoshiStream.app ~/Applications/HoshiStream.app
-open ~/Applications/HoshiStream.app
+ditto build/HoshiStream.app /Applications/HoshiStream.app
+open /Applications/HoshiStream.app
 ```
+
+Runtime downloads are SHA-256 pinned by the lockfiles in `packaging/`. To produce a disk image for other Macs, run `./packaging/build-macos-dmg.sh` afterwards; it prints the path to `build/HoshiStream-<version>.dmg`.
+
+A build normally resolves its state directory at runtime, which is what makes the bundle portable. To pin a development build to a checkout instead:
+
+```bash
+HOSHISTREAM_PROJECT_ROOT=/path/to/checkout ./packaging/build-macos-app.sh
+```
+
+### Using the app
 
 Use the menu-bar icon to open HoshiStream, copy the Stremio URL, restart the
 server, reveal logs, enable Start at Login, or quit cleanly. Mutable state is
@@ -93,6 +94,20 @@ To watch on the Mac itself, use **Play on this computer** on an entry's playback
 tab. HoshiStream drives mpv directly, so no TV client is needed locally
 ([ADR 0008](hoshistream_docs/decisions/0008-bundled-mpv-player-over-json-ipc.md)).
 
+## Configure
+
+The app generates its own `.env` on first launch, so this is only for changing defaults. Edit `~/Library/Application Support/HoshiStream/.env` and choose **Restart Server** from the menu bar:
+
+```env
+ADDON_PORT=7001
+ACCESS_TOKEN=generated-on-first-launch
+MEDIA_DIR=/Users/your-name/Movies
+HOME_SPEED_MBPS=10
+```
+
+The app derives everything else — `TORRSERVER_INTERNAL_URL`, the public LAN URLs, the library path, and the vendored ffmpeg paths — from the detected LAN address and install layout. The remaining variables in `.env.example` apply only when running the add-on directly with `npm start`. To confirm the LAN address the app will advertise, run `./scripts/find-lan-ip.sh`.
+
+
 ## Add media
 
 Every management request requires `Authorization: Bearer`:
@@ -100,7 +115,7 @@ Every management request requires `Authorization: Bearer`:
 For a local web interface, open:
 
 ```text
-http://127.0.0.1:7000/manage/ACCESS_TOKEN
+http://127.0.0.1:7001/manage/ACCESS_TOKEN
 ```
 
 Set `MEDIA_DIR` in `.env` to the Mac folder containing your videos. Restart
@@ -121,23 +136,23 @@ HoshiStream storage. Deleting a Finder-linked entry never deletes its source.
 export ACCESS_TOKEN='the-value-from-your-.env'
 
 curl -H "Authorization: Bearer $ACCESS_TOKEN" \
-  http://127.0.0.1:7000/api/library
+  http://127.0.0.1:7001/api/library
 
 curl -X POST \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"type":"movie","name":"Authorized Movie","magnetUri":"magnet:?xt=urn:btih:YOUR_INFO_HASH"}' \
-  http://127.0.0.1:7000/api/library
+  http://127.0.0.1:7001/api/library
 ```
 
-For a `.torrent` file, place it under `data/` and use its mounted container path:
+For a `.torrent` file, give an absolute path on the Mac:
 
 ```bash
 curl -X POST \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"type":"series","name":"Authorized Series","torrentFilePath":"/data/series.torrent"}' \
-  http://127.0.0.1:7000/api/library
+  -d '{"type":"series","name":"Authorized Series","torrentFilePath":"/Users/your-name/Downloads/series.torrent"}' \
+  http://127.0.0.1:7001/api/library
 ```
 
 Update, inspect, or delete an entry:
@@ -147,15 +162,15 @@ curl -X PATCH \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"description":"My private copy","preferredFileIndex":1}' \
-  'http://127.0.0.1:7000/api/library/hoshi%3AITEM_UUID'
+  'http://127.0.0.1:7001/api/library/hoshi%3AITEM_UUID'
 
 curl -X POST \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
-  'http://127.0.0.1:7000/api/library/hoshi%3AITEM_UUID/inspect'
+  'http://127.0.0.1:7001/api/library/hoshi%3AITEM_UUID/inspect'
 
 curl -X DELETE \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
-  'http://127.0.0.1:7000/api/library/hoshi%3AITEM_UUID'
+  'http://127.0.0.1:7001/api/library/hoshi%3AITEM_UUID'
 ```
 
 Inspection may take up to 30 seconds while TorrServer obtains metadata. File IDs are TorrServer’s one-based IDs.
@@ -168,7 +183,7 @@ duration, average bitrate, and a recommended speed with 50% headroom. Set
 Install the tokenized manifest on both clients:
 
 ```text
-http://MAC_LAN_IP:7000/addon/ACCESS_TOKEN/manifest.json
+http://MAC_LAN_IP:7001/addon/ACCESS_TOKEN/manifest.json
 ```
 
 URL-encode the token if it contains URL-reserved punctuation. The untokenized `/manifest.json` intentionally returns HTTP 401.
@@ -243,7 +258,7 @@ Logs are structured JSON for startup, library mutations, torrent inspection, fil
 
 ## Troubleshooting
 
-**Port 7000 returns `Server: AirTunes` or HTTP 403:** macOS AirPlay Receiver owns the port. Turn off **System Settings → General → AirDrop & Handoff → AirPlay Receiver**, then restart the stack. Alternatively, change `ADDON_PORT`.
+**Port returns `Server: AirTunes` or HTTP 403:** macOS AirPlay Receiver owns port 7000. The app defaults to 7001 to avoid it; if you set `ADDON_PORT=7000`, either turn off **System Settings → General → AirDrop & Handoff → AirPlay Receiver** and restart the app, or pick another port.
 
 **Manifest works on the Mac but not the TV:** confirm the public URLs use the LAN IP, not `127.0.0.1` or `torrserver`; verify both devices are on the same non-isolated network.
 
@@ -274,4 +289,4 @@ The optional integration test checks only health and the empty/list response; it
 
 Remove one inactive torrent through TorrServer’s UI, or quit the app from the menu bar to stop both services.
 
-To uninstall, quit the app, delete `~/Applications/HoshiStream.app`, and remove this project directory. All mutable state lives in `~/Library/Application Support/HoshiStream` (library, managed media, TorrServer config and cache) with logs in `~/Library/Logs/HoshiStream`. Deleting those permanently removes the local library, configuration, and temporary cache.
+To uninstall, quit the app from the menu bar, then delete `/Applications/HoshiStream.app`. All mutable state lives in `~/Library/Application Support/HoshiStream` (library, managed media, TorrServer config and cache) with logs in `~/Library/Logs/HoshiStream`. Those survive an app deletion, so a reinstall keeps your library; remove them too for a clean slate, which permanently deletes the local library, configuration, and cache.
