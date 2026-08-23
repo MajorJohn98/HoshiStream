@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let status = NSMenuItem(title: "Starting…", action: nil, keyEquivalent: "")
     private let startItem = NSMenuItem(title: "Restart Server", action: #selector(restartServer), keyEquivalent: "r")
+    private let speedItem = NSMenuItem(title: "Check Speed", action: #selector(checkSpeed), keyEquivalent: "s")
     private let loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleLogin), keyEquivalent: "")
     private var service: Process?
     private var healthTimer: Timer?
@@ -81,12 +82,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loginItem.target = self
 
         let menu = NSMenu()
+        // Manual enablement so the speed item can disable itself mid-test.
+        menu.autoenablesItems = false
         menu.addItem(status)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open HoshiStream", action: #selector(openLibrary), keyEquivalent: "o").target = self
         menu.addItem(withTitle: "Copy Stremio URL", action: #selector(copyStremioURL), keyEquivalent: "c").target = self
         menu.addItem(startItem)
-        menu.addItem(withTitle: "Check Speed", action: #selector(checkSpeed), keyEquivalent: "s").target = self
+        speedItem.target = self
+        menu.addItem(speedItem)
         menu.addItem(loginItem)
         menu.addItem(withTitle: "Show Logs", action: #selector(showLogs), keyEquivalent: "l").target = self
         menu.addItem(.separator())
@@ -240,13 +244,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func checkSpeed() {
         guard let token else { return setStatus("Error — missing access token") }
+        speedItem.isEnabled = false
+        speedItem.title = "Measuring speed…"
         setStatus("Measuring connection speed…")
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(addonPort)/api/speedtest")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 30
-        URLSession.shared.dataTask(with: request) { [weak self] _, _, _ in
-            DispatchQueue.main.async { self?.checkHealth() }
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            let ok = (response as? HTTPURLResponse)?.statusCode == 200
+            let mbps = data.flatMap {
+                try? JSONDecoder().decode(SpeedResult.self, from: $0)
+            }?.mbps
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.speedItem.isEnabled = true
+                self.speedItem.title = ok
+                    ? mbps.map { "Check Speed — \($0) Mbps just now" } ?? "Check Speed"
+                    : "Check Speed — test failed"
+                self.checkHealth()
+            }
         }.resume()
     }
 
@@ -351,6 +368,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return .terminateLater
     }
+}
+
+private struct SpeedResult: Decodable {
+    let mbps: Double
 }
 
 private struct ServerStatus: Decodable {
