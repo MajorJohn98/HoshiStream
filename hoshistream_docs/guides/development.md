@@ -14,6 +14,23 @@ npm run format:check   # prettier
 npm run build          # tsc → dist/
 ```
 
+## Fast dev loop (no Docker, no app build)
+
+```bash
+cp ../.env.example ../.env    # once; set ACCESS_TOKEN and the URLs
+npm run dev:tsc               # terminal 1: tsc --watch
+npm run dev                   # terminal 2: node --watch --env-file=.env dist/index.js
+```
+
+The server restarts automatically when `dist/` changes; management-UI assets
+(`assets/manage/`) are served from disk, so UI edits need only a browser
+refresh. Note that `node src/index.ts` does not work directly — source
+imports use `.js` specifiers, which Node's type stripping does not remap.
+
+Note: when testing the built menu-bar app instead, it reads its own `.env`
+from the state dir (`~/Library/Application Support/HoshiStream/.env`), not
+the repo's.
+
 Optional TorrServer integration test (health + empty list only; downloads nothing):
 
 ```bash

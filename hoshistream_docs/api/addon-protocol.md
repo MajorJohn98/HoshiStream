@@ -49,4 +49,13 @@ For torrent entries, the stream `url` is TorrServer's `/play/{hash}/{id}` with i
 }
 ```
 
-Series episodes are resolved from filename patterns (`S01E02`, `1x02`) or `fileOverrides`; a missing match returns `{"streams":[]}`.
+Series episodes are resolved from filename patterns (`S01E02`, `1x02`) or `fileOverrides`; files under bonus-content folders (featurettes, deleted scenes, extras) are excluded when real episodes exist. A missing match returns `{"streams":[]}`.
+
+## Repaired streams (ADR 0010)
+
+When `TRANSCODE_ENABLED=true`, the stream list can contain additional entries beside the direct one:
+
+- **`Compatible • …`** — offered when the probe verdict predicts a playback failure (MKV/AVI container, DTS/TrueHD-class audio, or an undecodable video codec) or when the entry sets `forceTranscode`. The `url` points at the add-on's `/hls/{token}/{entryId}/{fileId}/auto/index.m3u8`; the repair tier (copy-only remux, AC3 audio fix, or hardware video re-encode) is chosen server-side from the verdict.
+- **`Lower bitrate • N Mbps`** — offered to remote clients (a `CF-Connecting-IP` that does not match the server's public IP) when the original bitrate exceeds `TRANSCODE_VIDEO_BITRATE_MBPS`. Uses the `/video/` variant, a hardware re-encode at the configured bitrate.
+
+Repaired playlists are EVENT-type HLS and show no total duration until the session finishes encoding the whole file.

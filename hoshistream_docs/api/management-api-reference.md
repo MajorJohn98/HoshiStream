@@ -68,13 +68,22 @@ A successful probe also returns `directPlay` and persists it on the library entr
 }
 ```
 
-`compatibility` is `direct`, `caution`, or `risky`. It reflects codec support on typical TV players plus a link-capacity check against `HOME_SPEED_MBPS`, and is cleared whenever the source or file selection changes. Non-`direct` verdicts are appended to the Stremio stream description so they are visible at selection time. HoshiStream never transcodes; this is advisory only.
+`compatibility` is `direct`, `caution`, or `risky`. It reflects codec support on typical TV players plus a link-capacity check against `HOME_SPEED_MBPS`, and is cleared whenever the source or file selection changes. Non-`direct` verdicts are appended to the Stremio stream description so they are visible at selection time. Direct play is never re-encoded; when stream repair is enabled (ADR 0010), non-direct verdicts additionally trigger a "Compatible" stream (see the add-on protocol reference). Entries also accept a `forceTranscode` boolean via `PATCH`, which always offers the Compatible stream.
+
+## Stream repair sessions
+
+Available only when `TRANSCODE_ENABLED=true`; the UI's "Stream Repair" view is built on these.
+
+| Method & path | Description |
+|---|---|
+| `GET /api/transcode/sessions` | Active repair sessions: `{entryId, fileId, variant, tier, startedAt, lastAccess, state}` with `state` of `running`, `finished` (encode done, still serving), or `failed` |
+| `DELETE /api/transcode/sessions/{entryId}/{fileId}` | Stop every session variant for that file and delete its segments → `204` (`404` when none) |
 
 ## Status and utilities
 
 | Method & path | Description |
 |---|---|
-| `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps`, `nativePicker` (supervisor socket present, so Finder pickers work), `streamingActive` (recent stream activity or active TorrServer torrents), `uptimeSeconds` |
+| `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps`, `nativePicker` (supervisor socket present, so Finder pickers work), `streamingActive` (recent stream activity or active TorrServer torrents), `uptimeSeconds`, `transcode {enabled, activeSessions, videoEncoder}` |
 | `POST /api/stremio-refresh` | Recount catalogs → `{movies, series, total, updatedAt}` (no-store) |
 | `GET /api/media-files` | List files available under the read-only media mount |
 | `POST /api/upload?batch=&path=` | Browser upload of a video into managed storage → `204` |
@@ -88,6 +97,7 @@ A successful probe also returns `directPlay` and persists it on the library entr
 | `GET /manage/{token}` | Management page shell (HTML, CSP `script-src 'self'; style-src 'self'`) |
 | `GET /manage-assets/{file}` | Static UI modules and stylesheet from `addon/assets/manage/` (public, whitelisted names only, cached 5 min) |
 | `GET\|HEAD /local/{token}/{entryId}[/{fileId}]` | Range-capable local media streaming |
+| `GET\|HEAD /hls/{token}/{entryId}/{fileId}/{auto\|video}/{asset}` | Stream-repair HLS session assets (`index.m3u8`, `init.mp4`, `seg-N.m4s`); the first playlist request starts the ffmpeg session lazily, and sessions are reaped 60 s after requests stop |
 | `GET /assets/hoshistream-logo.png` | Logo (public, cached 1 day) |
 
 

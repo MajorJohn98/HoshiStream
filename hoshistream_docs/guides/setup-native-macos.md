@@ -9,6 +9,7 @@ The menu-bar app bundles Node and TorrServer, preserves the library and tokenize
 ```bash
 node packaging/fetch-node-runtime.mjs
 node packaging/fetch-torrserver.mjs
+node packaging/fetch-ffmpeg.mjs
 ./packaging/build-macos-app.sh
 mkdir -p ~/Applications
 ditto build/HoshiStream.app ~/Applications/HoshiStream.app
@@ -42,10 +43,17 @@ Deleting a Finder-linked entry never deletes its source file. The browser upload
 ## Configuration
 
 Copy `.env.example` to `.env`. The native app reads `ACCESS_TOKEN`, `MEDIA_DIR`,
-`HOSHISTREAM_STATE_DIR`, `ADDON_PORT`, `HOME_SPEED_MBPS`, `PLAYER_PATH` and `LAN_REDIRECT`,
-and derives the rest — including `TORRSERVER_INTERNAL_URL` and the public URLs — from the
-detected LAN address. The remaining variables in `.env.example` only apply when running the
-add-on directly with `npm start`.
+`HOSHISTREAM_STATE_DIR`, `ADDON_PORT`, `HOME_SPEED_MBPS`, `PLAYER_PATH`, `LAN_REDIRECT`,
+`TRANSCODE_ENABLED`, and `TRANSCODE_MAX_SESSIONS`,
+and derives the rest — including `TORRSERVER_INTERNAL_URL`, the public URLs, and the
+vendored ffmpeg/ffprobe paths — from the detected LAN address and install layout. The
+remaining variables in `.env.example` only apply when running the add-on directly with
+`npm start`.
+
+Stream repair (ADR 0010) is off by default; set `TRANSCODE_ENABLED=true` to offer
+"Compatible" streams for media the TV cannot direct-play. LAN discovery
+(`_hoshistream._tcp` over mDNS, ADR 0011) is on by default; set `MDNS_ENABLED=false`
+to turn it off.
 
 ## TorrServer tuning
 
