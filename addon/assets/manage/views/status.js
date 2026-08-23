@@ -47,7 +47,13 @@ function Resources() {
       clearInterval(timer);
     };
   }, []);
-  if (!report) return null;
+  if (!report)
+    return html`
+      <div class="panel" style="margin-top:18px">
+        <h2>Resource usage</h2>
+        <p class="muted">Measuring…</p>
+      </div>
+    `;
   const disk = report.disk;
   const totalDisk =
     disk.torrentCacheBytes + disk.transcodeBytes + disk.uploadsBytes;

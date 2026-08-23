@@ -39,6 +39,8 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 | `inspection.ts` | Torrent registration + metadata polling + file selection |
 | `media-file-selection.ts` | Playable-extension filtering, series episode mapping (`S01E02`, `1x02`) |
 | `media-probe.ts` | ffprobe-based resolution/codec/bitrate probe with speed verdict |
+| `speedtest.ts` | Measured link speed via Cloudflare's open speed-test endpoint; startup + on-demand runs |
+| `resources.ts` | Process CPU/RSS grouping (`ps`) and cache-directory sizes for the status page |
 | `transcode.ts` | Opt-in stream repair (ADR 0010): ffmpeg HLS sessions for remux, audio fix, and hardware video re-encode |
 | `mdns.ts` | LAN discovery (ADR 0011): dependency-free mDNS responder advertising `_hoshistream._tcp` |
 | `local-media.ts` | Local file/folder validation, managed uploads, range-request serving |

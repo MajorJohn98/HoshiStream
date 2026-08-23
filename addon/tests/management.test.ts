@@ -130,6 +130,15 @@ describe("management assets", () => {
     expect(statusJs).not.toContain('"diagnostics"');
   });
 
+  it("status view measures speed and polls resource usage", async () => {
+    const statusJs = await asset("views/status.js");
+    expect(statusJs).toContain('api("speedtest", { method: "POST" })');
+    expect(statusJs).toContain('api("resources")');
+    expect(statusJs).toContain("Resource usage");
+    expect(statusJs).toContain("setInterval(poll, 5000)");
+    expect(statusJs).toContain("Torrent cache on disk");
+  });
+
   it("sessions view polls the transcode API and can stop sessions", async () => {
     const sessionsJs = await asset("views/sessions.js");
     expect(sessionsJs).toContain('api("transcode/sessions")');
