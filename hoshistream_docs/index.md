@@ -17,6 +17,7 @@
 - [decisions/0008-bundled-mpv-player-over-json-ipc.md](decisions/0008-bundled-mpv-player-over-json-ipc.md) — Drive mpv over its JSON IPC socket for host playback; no Electron, one implementation for macOS and Windows.
 - [decisions/0009-native-only-deployment.md](decisions/0009-native-only-deployment.md) — Remove Docker; the native app is the only deployment mode, and Windows gets a minimal launcher rather than a supervisor rewrite.
 - [decisions/0010-opt-in-realtime-transcoding.md](decisions/0010-opt-in-realtime-transcoding.md) — Proposed: opt-in tiered stream repair (remux, audio fix, hardware video transcode) via vendored ffmpeg, gated by the probe verdict.
+- [decisions/0011-mdns-lan-discovery.md](decisions/0011-mdns-lan-discovery.md) — LAN discovery via a dependency-free mDNS responder in the add-on; external rendezvous rejected.
 
 ## Guides
 

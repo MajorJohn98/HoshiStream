@@ -8,6 +8,7 @@ import { Playback } from "./playback.js";
 import { createHandler } from "./routes.js";
 import { TorrServerClient } from "./torrserver-client.js";
 import { TranscodeManager, detectVideoEncoder } from "./transcode.js";
+import { MdnsResponder } from "./mdns.js";
 
 export async function startHoshiStream(settings = config) {
   const library = new Library(settings.LIBRARY_PATH);
@@ -71,8 +72,14 @@ export async function startHoshiStream(settings = config) {
       port: settings.ADDON_PORT,
     }),
   );
+  let mdns: MdnsResponder | undefined;
+  if (settings.MDNS_ENABLED) {
+    mdns = new MdnsResponder({ port: settings.ADDON_PORT });
+    mdns.start();
+  }
   return {
     close: async () => {
+      mdns?.close();
       await transcode?.close();
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),

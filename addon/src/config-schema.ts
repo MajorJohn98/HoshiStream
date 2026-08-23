@@ -69,6 +69,12 @@ export const configSchema = z.object({
   TRANSCODE_VIDEO_BITRATE_MBPS: z.coerce.number().min(1).max(40).default(8),
   TRANSCODE_DIR: z.string().min(1).default(join(root, "transcode")),
   FFMPEG_PATH: z.string().min(1).default("ffmpeg"),
+  // LAN discovery (ADR 0011): advertise _hoshistream._tcp so setup helpers
+  // can find the box. LAN-multicast only; never carries the token.
+  MDNS_ENABLED: z
+    .string()
+    .default("true")
+    .transform((value) => value === "true" || value === "1"),
 });
 
 // Compose used to resolve `torrserver` and `addon` as container hostnames. They
