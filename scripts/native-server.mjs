@@ -25,6 +25,8 @@ const options = Object.fromEntries(
     }),
 );
 const torrServerPort = Number(options["torrserver-port"] ?? 8090);
+// Upper bound on shutdown before the process terminates itself.
+const SHUTDOWN_TIMEOUT_MS = 10_000;
 const projectRoot = resolve(options["project-root"] ?? runtimeRoot);
 const stateRoot = resolve(
   options["state-dir"] ?? join(projectRoot, "native-data"),
@@ -212,6 +214,16 @@ async function stop(exitCode = 0) {
   if (stopping) return;
   stopping = true;
   if (parentWatchdog) clearInterval(parentWatchdog);
+  // A daemon that fails to exit keeps holding the ports, so the next launch
+  // silently serves the old process. Guarantee termination even when a child
+  // or a socket refuses to close.
+  const forceExit = setTimeout(() => {
+    console.error(
+      JSON.stringify({ level: "warn", event: "forced_exit", exitCode }),
+    );
+    process.exit(exitCode);
+  }, SHUTDOWN_TIMEOUT_MS);
+  forceExit.unref();
   await addon?.close().catch(() => undefined);
   if (torrServer.exitCode === null) {
     torrServer.kill("SIGTERM");
@@ -222,6 +234,7 @@ async function stop(exitCode = 0) {
     if (torrServer.exitCode === null) torrServer.kill("SIGKILL");
   }
   await unlink(pidPath).catch(() => undefined);
+  clearTimeout(forceExit);
   process.exitCode = exitCode;
 }
 

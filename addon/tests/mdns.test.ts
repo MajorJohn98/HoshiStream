@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildAnswer, lanIPv4, questionNames, readName } from "../src/mdns.js";
+import {
+  MdnsResponder,
+  buildAnswer,
+  lanIPv4,
+  questionNames,
+  readName,
+} from "../src/mdns.js";
 
 function encodeQuery(names: string[]): Buffer {
   const header = Buffer.alloc(12);
@@ -104,5 +110,36 @@ describe("lanIPv4", () => {
   it("returns a dotted quad or undefined", () => {
     const ip = lanIPv4();
     if (ip !== undefined) expect(ip).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
+  });
+});
+
+// Regression: close() cleared #socket before the goodbye-packet callback ran,
+// so `this.#socket?.close()` was a no-op. The dgram handle stayed open and kept
+// the event loop alive, which orphaned the daemon whenever the supervisor
+// exited — the server had shut down but the process never terminated.
+describe("MdnsResponder.close", () => {
+  const udpHandles = () =>
+    process.getActiveResourcesInfo().filter((name) => name === "UDPWrap")
+      .length;
+
+  it("releases the dgram handle so the process can exit", async () => {
+    if (!lanIPv4()) return; // No LAN address: start() binds no socket.
+    const before = udpHandles();
+    const responder = new MdnsResponder({ port: 7791 });
+    responder.start();
+    expect(udpHandles()).toBeGreaterThan(before);
+
+    responder.close();
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+
+    expect(udpHandles()).toBe(before);
+  });
+
+  it("is safe to call twice and without a prior start", () => {
+    const responder = new MdnsResponder({ port: 7792 });
+    expect(() => responder.close()).not.toThrow();
+    responder.start();
+    responder.close();
+    expect(() => responder.close()).not.toThrow();
   });
 });

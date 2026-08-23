@@ -7,6 +7,8 @@ import { networkInterfaces, hostname } from "node:os";
 const MDNS_ADDRESS = "224.0.0.251";
 const MDNS_PORT = 5353;
 const SERVICE = "_hoshistream._tcp.local";
+// Longest the goodbye packet may delay releasing the dgram handle.
+const GOODBYE_TIMEOUT_MS = 1_000;
 const ENUMERATION = "_services._dns-sd._udp.local";
 const TTL = 4500;
 
@@ -242,17 +244,34 @@ export class MdnsResponder {
 
   close(): void {
     if (this.#ipWatch) clearInterval(this.#ipWatch);
-    if (this.#socket && this.#ip) {
-      // Goodbye packet: same records with TTL 0.
-      this.#socket.send(
-        buildAnswer(this.#options, this.#ip, 0),
-        MDNS_PORT,
-        MDNS_ADDRESS,
-        () => this.#socket?.close(),
-      );
-    } else {
-      this.#socket?.close();
-    }
+    // Capture the socket first: clearing the field before the send callback
+    // runs made `this.#socket?.close()` a no-op, leaving the dgram handle open
+    // and the process unable to exit.
+    const socket = this.#socket;
     this.#socket = undefined;
+    if (!socket) return;
+    if (!this.#ip) {
+      socket.close();
+      return;
+    }
+    // Goodbye packet: same records with TTL 0. Close regardless of whether the
+    // send reports back, so a failed send cannot strand the handle.
+    let closed = false;
+    const closeOnce = () => {
+      if (closed) return;
+      closed = true;
+      socket.close();
+    };
+    const fallback = setTimeout(closeOnce, GOODBYE_TIMEOUT_MS);
+    fallback.unref();
+    socket.send(
+      buildAnswer(this.#options, this.#ip, 0),
+      MDNS_PORT,
+      MDNS_ADDRESS,
+      () => {
+        clearTimeout(fallback);
+        closeOnce();
+      },
+    );
   }
 }

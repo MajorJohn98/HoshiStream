@@ -11,6 +11,10 @@ import { TranscodeManager, detectVideoEncoder } from "./transcode.js";
 import { MdnsResponder } from "./mdns.js";
 import { runSpeedTest } from "./speedtest.js";
 
+// How long an in-flight response — a stream in progress — may keep the server
+// open during shutdown before its socket is destroyed.
+const SHUTDOWN_GRACE_MS = 3_000;
+
 export async function startHoshiStream(settings = config) {
   const library = new Library(settings.LIBRARY_PATH);
   const torrServer = new TorrServerClient(settings.TORRSERVER_INTERNAL_URL);
@@ -98,9 +102,22 @@ export async function startHoshiStream(settings = config) {
     close: async () => {
       mdns?.close();
       await transcode?.close();
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
+      // server.close() only stops new connections; it resolves once every
+      // socket is gone. Idle keep-alive clients — an open management tab is
+      // enough — would otherwise hold the process open indefinitely, which
+      // orphaned the daemon whenever the supervisor exited.
+      server.closeIdleConnections();
+      const forceClose = setTimeout(() => {
+        server.closeAllConnections();
+      }, SHUTDOWN_GRACE_MS);
+      forceClose.unref();
+      try {
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+      } finally {
+        clearTimeout(forceClose);
+      }
     },
   };
 }
