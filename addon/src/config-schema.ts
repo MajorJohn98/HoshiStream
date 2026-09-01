@@ -80,6 +80,15 @@ export const configSchema = z.object({
     .string()
     .default("true")
     .transform((value) => value === "true" || value === "1"),
+  // Stable manifest URL via a self-controlled Vercel pointer server
+  // (ADR 0012). Both must be set to enable the manual "Update Remote
+  // Pointer" push; nothing is sent automatically.
+  POINTER_URL: httpUrl.optional(),
+  POINTER_PUSH_SECRET: z.string().min(20).optional(),
+  POINTER_STATE_PATH: z
+    .string()
+    .min(1)
+    .default(join(root, "pointer-state.json")),
 });
 
 // Compose used to resolve `torrserver` and `addon` as container hostnames. They

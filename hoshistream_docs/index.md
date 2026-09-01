@@ -18,6 +18,7 @@
 - [decisions/0009-native-only-deployment.md](decisions/0009-native-only-deployment.md) — Remove Docker; the native app is the only deployment mode, and Windows gets a minimal launcher rather than a supervisor rewrite.
 - [decisions/0010-opt-in-realtime-transcoding.md](decisions/0010-opt-in-realtime-transcoding.md) — Proposed: opt-in tiered stream repair (remux, audio fix, hardware video transcode) via vendored ffmpeg, gated by the probe verdict.
 - [decisions/0011-mdns-lan-discovery.md](decisions/0011-mdns-lan-discovery.md) — LAN discovery via a dependency-free mDNS responder in the add-on; external rendezvous rejected.
+- [decisions/0012-vercel-pointer-server.md](decisions/0012-vercel-pointer-server.md) — Permanent manifest URL via a self-controlled Vercel pointer server with strictly manual pushes.
 
 ## Guides
 
@@ -27,6 +28,7 @@
 - [guides/development.md](guides/development.md) — Dev commands, working agreement, and code conventions.
 - [guides/troubleshooting.md](guides/troubleshooting.md) — AirPlay port conflict, LAN reachability, stalls, corrupt library.
 - [guides/remote-access-cloudflare-tunnel.md](guides/remote-access-cloudflare-tunnel.md) — Cloudflare Tunnel setup and LAN-aware stream URLs.
+- [guides/pointer-server-vercel.md](guides/pointer-server-vercel.md) — Deploy the Vercel pointer server for a permanent add-on URL and the manual "Update Remote Pointer" flow.
 
 ## API
 
@@ -46,6 +48,7 @@
 - [plans/2026-08-23-realtime-transcoding-plan.md](plans/2026-08-23-realtime-transcoding-plan.md) — Opt-in real-time stream repair: pipeline, session model, seek handling, phased rollout.
 - [plans/2026-08-23-frontend-redesign-and-transcoding-plan.md](plans/2026-08-23-frontend-redesign-and-transcoding-plan.md) — Preact+htm management UI redesign, transcoding UI surface, and the no-Docker dev loop.
 - [plans/2026-08-23-windows-launcher-plan.md](plans/2026-08-23-windows-launcher-plan.md) — Windows v1: portability fixes, PowerShell launcher, zip packaging, on-hardware verification.
+- [plans/2026-09-01-stable-manifest-pointer-plan.md](plans/2026-09-01-stable-manifest-pointer-plan.md) — Stable manifest URL via a Vercel pointer/redirector server with a manual menu-bar IP push.
 
 ## Changelog
 
@@ -57,4 +60,5 @@
 - [changelog/0.6.0-performance.md](changelog/0.6.0-performance.md) — TorrServer throughput tuning, hot-path caching, larger read buffers, stream prewarming, direct-play detection, a built-in mpv player, and Windows vendoring groundwork.
 - [changelog/0.8.0-ui-and-stream-repair.md](changelog/0.8.0-ui-and-stream-repair.md) — Preact rebuild + Cinema redesign of the management UI, opt-in stream repair, mDNS LAN discovery, and the in-browser player.
 - [changelog/0.8.1-portable-macos-build.md](changelog/0.8.1-portable-macos-build.md) — Runtime state-directory resolution, first-run `.env` and token generation, and `.dmg` packaging.
+- [changelog/0.9.0-remote-pointer.md](changelog/0.9.0-remote-pointer.md) — Permanent add-on URL: Vercel pointer server, manual push API, and the "Update Remote Pointer" menu item.
 - [changelog/0.8.2-shutdown-and-bundle-size.md](changelog/0.8.2-shutdown-and-bundle-size.md) — Fixes the server outliving its supervisor (leaked mDNS socket) and prunes devDependencies from the shipped bundle.

@@ -298,6 +298,15 @@ try {
       : {}),
     TRANSCODE_DIR: join(stateRoot, "transcode"),
     TORRSERVER_CACHE_DIR: torrentsRoot,
+    // Remote pointer (ADR 0012): forwarded only when configured in .env;
+    // pushes remain manual either way.
+    ...(projectEnvironment.POINTER_URL
+      ? { POINTER_URL: projectEnvironment.POINTER_URL }
+      : {}),
+    ...(projectEnvironment.POINTER_PUSH_SECRET
+      ? { POINTER_PUSH_SECRET: projectEnvironment.POINTER_PUSH_SECRET }
+      : {}),
+    POINTER_STATE_PATH: join(stateRoot, "pointer-state.json"),
     FFMPEG_PATH: await ffmpegBinary(),
     FFPROBE_PATH: await ffprobeBinary(),
   });

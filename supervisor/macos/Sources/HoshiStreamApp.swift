@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let status = NSMenuItem(title: "Starting…", action: nil, keyEquivalent: "")
     private let startItem = NSMenuItem(title: "Restart Server", action: #selector(restartServer), keyEquivalent: "r")
     private let speedItem = NSMenuItem(title: "Check Speed", action: #selector(checkSpeed), keyEquivalent: "s")
+    private let pointerItem = NSMenuItem(title: "Update Remote Pointer", action: #selector(pushPointer), keyEquivalent: "u")
     private let loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleLogin), keyEquivalent: "")
     private var service: Process?
     private var healthTimer: Timer?
@@ -41,6 +42,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var addonPort: Int {
         Int(environmentValue("ADDON_PORT") ?? "") ?? 7001
+    }
+
+    // Set alongside POINTER_PUSH_SECRET in .env to enable the remote pointer
+    // (ADR 0012). The manifest URL clients install then never changes.
+    private var pointerURL: String? {
+        environmentValue("POINTER_URL").flatMap {
+            let trimmed = $0.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+            return trimmed.isEmpty ? nil : trimmed
+        }
     }
 
     private func isPrivateIPv4(_ value: String) -> Bool {
@@ -97,6 +107,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(startItem)
         speedItem.target = self
         menu.addItem(speedItem)
+        pointerItem.target = self
+        pointerItem.isHidden = true
+        menu.addItem(pointerItem)
         menu.addItem(loginItem)
         menu.addItem(withTitle: "Show Logs", action: #selector(showLogs), keyEquivalent: "l").target = self
         menu.addItem(.separator())
@@ -224,6 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.updateSleepAssertion(streaming: ready && summary?.streamingActive == true)
                 if ready {
                     self.restartCount = 0
+                    self.updatePointerItem(summary?.pointer)
                     self.setStatus(
                         summary.map {
                             "Ready • \($0.libraryCount) title\($0.libraryCount == 1 ? "" : "s") • \($0.homeSpeedMbps) Mbps"
@@ -256,6 +270,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             }
         }
+    }
+
+    // Menu is only useful when the addon reports the pointer configured; the
+    // warning suffix flags a LAN IP that changed since the last push.
+    private func updatePointerItem(_ pointer: PointerStatus?) {
+        guard let pointer, pointer.configured else {
+            pointerItem.isHidden = true
+            return
+        }
+        pointerItem.isHidden = false
+        if pointerItem.isEnabled {
+            pointerItem.title = pointer.stale == true
+                ? "Update Remote Pointer — ⚠︎ IP changed"
+                : "Update Remote Pointer"
+        }
+    }
+
+    @objc private func pushPointer() {
+        guard let token else { return setStatus("Error — missing access token") }
+        pointerItem.isEnabled = false
+        pointerItem.title = "Updating remote pointer…"
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(addonPort)/api/pointer/push")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15
+        URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
+            let ok = (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.pointerItem.isEnabled = true
+                self.pointerItem.title = ok
+                    ? "Update Remote Pointer — updated just now"
+                    : "Update Remote Pointer — ⚠︎ push failed"
+                self.setStatus(ok ? "Remote pointer updated" : "Error — pointer push failed")
+                if ok {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                        self?.checkHealth()
+                    }
+                }
+            }
+        }.resume()
     }
 
     @objc private func checkSpeed() {
@@ -304,14 +359,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func copyStremioURL() {
-        guard let token, let address = lanAddress,
+        guard let token,
               let escaped = token.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
         else {
+            setStatus("Error — missing access token")
+            return
+        }
+        // The pointer URL survives IP changes, so it is the better URL to put
+        // into clients whenever the pointer server is configured.
+        let value: String
+        if let pointerURL {
+            value = "\(pointerURL)/addon/\(escaped)/manifest.json"
+        } else if let address = lanAddress {
+            value = "http://\(address):\(addonPort)/addon/\(escaped)/manifest.json"
+        } else {
             setStatus("Error — no private LAN address")
             return
         }
-        let port = addonPort
-        let value = "http://\(address):\(port)/addon/\(escaped)/manifest.json"
         guard let url = URL(string: value) else {
             setStatus("Error — invalid manifest URL")
             return
@@ -390,10 +454,16 @@ private struct SpeedResult: Decodable {
     let mbps: Double
 }
 
+private struct PointerStatus: Decodable {
+    let configured: Bool
+    let stale: Bool?
+}
+
 private struct ServerStatus: Decodable {
     let libraryCount: Int
     let homeSpeedMbps: Double
     let streamingActive: Bool?
+    let pointer: PointerStatus?
 }
 
 @main

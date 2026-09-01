@@ -3,6 +3,8 @@
 .obsidian/
 addon/dist/
 addon/node_modules/
+pointer/node_modules/
+pointer/.vercel/
 build/
 native-data/
 run/

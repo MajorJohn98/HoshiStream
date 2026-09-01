@@ -9,6 +9,7 @@ import { createHandler } from "./routes.js";
 import { TorrServerClient } from "./torrserver-client.js";
 import { TranscodeManager, detectVideoEncoder } from "./transcode.js";
 import { MdnsResponder } from "./mdns.js";
+import { PointerClient } from "./pointer.js";
 import { runSpeedTest } from "./speedtest.js";
 
 // How long an in-flight response — a stream in progress — may keep the server
@@ -46,6 +47,25 @@ export async function startHoshiStream(settings = config) {
     settings.PUBLIC_ADDON_URL,
     settings.ACCESS_TOKEN,
   );
+  let pointer: PointerClient | undefined;
+  if (settings.POINTER_URL && settings.POINTER_PUSH_SECRET) {
+    pointer = new PointerClient({
+      pointerUrl: settings.POINTER_URL,
+      pushSecret: settings.POINTER_PUSH_SECRET,
+      token: settings.ACCESS_TOKEN,
+      port: settings.ADDON_PORT,
+      statePath: settings.POINTER_STATE_PATH,
+    });
+  } else if (settings.POINTER_URL || settings.POINTER_PUSH_SECRET) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        event: "pointer_partially_configured",
+        message:
+          "Set both POINTER_URL and POINTER_PUSH_SECRET to enable the remote pointer",
+      }),
+    );
+  }
   const server = createServer(
     createHandler(
       library,
@@ -66,6 +86,7 @@ export async function startHoshiStream(settings = config) {
         transcode: settings.TRANSCODE_DIR,
         uploads: settings.UPLOAD_ROOT,
       },
+      pointer,
     ),
   );
   await new Promise<void>((resolve, reject) => {

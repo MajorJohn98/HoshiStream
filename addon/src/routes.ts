@@ -24,6 +24,7 @@ import {
   PickerCancelledError,
   PickerUnavailableError,
 } from "./native-picker.js";
+import type { PointerClient } from "./pointer.js";
 import { bearerToken, validToken } from "./security.js";
 import type { AddonInterface } from "./server-types.js";
 import {
@@ -167,6 +168,7 @@ export function createHandler(
   playback = new Playback(library, torrServer),
   transcode?: TranscodeManager,
   resourceDirs?: ResourceDirs,
+  pointer?: PointerClient,
 ) {
   setConfiguredSpeed(configuredHomeSpeedMbps);
   return async (request: IncomingMessage, response: ServerResponse) => {
@@ -446,6 +448,29 @@ export function createHandler(
             preference: playback.preference,
           });
         }
+        if (
+          url.pathname === "/api/pointer/status" &&
+          request.method === "GET"
+        ) {
+          return reply(
+            response,
+            200,
+            pointer ? await pointer.status() : { configured: false },
+          );
+        }
+        if (url.pathname === "/api/pointer/push" && request.method === "POST") {
+          if (!pointer) {
+            return reply(response, 409, { error: "Pointer not configured" });
+          }
+          try {
+            return reply(response, 200, await pointer.push(addon.manifest));
+          } catch (error) {
+            return reply(response, 502, {
+              error:
+                error instanceof Error ? error.message : "Pointer push failed",
+            });
+          }
+        }
         if (url.pathname === "/api/status" && request.method === "GET") {
           const [entries, torrServerStatus, activeTorrents, pickerAvailable] =
             await Promise.all([
@@ -474,6 +499,12 @@ export function createHandler(
               activeSessions: transcode?.list().length ?? 0,
               videoEncoder: transcode?.videoEncoder ?? null,
             },
+            pointer: pointer
+              ? {
+                  configured: true,
+                  stale: (await pointer.status()).stale ?? true,
+                }
+              : { configured: false },
           });
         }
         if (url.pathname === "/api/resources" && request.method === "GET") {
