@@ -178,6 +178,102 @@ function OverviewTab({ state }) {
   `;
 }
 
+function shortMagnet(magnetUri) {
+  const hash = /btih:([a-z0-9]+)/i.exec(magnetUri)?.[1];
+  return hash
+    ? "btih:" + hash.slice(0, 12) + "…"
+    : magnetUri.slice(0, 40) + "…";
+}
+
+// Extra torrents merged into a series entry. Any change clears the inspection
+// cache server-side, so prompt for a fresh inspection afterwards.
+function ExtraSourcesPanel({ state }) {
+  const entry = state.selected;
+  const [magnet, setMagnet] = useState("");
+  const [season, setSeason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const extras = entry.extraSources || [];
+  const save = async (extraSources) => {
+    setSaving(true);
+    try {
+      const selected = await patch(state, { extraSources });
+      setState({ selected, inspection: null });
+      setMagnet("");
+      setSeason("");
+      notify("Sources updated — inspect again to refresh episodes");
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return html`
+    <div style="margin-top:16px">
+      <h3>Additional torrents</h3>
+      <p class="muted">
+        Merged into this series' episode list. Season applies to files whose
+        names carry no SxxEyy numbering; on episode conflicts the newest source
+        wins.
+      </p>
+      ${extras.map(
+        (extra, index) => html`
+          <div class="picker-row" style="margin-bottom:8px">
+            <span class="muted" style="flex:1">
+              ${
+                extra.magnetUri
+                  ? shortMagnet(extra.magnetUri)
+                  : extra.torrentFilePath
+              }
+              ${
+                extra.seasonHint !== undefined
+                  ? " · season " + extra.seasonHint
+                  : ""
+              }
+            </span>
+            <button
+              class="secondary"
+              disabled=${saving}
+              onClick=${() => save(extras.filter((_, i) => i !== index))}
+            >
+              Remove
+            </button>
+          </div>
+        `,
+      )}
+      <div class="picker-row">
+        <input
+          style="flex:1"
+          placeholder="magnet:?xt=urn:btih:…"
+          value=${magnet}
+          onInput=${(e) => setMagnet(e.target.value)}
+        />
+        <input
+          style="width:90px"
+          type="number"
+          min="0"
+          placeholder="Season"
+          value=${season}
+          onInput=${(e) => setSeason(e.target.value)}
+        />
+        <button
+          class="secondary"
+          disabled=${saving || !magnet.trim().startsWith("magnet:?")}
+          onClick=${() =>
+            save([
+              ...extras,
+              {
+                magnetUri: magnet.trim(),
+                ...(season === "" ? {} : { seasonHint: Number(season) }),
+              },
+            ])}
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 function SourceTab({ state }) {
   const entry = state.selected;
   const [busy, run] = useInspect(state);
@@ -257,6 +353,14 @@ function SourceTab({ state }) {
               : null
           }
         </div>
+        ${
+          entry.type === "series" &&
+          (entry.magnetUri || entry.torrentFilePath) &&
+          !entry.localFilePath &&
+          !entry.localFolderPath
+            ? html`<${ExtraSourcesPanel} state=${state} />`
+            : null
+        }
       </div>
       <aside class="panel">
         <h3>Privacy</h3>

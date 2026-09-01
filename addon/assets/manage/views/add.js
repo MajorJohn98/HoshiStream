@@ -14,7 +14,7 @@ async function upload(file, batch, path) {
   if (!r.ok) throw Error("Upload failed");
 }
 
-async function submit(form, source, picked) {
+async function submit(form, source, picked, extras = []) {
   const d = Object.fromEntries(new FormData(form));
   if (picked && (source === "local" || source === "folder")) {
     d.nativePathGrant = picked.grant;
@@ -55,6 +55,19 @@ async function submit(form, source, picked) {
   Object.keys(d).forEach((k) => {
     if (!d[k]) delete d[k];
   });
+  const extraSources = extras
+    .map((extra) => ({
+      magnetUri: extra.magnetUri.trim(),
+      ...(extra.seasonHint !== ""
+        ? { seasonHint: Number(extra.seasonHint) }
+        : {}),
+    }))
+    .filter((extra) => extra.magnetUri);
+  if (extraSources.length) {
+    if (d.type !== "series")
+      throw Error("Additional torrents require the Series type");
+    d.extraSources = extraSources;
+  }
   await api("library", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -127,10 +140,64 @@ function SourceField({ source, picked, picking, onPick, pickerReady }) {
   `;
 }
 
+function ExtraTorrents({ extras, setExtras }) {
+  const update = (index, field, value) =>
+    setExtras(
+      extras.map((extra, i) =>
+        i === index ? { ...extra, [field]: value } : extra,
+      ),
+    );
+  return html`
+    <div class="span2">
+      <b>Additional torrents</b>
+      <p class="muted">
+        Series only — merge more torrents (season packs or single episodes) into
+        one entry. Season applies to files whose names carry no SxxEyy
+        numbering.
+      </p>
+      ${extras.map(
+        (extra, index) => html`
+          <div class="picker-row" style="margin-bottom:8px">
+            <input
+              style="flex:1"
+              placeholder="magnet:?xt=urn:btih:…"
+              value=${extra.magnetUri}
+              onInput=${(e) => update(index, "magnetUri", e.target.value)}
+            />
+            <input
+              style="width:90px"
+              type="number"
+              min="0"
+              placeholder="Season"
+              value=${extra.seasonHint}
+              onInput=${(e) => update(index, "seasonHint", e.target.value)}
+            />
+            <button
+              type="button"
+              class="secondary"
+              onClick=${() => setExtras(extras.filter((_, i) => i !== index))}
+            >
+              ✕
+            </button>
+          </div>
+        `,
+      )}
+      <button
+        type="button"
+        class="secondary"
+        onClick=${() => setExtras([...extras, { magnetUri: "", seasonHint: "" }])}
+      >
+        + Add another torrent
+      </button>
+    </div>
+  `;
+}
+
 export function AddView() {
   const { status, source } = useStore();
   const [picked, setPicked] = useState(null);
   const [picking, setPicking] = useState(false);
+  const [extras, setExtras] = useState([]);
   const pick = async () => {
     setPicking(true);
     try {
@@ -150,7 +217,12 @@ export function AddView() {
   const onSubmit = async (e) => {
     e.preventDefault();
     try {
-      await submit(e.target, source, picked);
+      await submit(
+        e.target,
+        source,
+        picked,
+        source === "torrent" ? extras : [],
+      );
       notify("Added to library");
       await load();
       location.hash = "#/library";
@@ -214,6 +286,14 @@ export function AddView() {
               pickerReady=${Boolean(status.nativePicker)}
             />
           </div>
+          ${
+            source === "torrent"
+              ? html`<${ExtraTorrents}
+                  extras=${extras}
+                  setExtras=${setExtras}
+                />`
+              : null
+          }
         </div>
         <button class="primary" style="margin-top:18px">Inspect and add</button>
       </form>

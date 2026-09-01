@@ -17,13 +17,36 @@ const EXTRAS_DIR =
   /(?:^|\/)(?:featurettes?|extras?|deleted[ ._-]scenes?|behind[ ._-]the[ ._-]scenes|bonus(?:es)?|interviews?|specials?|shorts?)\//i;
 
 export type TorrentFile = { id: number; path: string; length: number };
-export type SelectedFile = TorrentFile & { season?: number; episode?: number };
+export type SelectedFile = TorrentFile & {
+  season?: number;
+  episode?: number;
+  // Owning torrent's hash when the entry has multiple sources.
+  hash?: string;
+};
 export type FileOverride = {
   id: number;
   included: boolean;
   season?: number;
   episode?: number;
 };
+
+// Multi-torrent series: TorrServer file ids are per-torrent indexes, so files
+// from source k get `k * SOURCE_STRIDE + id` to stay unique per entry. Source
+// 0 (the primary) keeps its raw ids, which keeps existing caches, playback
+// state, and URLs valid.
+export const SOURCE_STRIDE = 100_000;
+
+export function compositeFileId(sourceIndex: number, rawId: number): number {
+  return sourceIndex * SOURCE_STRIDE + rawId;
+}
+
+export function rawFileId(id: number): number {
+  return id % SOURCE_STRIDE;
+}
+
+export function fileSourceIndex(id: number): number {
+  return Math.floor(id / SOURCE_STRIDE);
+}
 
 export class MediaSelectionError extends Error {}
 
@@ -52,6 +75,7 @@ export function selectMediaFiles(
   files: TorrentFile[],
   preferredFileIndex?: number,
   overrides: FileOverride[] = [],
+  seasonHint?: number,
 ): SelectedFile[] {
   if (preferredFileIndex !== undefined) {
     const preferred = files.find((file) => file.id === preferredFileIndex);
@@ -97,7 +121,10 @@ export function selectMediaFiles(
         ...file,
         ...(override?.season !== undefined && override.episode !== undefined
           ? { season: override.season, episode: override.episode }
-          : (episodeNumbers(file.path) ?? { season: 1, episode: index + 1 })),
+          : (episodeNumbers(file.path) ?? {
+              season: seasonHint ?? 1,
+              episode: index + 1,
+            })),
       };
     })
     .sort(
@@ -106,4 +133,48 @@ export function selectMediaFiles(
         a.episode! - b.episode! ||
         a.path.localeCompare(b.path),
     );
+}
+
+// Combines per-source selections into one episode list: ids become composite,
+// each file remembers its torrent's hash, and when two sources claim the same
+// (season, episode) the later source wins — adding a better pack afterwards
+// replaces the older episodes.
+export function mergeSelectedFiles(
+  sources: { hash: string; selectedFiles: SelectedFile[] }[],
+): SelectedFile[] {
+  const byEpisode = new Map<string, SelectedFile>();
+  const unmapped: SelectedFile[] = [];
+  for (const [sourceIndex, source] of sources.entries()) {
+    for (const file of source.selectedFiles) {
+      const mapped: SelectedFile = {
+        ...file,
+        id: compositeFileId(sourceIndex, file.id),
+        ...(sourceIndex > 0 ? { hash: source.hash } : {}),
+      };
+      if (mapped.season === undefined || mapped.episode === undefined) {
+        unmapped.push(mapped);
+        continue;
+      }
+      const key = `${mapped.season}:${mapped.episode}`;
+      const existing = byEpisode.get(key);
+      if (existing) {
+        console.log(
+          JSON.stringify({
+            level: "warn",
+            event: "duplicate_episode_dropped",
+            season: mapped.season,
+            episode: mapped.episode,
+            droppedFileId: existing.id,
+          }),
+        );
+      }
+      byEpisode.set(key, mapped);
+    }
+  }
+  return [...byEpisode.values(), ...unmapped].sort(
+    (a, b) =>
+      (a.season ?? 0) - (b.season ?? 0) ||
+      (a.episode ?? 0) - (b.episode ?? 0) ||
+      a.path.localeCompare(b.path),
+  );
 }

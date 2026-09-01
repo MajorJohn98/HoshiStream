@@ -73,4 +73,15 @@ describe("TorrServerClient", () => {
       }),
     ).toBe("http://torrserver:8090/play/abc%20123/2");
   });
+
+  it("decodes composite ids and prefers the file's own hash", () => {
+    expect(
+      new TorrServerClient("http://torrserver:8090").streamUrl("primary", {
+        id: 200_004,
+        path: "S02E04.mkv",
+        length: 100,
+        hash: "extra-hash",
+      }),
+    ).toBe("http://torrserver:8090/play/extra-hash/4");
+  });
 });

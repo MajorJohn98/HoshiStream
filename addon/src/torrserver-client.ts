@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { z } from "zod";
-import type { TorrentFile } from "./media-file-selection.js";
+import { rawFileId, type TorrentFile } from "./media-file-selection.js";
 
 const torrentFileSchema = z.object({
   id: z.number().int().positive(),
@@ -94,8 +94,11 @@ export class TorrServerClient {
     await this.torrentAction({ action: "rem", hash });
   }
 
-  streamUrl(hash: string, file: TorrentFile): string {
-    return `${this.baseUrl}/play/${encodeURIComponent(hash)}/${file.id}`;
+  // Composite ids (multi-torrent series) carry the owning source's hash on
+  // the file itself and encode the raw TorrServer index; decode both here so
+  // every caller keeps passing selected files unchanged.
+  streamUrl(hash: string, file: TorrentFile & { hash?: string }): string {
+    return `${this.baseUrl}/play/${encodeURIComponent(file.hash ?? hash)}/${rawFileId(file.id)}`;
   }
 
   private async torrentAction(payload: object): Promise<unknown> {

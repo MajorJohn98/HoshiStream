@@ -159,3 +159,120 @@ describe("stream prewarming", () => {
     expect(torrServer.get).not.toHaveBeenCalled();
   });
 });
+
+describe("multi-torrent series", () => {
+  const packStatus = {
+    title: "Pack",
+    hash: "hash-pack",
+    stat: 1,
+    stat_string: "Torrent working",
+    file_stats: [
+      { id: 1, path: "Show S01E01.mkv", length: 100 },
+      { id: 2, path: "Show S01E02.mkv", length: 100 },
+    ],
+  };
+  const extraStatus = {
+    title: "Extra",
+    hash: "hash-extra",
+    stat: 1,
+    stat_string: "Torrent working",
+    file_stats: [{ id: 1, path: "Show Episode Special.mkv", length: 100 }],
+  };
+
+  function multiSourceTorrServer(knownHashes = new Set<string>()) {
+    const byLink = (link: string) =>
+      link.includes("extra") ? extraStatus : packStatus;
+    return {
+      addMagnet: vi
+        .fn()
+        .mockImplementation((link: string) => Promise.resolve(byLink(link))),
+      waitForFiles: vi
+        .fn()
+        .mockImplementation((hash: string) =>
+          Promise.resolve(hash === "hash-extra" ? extraStatus : packStatus),
+        ),
+      get: vi
+        .fn()
+        .mockImplementation((hash: string) =>
+          knownHashes.has(hash)
+            ? Promise.resolve(hash === "hash-extra" ? extraStatus : packStatus)
+            : Promise.reject(new Error("404")),
+        ),
+    } as unknown as TorrServerClient;
+  }
+
+  async function multiSourceEntry(library: Library): Promise<LibraryEntry> {
+    return library.create({
+      type: "series",
+      name: "Multi",
+      magnetUri: "magnet:?xt=urn:btih:pack",
+      extraSources: [{ magnetUri: "magnet:?xt=urn:btih:extra", seasonHint: 2 }],
+    });
+  }
+
+  it("inspects every source and merges episodes with composite ids", async () => {
+    const library = await temporaryLibrary();
+    const entry = await multiSourceEntry(library);
+    const torrServer = multiSourceTorrServer();
+
+    const inspection = await inspectEntry(entry, torrServer, library);
+
+    expect(inspection.selectedFiles).toEqual([
+      { id: 1, path: "Show S01E01.mkv", length: 100, season: 1, episode: 1 },
+      { id: 2, path: "Show S01E02.mkv", length: 100, season: 1, episode: 2 },
+      {
+        id: 100_001,
+        path: "Show Episode Special.mkv",
+        length: 100,
+        season: 2,
+        episode: 1,
+        hash: "hash-extra",
+      },
+    ]);
+    const stored = await library.get(entry.id);
+    expect(stored?.inspectionCache?.hash).toBe("hash-pack");
+    expect(stored?.inspectionCache?.selectedFiles).toHaveLength(3);
+  });
+
+  it("re-registers only the missing source when serving from cache", async () => {
+    const library = await temporaryLibrary();
+    const entry = await multiSourceEntry(library);
+    const seeded = multiSourceTorrServer();
+    await inspectEntry(entry, seeded, library);
+    const cached = (await library.get(entry.id))!;
+
+    // Pack still registered, extra dropped.
+    const torrServer = multiSourceTorrServer(new Set(["hash-pack"]));
+    const resolved = await resolveStreamSource(cached, torrServer, library);
+
+    expect(resolved.selectedFiles).toHaveLength(3);
+    const addMagnet = (
+      torrServer as unknown as { addMagnet: ReturnType<typeof vi.fn> }
+    ).addMagnet;
+    expect(addMagnet).toHaveBeenCalledTimes(1);
+    expect(addMagnet).toHaveBeenCalledWith(
+      "magnet:?xt=urn:btih:extra",
+      "Multi",
+    );
+  });
+
+  it("rejects extraSources on movies and local entries", async () => {
+    const library = await temporaryLibrary();
+    await expect(
+      library.create({
+        type: "movie",
+        name: "Bad",
+        magnetUri: "magnet:?xt=urn:btih:x",
+        extraSources: [{ magnetUri: "magnet:?xt=urn:btih:y" }],
+      }),
+    ).rejects.toThrow();
+    await expect(
+      library.create({
+        type: "series",
+        name: "Bad local",
+        localFolderPath: "/tmp/media",
+        extraSources: [{ magnetUri: "magnet:?xt=urn:btih:y" }],
+      }),
+    ).rejects.toThrow();
+  });
+});

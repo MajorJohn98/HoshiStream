@@ -12,6 +12,20 @@ http://127.0.0.1:7000/manage/<ACCESS_TOKEN>
 
 From there you can add magnet links, upload `.torrent` files, pick local files (native Finder picker with the menu-bar app, or browser upload fallback), edit metadata and posters, inspect entries, and probe technical details.
 
+### Multi-torrent series
+
+One series entry can be backed by several torrents — season packs, single
+episodes, or a mix:
+
+- **Add Media** (magnet source): use **+ Add another torrent** to attach
+  extra magnets, each with an optional season number for packs whose file
+  names carry no `SxxEyy` numbering.
+- **Detail → Source** tab: add or remove extra torrents on an existing
+  torrent-backed series; re-inspect afterwards to refresh the episode list.
+- Filename numbering always wins over the season hint. If two torrents claim
+  the same episode, the most recently added source wins — add a better pack
+  to replace episodes.
+
 ### Local files
 
 - With the native app: Finder pickers link files/folders in place — nothing is copied. The **Add Media** local/folder cards show a **Choose with Finder** button, and the detail **Source** tab offers **Relink in Finder** after moving/renaming. A folder becomes one series; `S01E02` / `1x02` filename patterns map episodes, otherwise files become season 1 in filename order.

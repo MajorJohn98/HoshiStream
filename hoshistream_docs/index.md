@@ -49,6 +49,7 @@
 - [plans/2026-08-23-frontend-redesign-and-transcoding-plan.md](plans/2026-08-23-frontend-redesign-and-transcoding-plan.md) — Preact+htm management UI redesign, transcoding UI surface, and the no-Docker dev loop.
 - [plans/2026-08-23-windows-launcher-plan.md](plans/2026-08-23-windows-launcher-plan.md) — Windows v1: portability fixes, PowerShell launcher, zip packaging, on-hardware verification.
 - [plans/2026-09-01-stable-manifest-pointer-plan.md](plans/2026-09-01-stable-manifest-pointer-plan.md) — Stable manifest URL via a Vercel pointer/redirector server with a manual menu-bar IP push.
+- [plans/2026-09-01-multi-torrent-series-plan.md](plans/2026-09-01-multi-torrent-series-plan.md) — One series entry backed by several torrents: extra sources, composite file IDs, merged episode list.
 
 ## Changelog
 
@@ -61,4 +62,5 @@
 - [changelog/0.8.0-ui-and-stream-repair.md](changelog/0.8.0-ui-and-stream-repair.md) — Preact rebuild + Cinema redesign of the management UI, opt-in stream repair, mDNS LAN discovery, and the in-browser player.
 - [changelog/0.8.1-portable-macos-build.md](changelog/0.8.1-portable-macos-build.md) — Runtime state-directory resolution, first-run `.env` and token generation, and `.dmg` packaging.
 - [changelog/0.9.0-remote-pointer.md](changelog/0.9.0-remote-pointer.md) — Permanent add-on URL: Vercel pointer server, manual push API, and the "Update Remote Pointer" menu item.
+- [changelog/0.10.0-multi-torrent-series.md](changelog/0.10.0-multi-torrent-series.md) — One series entry backed by several torrents: extra sources, composite file IDs, merged episodes.
 - [changelog/0.8.2-shutdown-and-bundle-size.md](changelog/0.8.2-shutdown-and-bundle-size.md) — Fixes the server outliving its supervisor (leaked mDNS socket) and prunes devDependencies from the shipped bundle.

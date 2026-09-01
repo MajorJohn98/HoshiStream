@@ -29,6 +29,7 @@ const CACHE_INVALIDATING_FIELDS = [
   "localFolderPath",
   "preferredFileIndex",
   "fileOverrides",
+  "extraSources",
 ] as const;
 
 export class LibraryError extends Error {}

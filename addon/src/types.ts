@@ -5,6 +5,25 @@ import { directPlaySchema } from "./direct-play.js";
 const absolutePath = z.string().refine(isAbsolute, {
   message: "Local media path must be absolute",
 });
+
+// Extra torrents only make sense on a torrent-backed series: episodes merge
+// across torrents, while movies and local media stay single-source.
+function torrentBackedSeriesRule(entry: {
+  type?: "movie" | "series";
+  magnetUri?: string;
+  torrentFilePath?: string;
+  localFilePath?: string;
+  localFolderPath?: string;
+  extraSources?: unknown[];
+}): boolean {
+  if (!entry.extraSources?.length) return true;
+  return (
+    entry.type === "series" &&
+    Boolean(entry.magnetUri || entry.torrentFilePath) &&
+    !entry.localFilePath &&
+    !entry.localFolderPath
+  );
+}
 const fileOverrideSchema = z.object({
   id: z.number().int().nonnegative(),
   included: z.boolean(),
@@ -12,12 +31,29 @@ const fileOverrideSchema = z.object({
   season: z.number().int().nonnegative().optional(),
   episode: z.number().int().positive().optional(),
 });
+// An additional torrent backing a series entry (multi-torrent series). File
+// override ids here are the source's own TorrServer file indexes.
+export const seriesSourceSchema = z
+  .object({
+    magnetUri: z.string().startsWith("magnet:?").optional(),
+    torrentFilePath: z.string().endsWith(".torrent").optional(),
+    // Files whose names don't parse into season/episode default to this
+    // season (unlabeled season packs, single-episode releases).
+    seasonHint: z.number().int().nonnegative().optional(),
+    fileOverrides: z.array(fileOverrideSchema).optional(),
+  })
+  .refine((source) => source.magnetUri || source.torrentFilePath, {
+    message: "Each extra source needs magnetUri or torrentFilePath",
+  });
 const cachedFileSchema = z.object({
   id: z.number().int().nonnegative(),
   path: z.string().min(1),
   length: z.number().int().nonnegative(),
   season: z.number().int().nonnegative().optional(),
   episode: z.number().int().positive().optional(),
+  // Torrent hash of the owning source, for multi-torrent series. Absent for
+  // files from the primary source (inspectionCache.hash applies).
+  hash: z.string().min(1).optional(),
 });
 export const inspectionCacheSchema = z.object({
   hash: z.string().min(1),
@@ -47,6 +83,9 @@ export const libraryEntrySchema = z
     managedMedia: z.boolean().optional(),
     preferredFileIndex: z.number().int().nonnegative().optional(),
     fileOverrides: z.array(fileOverrideSchema).optional(),
+    // Additional torrents merged into this series' episode list. Torrent-
+    // backed series only; validated by entrySourceRules below.
+    extraSources: z.array(seriesSourceSchema).optional(),
     // Always offer the repaired "Compatible" stream, even when the probe
     // verdict predicts direct play would work (ADR 0010).
     forceTranscode: z.boolean().optional(),
@@ -66,7 +105,10 @@ export const libraryEntrySchema = z
       message:
         "magnetUri, torrentFilePath, localFilePath, or localFolderPath is required",
     },
-  );
+  )
+  .refine(torrentBackedSeriesRule, {
+    message: "extraSources requires a torrent-backed series entry",
+  });
 
 export const createEntrySchema = libraryEntrySchema
   .omit({
@@ -87,7 +129,10 @@ export const createEntrySchema = libraryEntrySchema
       message:
         "magnetUri, torrentFilePath, localFilePath, or localFolderPath is required",
     },
-  );
+  )
+  .refine(torrentBackedSeriesRule, {
+    message: "extraSources requires a torrent-backed series entry",
+  });
 
 export const patchEntrySchema = createEntrySchema.partial().extend({
   description: z.string().nullable().optional(),
@@ -96,6 +141,7 @@ export const patchEntrySchema = createEntrySchema.partial().extend({
 });
 
 export type LibraryEntry = z.infer<typeof libraryEntrySchema>;
+export type SeriesSource = z.infer<typeof seriesSourceSchema>;
 export type InspectionCache = z.infer<typeof inspectionCacheSchema>;
 export type PlaybackState = z.infer<typeof playbackStateSchema>;
 export type CreateEntry = z.infer<typeof createEntrySchema>;

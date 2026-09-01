@@ -43,7 +43,8 @@ Exactly one source is required: `magnetUri` (must start `magnet:?`), `torrentFil
 | `description` | string | optional; nullable on PATCH |
 | `poster`, `background` | URL | optional; nullable on PATCH |
 | `preferredFileIndex` | int ≥ 0 | force a TorrServer file ID |
-| `fileOverrides` | `[{id, included, season?, episode?}]` | per-file include/episode mapping |
+| `fileOverrides` | `[{id, included, season?, episode?}]` | per-file include/episode mapping (primary source's own IDs) |
+| `extraSources` | `[{magnetUri?\|torrentFilePath?, seasonHint?, fileOverrides?}]` | additional torrents merged into a torrent-backed **series**; rejected on movies and local entries |
 | `nativePathGrant` | string | POST only; redeems a native-picker grant into a local path |
 
 `managedMedia` is server-controlled and stripped from client input. Browser-supplied local paths are validated server-side; `id`, `createdAt`, `updatedAt` are server-generated.
@@ -51,6 +52,8 @@ Exactly one source is required: `magnetUri` (must start `magnet:?`), `torrentFil
 ### Inspection response
 
 Returns the TorrServer registration (`hash`, `files`, `selectedFiles`) plus `homeSpeedMbps`. Add `?probe=true` to include `technical` (resolution, codecs, duration, average bitrate, recommended speed with 50% headroom); probe failures return `technical: {"error": ...}`. Inspection may take up to 30 s; file IDs are TorrServer's one-based IDs.
+
+Multi-torrent series: every source is inspected and the episode lists merge. File IDs become composite — `sourceIndex × 100000 + torrServerFileId` (the primary source keeps raw IDs) — and files from extra sources carry their own `hash`. A file's name parsing wins over the source's `seasonHint`; on duplicate (season, episode) claims the later source wins. Changing `extraSources` clears the inspection cache.
 
 A successful probe also returns `directPlay` and persists it on the library entry:
 

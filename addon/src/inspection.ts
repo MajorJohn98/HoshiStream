@@ -1,13 +1,37 @@
-import type { LibraryEntry } from "./types.js";
+import type { LibraryEntry, SeriesSource } from "./types.js";
 import type { Library } from "./library.js";
 import { inspectLocalEntry } from "./local-media.js";
-import { selectMediaFiles, type SelectedFile } from "./media-file-selection.js";
+import {
+  compositeFileId,
+  fileSourceIndex,
+  mergeSelectedFiles,
+  selectMediaFiles,
+  type SelectedFile,
+  type TorrentFile,
+} from "./media-file-selection.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 
-function registerTorrent(entry: LibraryEntry, torrServer: TorrServerClient) {
-  return entry.magnetUri
-    ? torrServer.addMagnet(entry.magnetUri, entry.name)
-    : torrServer.addTorrentFile(entry.torrentFilePath!, entry.name);
+// The primary source is index 0; extraSources follow in order. Composite file
+// ids encode this index (see media-file-selection.ts).
+export function torrentSources(entry: LibraryEntry): SeriesSource[] {
+  return [
+    {
+      magnetUri: entry.magnetUri,
+      torrentFilePath: entry.torrentFilePath,
+      fileOverrides: entry.fileOverrides,
+    },
+    ...(entry.extraSources ?? []),
+  ];
+}
+
+function registerSource(
+  source: SeriesSource,
+  torrServer: TorrServerClient,
+  title: string,
+) {
+  return source.magnetUri
+    ? torrServer.addMagnet(source.magnetUri, title)
+    : torrServer.addTorrentFile(source.torrentFilePath!, title);
 }
 
 export async function inspectEntry(
@@ -24,18 +48,37 @@ export async function inspectEntry(
       selectedFiles: local?.selectedFiles ?? [],
     };
   }
-  const registered = await registerTorrent(entry, torrServer);
-  const status = await torrServer.waitForFiles(registered.hash);
-  const selectedFiles = selectMediaFiles(
-    entry.type,
-    status.file_stats,
-    entry.preferredFileIndex,
-    entry.fileOverrides,
-  );
+  const sources = torrentSources(entry);
+  const inspected: {
+    hash: string;
+    name: string;
+    files: TorrentFile[];
+    selectedFiles: SelectedFile[];
+  }[] = [];
+  // Sequential on purpose: adds are rare and TorrServer handles them better
+  // one at a time.
+  for (const [index, source] of sources.entries()) {
+    const registered = await registerSource(source, torrServer, entry.name);
+    const status = await torrServer.waitForFiles(registered.hash);
+    inspected.push({
+      hash: status.hash,
+      name: status.name ?? status.title,
+      files: status.file_stats,
+      selectedFiles: selectMediaFiles(
+        entry.type,
+        status.file_stats,
+        index === 0 ? entry.preferredFileIndex : undefined,
+        source.fileOverrides,
+        source.seasonHint,
+      ),
+    });
+  }
+  const primary = inspected[0]!;
+  const selectedFiles = mergeSelectedFiles(inspected);
   if (library && selectedFiles.length) {
     await library
       .setInspectionCache(entry.id, {
-        hash: status.hash,
+        hash: primary.hash,
         selectedFiles,
         inspectedAt: new Date().toISOString(),
       })
@@ -55,14 +98,22 @@ export async function inspectEntry(
       level: "info",
       event: "torrent_inspected",
       entryId: entry.id,
-      hash: status.hash,
+      hash: primary.hash,
+      sources: inspected.length,
       selectedFileIds: selectedFiles.map((file) => file.id),
     }),
   );
   return {
-    hash: status.hash,
-    name: status.name ?? status.title,
-    files: status.file_stats,
+    hash: primary.hash,
+    name: primary.name,
+    // Raw file listings with composite ids, so the management UI can match
+    // selected files back to their source listing.
+    files: inspected.flatMap((source, index) =>
+      source.files.map((file) => ({
+        ...file,
+        id: compositeFileId(index, file.id),
+      })),
+    ),
     selectedFiles,
   };
 }
@@ -78,10 +129,19 @@ export async function resolveStreamSource(
   }
   if (entry.inspectionCache) {
     const { hash, selectedFiles } = entry.inspectionCache;
-    // TorrServer already knows the torrent unless it restarted or dropped it,
-    // so only pay for re-registration when the lookup actually misses.
-    const known = await torrServer.get(hash).catch(() => undefined);
-    if (!known) await registerTorrent(entry, torrServer);
+    // TorrServer already knows the torrents unless it restarted or dropped
+    // them, so only pay for re-registration when a lookup actually misses.
+    const sources = torrentSources(entry);
+    const needed = new Map<string, SeriesSource>();
+    for (const file of selectedFiles) {
+      const source = sources[fileSourceIndex(file.id)];
+      if (source) needed.set(file.hash ?? hash, source);
+    }
+    if (!needed.size) needed.set(hash, sources[0]!);
+    for (const [sourceHash, source] of needed) {
+      const known = await torrServer.get(sourceHash).catch(() => undefined);
+      if (!known) await registerSource(source, torrServer, entry.name);
+    }
     return { hash, selectedFiles };
   }
   return inspectEntry(entry, torrServer, library);
