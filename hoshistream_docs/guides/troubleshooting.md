@@ -10,6 +10,28 @@ macOS AirPlay Receiver owns the port. Turn off **System Settings → General →
 - Verify both devices are on the same non-isolated network (no AP/client isolation, no guest VLAN).
 - Open the tokenized manifest in the TV-side browser first; it must return JSON.
 
+## Works on `127.0.0.1` but not on the LAN IP (empty reply)
+
+The macOS Application Firewall blocks the app's bundled `node` until it is
+approved — and the approval is lost every time the app bundle is rebuilt or
+replaced. Symptom: `curl http://127.0.0.1:7001/health` returns 200 while the
+same request against the LAN IP fails with an empty reply, so catalogs die on
+every client (including pointer-server redirects). Re-approve it:
+
+```bash
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /Applications/HoshiStream.app/Contents/Resources/runtime/bin/node
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /Applications/HoshiStream.app/Contents/Resources/runtime/bin/node
+```
+
+## Pointer URL: manifest loads but catalogs say "Failed to fetch"
+
+First rule out the firewall issue above. If the LAN catalog URL works in
+`curl` but a *browser-based* client (Stremio desktop) still fails, its
+webview is refusing the HTTPS→HTTP-LAN redirect (mixed-content / private
+network rules). Native TV clients and Nuvio follow the redirect; for the
+desktop app on the Mac itself, install the LAN or `127.0.0.1` manifest URL
+instead.
+
 ## TorrServer unavailable
 
 ```bash
