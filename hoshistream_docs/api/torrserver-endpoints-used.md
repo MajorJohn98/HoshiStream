@@ -15,6 +15,6 @@ The adapter (`addon/src/torrserver-client.ts`) talks to the pinned `ghcr.io/your
 ## Client behavior
 
 - Every request has a 10 s timeout (`AbortSignal.timeout`); failures raise `TorrServerError`.
-- Responses are parsed with Zod (`hash`, `stat`, `stat_string`, `file_stats[{id,path,length}]`); unexpected shapes fail loudly.
+- Responses are parsed with Zod (`hash`, `stat`, `stat_string`, `file_stats[{id,path,length}]`, plus optional live stats `loaded_size`, `torrent_size`, `download_speed`, `upload_speed`, `active_peers`, `connected_seeders` surfaced by `/api/playback` — all verified against MatriX.141 `server/torr/state/state.go`); unexpected shapes fail loudly.
 - File IDs are TorrServer's **one-based** IDs.
 - `save_to_db: false` means TorrServer auto-closes inactive torrents after 5 minutes and `RemoveCacheOnDrop` clears their disk cache.

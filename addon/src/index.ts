@@ -56,13 +56,13 @@ export async function startHoshiStream(settings = config) {
       port: settings.ADDON_PORT,
       statePath: settings.POINTER_STATE_PATH,
     });
-  } else if (settings.POINTER_URL || settings.POINTER_PUSH_SECRET) {
+  } else if (settings.POINTER_URL) {
     console.error(
       JSON.stringify({
         level: "warn",
         event: "pointer_partially_configured",
         message:
-          "Set both POINTER_URL and POINTER_PUSH_SECRET to enable the remote pointer",
+          "Set POINTER_PUSH_SECRET alongside POINTER_URL to enable the remote pointer",
       }),
     );
   }

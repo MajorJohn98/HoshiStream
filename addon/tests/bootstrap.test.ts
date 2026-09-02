@@ -76,6 +76,8 @@ describe("ensureFirstRunSetup", () => {
     });
 
     expect(needsAccessToken(environment.ACCESS_TOKEN)).toBe(false);
+    expect(needsAccessToken(environment.POINTER_PUSH_SECRET)).toBe(false);
+    expect(environment.POINTER_PUSH_SECRET).not.toBe(environment.ACCESS_TOKEN);
     expect(environment.MEDIA_DIR).toBe("/tmp/media");
     const written = await readFile(join(projectRoot, ".env"), "utf8");
     expect(written).toContain(`ACCESS_TOKEN=${environment.ACCESS_TOKEN}`);
@@ -91,16 +93,37 @@ describe("ensureFirstRunSetup", () => {
   it("preserves an existing token and unrelated settings", async () => {
     const projectRoot = await temporaryRoot();
     const token = generateAccessToken();
+    const secret = generateAccessToken();
     await writeFile(
       join(projectRoot, ".env"),
-      `ACCESS_TOKEN=${token}\nMEDIA_DIR=/keep\nHOME_SPEED_MBPS=50\n`,
+      `ACCESS_TOKEN=${token}\nMEDIA_DIR=/keep\nHOME_SPEED_MBPS=50\nPOINTER_PUSH_SECRET=${secret}\n`,
     );
 
     const { environment } = await ensureFirstRunSetup({ projectRoot });
 
     expect(environment.ACCESS_TOKEN).toBe(token);
+    expect(environment.POINTER_PUSH_SECRET).toBe(secret);
     expect(environment.MEDIA_DIR).toBe("/keep");
     expect(environment.HOME_SPEED_MBPS).toBe("50");
+  });
+
+  it("appends a pointer push secret to a pre-0.11 .env", async () => {
+    const projectRoot = await temporaryRoot();
+    const token = generateAccessToken();
+    await writeFile(
+      join(projectRoot, ".env"),
+      `ACCESS_TOKEN=${token}\nMEDIA_DIR=/keep\n`,
+    );
+
+    const { environment } = await ensureFirstRunSetup({ projectRoot });
+
+    expect(environment.ACCESS_TOKEN).toBe(token);
+    expect(needsAccessToken(environment.POINTER_PUSH_SECRET)).toBe(false);
+    const written = await readFile(join(projectRoot, ".env"), "utf8");
+    expect(written).toContain("MEDIA_DIR=/keep");
+    expect(written).toContain(
+      `POINTER_PUSH_SECRET=${environment.POINTER_PUSH_SECRET}`,
+    );
   });
 
   it("replaces a placeholder token in place, keeping other settings", async () => {

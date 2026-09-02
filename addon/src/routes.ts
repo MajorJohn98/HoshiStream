@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { z, ZodError } from "zod";
 import { markStreamActivity, recentStreamActivity } from "./activity.js";
+import { listClients, recordClient } from "./clients.js";
 import { assessDirectPlay } from "./direct-play.js";
 import { inspectEntry, resolveStreamSource } from "./inspection.js";
 import type { Library } from "./library.js";
@@ -156,6 +157,19 @@ function protocolPath(pathname: string, token: string): string | undefined {
     : undefined;
 }
 
+function observeClient(
+  request: IncomingMessage,
+  resource: Parameters<typeof recordClient>[2],
+): void {
+  const tunnelIp = request.headers["cf-connecting-ip"];
+  const ip =
+    (typeof tunnelIp === "string" ? tunnelIp : undefined) ??
+    request.socket.remoteAddress ??
+    undefined;
+  const userAgent = request.headers["user-agent"];
+  recordClient(ip, userAgent, resource);
+}
+
 export function createHandler(
   library: Library,
   addon: AddonInterface,
@@ -204,6 +218,7 @@ export function createHandler(
 
       const addonPath = protocolPath(url.pathname, accessToken);
       if (addonPath === "/manifest.json" && request.method === "GET") {
+        observeClient(request, "manifest");
         return noStoreReply(response, 200, addon.manifest);
       }
       const protocolMatch =
@@ -212,6 +227,7 @@ export function createHandler(
         );
       if (protocolMatch && request.method === "GET") {
         const [, resource, type, rawId, rawExtra] = protocolMatch;
+        observeClient(request, resource as "catalog" | "meta" | "stream");
         if (resource === "stream") {
           const clientIp = request.headers["cf-connecting-ip"];
           const ownIp =
@@ -322,6 +338,7 @@ export function createHandler(
         }
         transcode.touch(session);
         markStreamActivity();
+        observeClient(request, "playback");
         if (asset === "index.m3u8") {
           try {
             await transcode.waitForPlaylist(session);
@@ -358,6 +375,7 @@ export function createHandler(
         const entry = await library.get(decodeURIComponent(localMatch[2]));
         if (entry) {
           markStreamActivity();
+          observeClient(request, "playback");
           return serveLocalMedia(
             request,
             response,
@@ -448,6 +466,27 @@ export function createHandler(
             preference: playback.preference,
           });
         }
+        if (url.pathname === "/api/clients" && request.method === "GET") {
+          return reply(response, 200, { clients: listClients() });
+        }
+        if (url.pathname === "/api/playback" && request.method === "GET") {
+          const torrents = await torrServer.list().catch(() => []);
+          return reply(response, 200, {
+            // stat 3 = TorrentWorking (MatriX state.go): actively serving.
+            sessions: torrents.map((torrent) => ({
+              hash: torrent.hash,
+              title: torrent.title || torrent.name || "Unknown torrent",
+              statString: torrent.stat_string,
+              active: torrent.stat === 3,
+              downloadSpeedBps: torrent.download_speed ?? 0,
+              uploadSpeedBps: torrent.upload_speed ?? 0,
+              activePeers: torrent.active_peers ?? 0,
+              connectedSeeders: torrent.connected_seeders ?? 0,
+              loadedSize: torrent.loaded_size ?? 0,
+              torrentSize: torrent.torrent_size ?? 0,
+            })),
+          });
+        }
         if (
           url.pathname === "/api/pointer/status" &&
           request.method === "GET"
@@ -468,6 +507,34 @@ export function createHandler(
             return reply(response, 502, {
               error:
                 error instanceof Error ? error.message : "Pointer push failed",
+            });
+          }
+        }
+        if (
+          url.pathname === "/api/pointer/remote" &&
+          request.method === "GET"
+        ) {
+          if (!pointer) {
+            return reply(response, 409, { error: "Pointer not configured" });
+          }
+          return reply(response, 200, await pointer.remoteStatus());
+        }
+        if (
+          url.pathname === "/api/pointer/remove" &&
+          request.method === "POST"
+        ) {
+          if (!pointer) {
+            return reply(response, 409, { error: "Pointer not configured" });
+          }
+          try {
+            await pointer.remove();
+            return reply(response, 200, { ok: true });
+          } catch (error) {
+            return reply(response, 502, {
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Pointer removal failed",
             });
           }
         }

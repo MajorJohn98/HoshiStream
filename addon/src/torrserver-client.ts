@@ -16,6 +16,14 @@ const torrentStatusSchema = z.object({
   stat: z.number().int(),
   stat_string: z.string(),
   file_stats: z.array(torrentFileSchema).optional().default([]),
+  // Optional live stats (verified against MatriX.141 server/torr/state/state.go)
+  // surfaced by the Devices panel; absent unless the torrent is active.
+  loaded_size: z.number().optional(),
+  torrent_size: z.number().optional(),
+  download_speed: z.number().optional(),
+  upload_speed: z.number().optional(),
+  active_peers: z.number().optional(),
+  connected_seeders: z.number().optional(),
 });
 
 const torrentListSchema = z.array(torrentStatusSchema);

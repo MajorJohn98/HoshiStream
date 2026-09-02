@@ -112,4 +112,73 @@ describe("PointerClient", () => {
     await writeFile(statePath, "not json");
     expect((await client({ statePath }).status()).stale).toBe(true);
   });
+
+  it("removes the remote record and forgets local push state", async () => {
+    const statePath = join(stateDir, "pointer-state.json");
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
+    const pointer = client({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      statePath,
+    });
+    await pointer.push({ id: "test-addon" });
+    await pointer.remove();
+
+    const [url, init] = fetchImpl.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe("https://pointer.example/api/pointer");
+    expect(init.method).toBe("DELETE");
+    expect(JSON.parse(init.body as string)).toEqual({ token: TOKEN });
+    expect((await pointer.status()).stale).toBe(true);
+    await expect(readFile(statePath, "utf8")).rejects.toThrow();
+  });
+
+  it("reports remote pointer health without leaking credentials", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ok: true,
+            baseUrl: "http://192.168.1.42:7001",
+            createdAt: "2026-09-01T10:00:00.000Z",
+            updatedAt: "2026-09-02T10:00:00.000Z",
+            expiresAt: "2026-12-01T10:00:00.000Z",
+          }),
+          { status: 200 },
+        ),
+    );
+    const status = await client({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    }).remoteStatus();
+    expect(status).toEqual({
+      reachable: true,
+      registered: true,
+      baseUrl: "http://192.168.1.42:7001",
+      updatedAt: "2026-09-02T10:00:00.000Z",
+      expiresAt: "2026-12-01T10:00:00.000Z",
+    });
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://pointer.example/api/pointer/status");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["x-addon-token"]).toBe(TOKEN);
+  });
+
+  it("distinguishes an unregistered pointer from an unreachable server", async () => {
+    const notFound = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "Not found" }), { status: 404 }),
+    ) as unknown as typeof fetch;
+    expect(await client({ fetchImpl: notFound }).remoteStatus()).toEqual({
+      reachable: true,
+      registered: false,
+    });
+
+    const offline = vi.fn(async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+    expect(await client({ fetchImpl: offline }).remoteStatus()).toEqual({
+      reachable: false,
+      registered: false,
+    });
+  });
 });

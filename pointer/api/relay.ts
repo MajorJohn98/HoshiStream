@@ -1,6 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { decideRelay } from "../lib/relay.js";
-import { loadPointer } from "../lib/store.js";
+import { allowRequest } from "../lib/ratelimit.js";
+import {
+  decideRelay,
+  hashToken,
+  parseAddonPath,
+  type RelayRecord,
+} from "../lib/relay.js";
+import { loadLegacyPointer, loadPointerRecord } from "../lib/store.js";
 
 function requestedPath(request: VercelRequest): string {
   const fromQuery = request.query.path;
@@ -14,9 +20,10 @@ function requestedPath(request: VercelRequest): string {
 }
 
 // GET /addon/<token>/… — serves the stored manifest for manifest.json and
-// 307-redirects every other add-on resource to the Mac's last-pushed LAN
-// base URL. Clients follow redirects per-request, so a pointer update takes
-// effect immediately without reinstalling the add-on.
+// 307-redirects every other add-on resource to the tenant's last-pushed LAN
+// base URL. Records are looked up by hash(token), so any number of tenants
+// can share one deployment. Unknown and wrong tokens both return 404 so the
+// relay reveals nothing about which tokens exist.
 export default async function handler(
   request: VercelRequest,
   response: VercelResponse,
@@ -25,20 +32,30 @@ export default async function handler(
     response.status(405).json({ error: "Method not allowed" });
     return;
   }
-  const pushSecret = process.env.PUSH_SECRET;
-  if (!pushSecret || pushSecret.length < 20) {
-    response.status(500).json({ error: "PUSH_SECRET is not configured" });
+  const path = requestedPath(request);
+  const parsed = parseAddonPath(path);
+  if (!parsed) {
+    response.status(404).json({ error: "Not found" });
     return;
   }
-  const record = await loadPointer(pushSecret);
-  const decision = decideRelay(record, requestedPath(request));
+  const tokenHash = hashToken(parsed.token);
+  if (!(await allowRequest(`relay:${tokenHash.slice(0, 16)}`, 120, 60))) {
+    response.status(429).json({ error: "Too many requests" });
+    return;
+  }
+  let record: RelayRecord | undefined = await loadPointerRecord(tokenHash);
+  // Backward compatibility: fall back to the single-tenant record stored
+  // under the deployment's PUSH_SECRET until the first v2 push replaces it.
+  const legacySecret = process.env.PUSH_SECRET;
+  if (!record && legacySecret) {
+    record = await loadLegacyPointer(legacySecret);
+  }
+  const decision = decideRelay(record, path);
   response.setHeader("cache-control", "no-store, max-age=0");
   switch (decision.kind) {
     case "not_found":
-      response.status(404).json({ error: "Not found" });
-      return;
     case "unauthorized":
-      response.status(401).json({ error: "Unauthorized" });
+      response.status(404).json({ error: "Not found" });
       return;
     case "manifest":
       response.setHeader("access-control-allow-origin", "*");

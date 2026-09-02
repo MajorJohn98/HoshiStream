@@ -7,6 +7,7 @@ import { LibraryView } from "./views/library.js";
 import { AddView } from "./views/add.js";
 import { StatusView } from "./views/status.js";
 import { SessionsView } from "./views/sessions.js";
+import { DevicesView } from "./views/devices.js";
 import { PlayerView } from "./views/player.js";
 import { DetailModal } from "./views/detail.js";
 
@@ -14,6 +15,7 @@ const VIEWS = {
   library: LibraryView,
   add: AddView,
   sessions: SessionsView,
+  devices: DevicesView,
   status: StatusView,
   play: PlayerView,
 };
@@ -22,6 +24,7 @@ const NAV = [
   ["library", "Library"],
   ["add", "Add Media"],
   ["sessions", "Stream Repair"],
+  ["devices", "Devices"],
   ["status", "Status"],
 ];
 

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
 import { lanIPv4 } from "./mdns.js";
@@ -23,6 +23,22 @@ export interface PointerStatus {
   lastPushedAt?: string;
   stale?: boolean;
 }
+
+// Sanitized view of the server-side record for the dashboard's pointer
+// health card. Contains no token or secret material.
+export interface RemotePointerStatus {
+  reachable: boolean;
+  registered: boolean;
+  baseUrl?: string;
+  updatedAt?: string;
+  expiresAt?: string;
+}
+
+const remoteStatusSchema = z.object({
+  baseUrl: z.string().optional(),
+  updatedAt: z.string().optional(),
+  expiresAt: z.string().optional(),
+});
 
 export interface PointerClientOptions {
   pointerUrl: string;
@@ -123,5 +139,55 @@ export class PointerClient {
       JSON.stringify({ level: "info", event: "pointer_pushed", baseUrl }),
     );
     return this.status();
+  }
+
+  // "Remove Remote Pointer": deletes the record on the pointer server and
+  // forgets the local push state.
+  async remove(): Promise<void> {
+    const response = await this.#fetch(`${this.#pointerUrl}/api/pointer`, {
+      method: "DELETE",
+      headers: {
+        authorization: `Bearer ${this.#pushSecret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ token: this.#token }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Pointer removal failed with status ${response.status}`);
+    }
+    this.#state = undefined;
+    this.#stateLoaded = true;
+    await rm(this.#statePath, { force: true });
+    console.log(JSON.stringify({ level: "info", event: "pointer_removed" }));
+  }
+
+  // Queries the pointer server for the stored record (dashboard health card).
+  // The token travels in a header so it never lands in URL logs.
+  async remoteStatus(): Promise<RemotePointerStatus> {
+    let response: Response;
+    try {
+      response = await this.#fetch(`${this.#pointerUrl}/api/pointer/status`, {
+        headers: {
+          authorization: `Bearer ${this.#pushSecret}`,
+          "x-addon-token": this.#token,
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      return { reachable: false, registered: false };
+    }
+    if (response.status === 404) {
+      return { reachable: true, registered: false };
+    }
+    if (!response.ok) {
+      return { reachable: false, registered: false };
+    }
+    try {
+      const parsed = remoteStatusSchema.parse(await response.json());
+      return { reachable: true, registered: true, ...parsed };
+    } catch {
+      return { reachable: true, registered: false };
+    }
   }
 }
