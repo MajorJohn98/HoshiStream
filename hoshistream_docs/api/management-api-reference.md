@@ -31,6 +31,13 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `POST /api/player/play` | Start host playback of an entry → `{mode, title, resumedAt?}` |
 | `POST /api/player/control` | `pause`, `resume`, `seek` (with `value` in seconds), or `stop` |
 | `GET /api/player/status` | Current player state plus `available` |
+| `GET /api/clients` | Recent clients (in-memory): `{ip, device, hostname?, name?, firstSeen, lastSeen, requests, lastResource}` |
+| `POST /api/clients/name` | Assign a device name: `{ip, name}`; empty name clears it |
+| `GET /api/playback` | Live TorrServer sessions: speeds, peers/seeders, progress |
+| `GET /api/pointer/status` | Local pointer state: manifest URL, last push, staleness |
+| `GET /api/pointer/remote` | Server-side pointer record health (reachable, registered, expiry) |
+| `POST /api/pointer/push` | Push the current LAN base URL + manifest to the pointer server |
+| `POST /api/pointer/remove` | Delete the pointer record on the pointer server |
 
 ### Entry fields (create)
 

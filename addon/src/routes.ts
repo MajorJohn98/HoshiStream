@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { z, ZodError } from "zod";
 import { markStreamActivity, recentStreamActivity } from "./activity.js";
 import { listClients, recordClient } from "./clients.js";
+import { DeviceNames } from "./device-names.js";
+import { lookupHostname } from "./hostname.js";
 import { assessDirectPlay } from "./direct-play.js";
 import { inspectEntry, resolveStreamSource } from "./inspection.js";
 import type { Library } from "./library.js";
@@ -55,6 +57,10 @@ const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
 };
 const catalogResponseSchema = z.object({ metas: z.array(z.unknown()) });
+const clientNameSchema = z.object({
+  ip: z.string().min(1).max(64),
+  name: z.string().max(60),
+});
 const playRequestSchema = z.object({
   entryId: z.string().min(1),
   fileId: z.number().int().nonnegative().optional(),
@@ -183,6 +189,7 @@ export function createHandler(
   transcode?: TranscodeManager,
   resourceDirs?: ResourceDirs,
   pointer?: PointerClient,
+  deviceNames?: DeviceNames,
 ) {
   setConfiguredSpeed(configuredHomeSpeedMbps);
   return async (request: IncomingMessage, response: ServerResponse) => {
@@ -467,7 +474,26 @@ export function createHandler(
           });
         }
         if (url.pathname === "/api/clients" && request.method === "GET") {
-          return reply(response, 200, { clients: listClients() });
+          const tracked = listClients();
+          const names = (await deviceNames?.all()) ?? {};
+          // Hostname lookups are cached with a short negative TTL, so this
+          // stays fast after the first poll.
+          const clients = await Promise.all(
+            tracked.map(async (client) => ({
+              ...client,
+              name: names[client.ip],
+              hostname: await lookupHostname(client.ip),
+            })),
+          );
+          return reply(response, 200, { clients });
+        }
+        if (url.pathname === "/api/clients/name" && request.method === "POST") {
+          if (!deviceNames) {
+            return reply(response, 409, { error: "Naming unavailable" });
+          }
+          const input = clientNameSchema.parse(await body(request));
+          await deviceNames.set(input.ip, input.name);
+          return reply(response, 200, { ok: true });
         }
         if (url.pathname === "/api/playback" && request.method === "GET") {
           const torrents = await torrServer.list().catch(() => []);

@@ -25,7 +25,7 @@ const RESOURCE_LABELS = {
   playback: "Played media",
 };
 
-function usePoll(path, intervalMs) {
+function usePoll(path, intervalMs, refreshTick = 0) {
   const [value, setValue] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -44,19 +44,38 @@ function usePoll(path, intervalMs) {
       alive = false;
       clearInterval(timer);
     };
-  }, [path, intervalMs]);
+  }, [path, intervalMs, refreshTick]);
   return value;
 }
 
 function Clients() {
-  const report = usePoll("clients", 5000);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const report = usePoll("clients", 5000, refreshTick);
   const clients = report?.clients ?? [];
+  const renameDevice = async (client) => {
+    const name = prompt(
+      "Name for " + client.ip + " (empty to clear)",
+      client.name || client.hostname || client.device,
+    );
+    if (name === null) return;
+    try {
+      await api("clients/name", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ip: client.ip, name }),
+      });
+      notify(name.trim() ? "Device named " + name.trim() : "Name cleared");
+      setRefreshTick((tick) => tick + 1);
+    } catch (error) {
+      notify(error.message);
+    }
+  };
   return html`
     <div class="panel" style="margin-top:18px">
       <h2>Connected clients</h2>
       <p class="muted">
         Devices that talked to this server since it started. Kept in memory only
-        — never uploaded anywhere.
+        — never uploaded anywhere. Click a device to name it.
       </p>
       ${
         clients.length === 0
@@ -64,10 +83,23 @@ function Clients() {
           : html`<div class="metrics">
               ${clients.map(
                 (client) => html`
-                  <div class="metric">
-                    <span class="muted">${client.ip}</span>
-                    <strong>${client.device}</strong>
+                  <div
+                    class="metric"
+                    style="cursor:pointer"
+                    title="Click to rename"
+                    onClick=${() => renameDevice(client)}
+                  >
                     <span class="muted">
+                      ${client.ip}${
+                        client.hostname ? " · " + client.hostname : ""
+                      }
+                    </span>
+                    <strong>
+                      ${client.name || client.hostname || client.device}
+                      ${client.name ? "" : " ✎"}
+                    </strong>
+                    <span class="muted">
+                      ${client.name ? client.device + " · " : ""}
                       ${RESOURCE_LABELS[client.lastResource] || "Request"} ·
                       ${agoLabel(client.lastSeen)} · ${client.requests} requests
                     </span>

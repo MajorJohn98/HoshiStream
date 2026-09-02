@@ -10,6 +10,7 @@ import { TorrServerClient } from "./torrserver-client.js";
 import { TranscodeManager, detectVideoEncoder } from "./transcode.js";
 import { MdnsResponder } from "./mdns.js";
 import { PointerClient } from "./pointer.js";
+import { DeviceNames } from "./device-names.js";
 import { runSpeedTest } from "./speedtest.js";
 
 // How long an in-flight response — a stream in progress — may keep the server
@@ -87,6 +88,7 @@ export async function startHoshiStream(settings = config) {
         uploads: settings.UPLOAD_ROOT,
       },
       pointer,
+      new DeviceNames(settings.DEVICE_NAMES_PATH),
     ),
   );
   await new Promise<void>((resolve, reject) => {
