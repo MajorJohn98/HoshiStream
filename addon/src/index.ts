@@ -15,6 +15,7 @@ import { runSpeedTest } from "./speedtest.js";
 import { VolumeRegistry } from "./volumes.js";
 import { DiskCleanup } from "./disk-copy.js";
 import { Archiver } from "./archiver.js";
+import { ArchiveSchedule } from "./archive-schedule.js";
 
 // How long an in-flight response — a stream in progress — may keep the server
 // open during shutdown before its socket is destroyed.
@@ -25,7 +26,10 @@ export async function startHoshiStream(settings = config) {
   const torrServer = new TorrServerClient(settings.TORRSERVER_INTERNAL_URL);
   const nativePicker = new NativePicker(settings.NATIVE_PICKER_SOCKET);
   const volumes = new VolumeRegistry(settings.VOLUMES_PATH);
-  const archiver = new Archiver(library, torrServer, volumes);
+  const archiveSchedule = new ArchiveSchedule(settings.DISK_SCHEDULE_PATH);
+  const archiver = new Archiver(library, torrServer, volumes, {
+    schedule: archiveSchedule,
+  });
   let transcode: TranscodeManager | undefined;
   if (settings.TRANSCODE_ENABLED) {
     const videoEncoder = await detectVideoEncoder(settings.FFMPEG_PATH);
@@ -97,6 +101,7 @@ export async function startHoshiStream(settings = config) {
       volumes,
       new DiskCleanup(settings.DISK_CLEANUP_PATH),
       archiver,
+      archiveSchedule,
     ),
   );
   await new Promise<void>((resolve, reject) => {

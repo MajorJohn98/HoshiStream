@@ -5,6 +5,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { recentStreamActivity } from "./activity.js";
+import { describeWindow, type ArchiveSchedule } from "./archive-schedule.js";
 import {
   PARTIAL_SUFFIX,
   destinationPath,
@@ -32,6 +33,9 @@ export interface ArchiverOptions {
   wakeIntervalMs?: number;
   // Injectable for tests; defaults to recent stream activity.
   playbackActive?: () => boolean;
+  // Optional global download window: work outside it waits until the wake
+  // cycle finds the window open.
+  schedule?: ArchiveSchedule;
 }
 
 export interface DiskJob {
@@ -75,6 +79,7 @@ export class Archiver {
   private readonly playbackYieldMs: number;
   private readonly wakeIntervalMs: number;
   private readonly playbackActive: () => boolean;
+  private readonly schedule?: ArchiveSchedule;
 
   constructor(
     private readonly library: Library,
@@ -88,6 +93,17 @@ export class Archiver {
     this.wakeIntervalMs = options.wakeIntervalMs ?? WAKE_INTERVAL_MS;
     this.playbackActive =
       options.playbackActive ?? (() => recentStreamActivity());
+    this.schedule = options.schedule;
+  }
+
+  /**
+   * "Scheduled HH:MM–HH:MM" when the download window is closed right now,
+   * undefined when work may run. In-flight files finish; new work waits.
+   */
+  private async scheduledPause(): Promise<string | undefined> {
+    if (!this.schedule || (await this.schedule.activeNow())) return undefined;
+    const window = await this.schedule.window();
+    return window ? `Scheduled ${describeWindow(window)}` : undefined;
   }
 
   /** Enqueue outstanding work found in the library (called at startup). */
@@ -201,6 +217,11 @@ export class Archiver {
     const entry = await this.library.get(entryId);
     const diskCopy = entry?.diskCopy;
     if (!entry || !diskCopy || diskCopy.desired !== "keep") return;
+    const scheduled = await this.scheduledPause();
+    if (scheduled) {
+      this.waiting.set(entryId, scheduled);
+      return;
+    }
     const resolution = await this.volumes.resolve(diskCopy.volumeId);
     if (resolution.state !== "online") {
       this.waiting.set(entryId, "Waiting for drive");
@@ -247,6 +268,11 @@ export class Archiver {
   ): Promise<DiskCopyFile["state"] | "stop"> {
     for (let attempt = 0; ; attempt += 1) {
       if (this.cancelled(entryId, generation) || this.closed) return "stop";
+      const scheduled = await this.scheduledPause();
+      if (scheduled) {
+        this.waiting.set(entryId, scheduled);
+        return "stop";
+      }
       while (this.playbackActive()) {
         await delay(this.playbackYieldMs);
         if (this.cancelled(entryId, generation) || this.closed) return "stop";

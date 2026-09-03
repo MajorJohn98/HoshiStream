@@ -145,6 +145,98 @@ function Volumes({ entries }) {
   `;
 }
 
+function Schedule() {
+  const [schedule, setSchedule] = useState(null);
+  const [start, setStart] = useState("01:00");
+  const [end, setEnd] = useState("07:00");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api("disk-schedule")
+      .then((report) => {
+        setSchedule(report);
+        if (report.window) {
+          setStart(report.window.start);
+          setEnd(report.window.end);
+        }
+      })
+      .catch(() => setSchedule({ window: null, active: true }));
+  }, []);
+  const save = async (enabled) => {
+    setBusy(true);
+    try {
+      const report = await api("disk-schedule", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(enabled ? { enabled, start, end } : { enabled }),
+      });
+      setSchedule(report);
+      notify(
+        report.window
+          ? "Downloads limited to " + report.window.label
+          : "Downloads run anytime",
+      );
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!schedule) return null;
+  return html`
+    <div class="panel" style="margin-top:18px">
+      <h2>Download schedule</h2>
+      <p class="muted">
+        Limit archiving to a time window (overnight windows like 23:00–06:00
+        work). A file already copying finishes; new files wait for the window.
+        Playback and its torrent fallback are never scheduled.
+      </p>
+      <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+        <label style="display:flex;gap:6px;align-items:center">
+          From
+          <input
+            type="time"
+            value=${start}
+            onInput=${(event) => setStart(event.target.value)}
+          />
+        </label>
+        <label style="display:flex;gap:6px;align-items:center">
+          to
+          <input
+            type="time"
+            value=${end}
+            onInput=${(event) => setEnd(event.target.value)}
+          />
+        </label>
+        <button class="primary" disabled=${busy} onClick=${() => save(true)}>
+          ${schedule.window ? "Update window" : "Enable window"}
+        </button>
+        ${
+          schedule.window
+            ? html`<button
+                class="secondary"
+                disabled=${busy}
+                onClick=${() => save(false)}
+              >
+                Download anytime
+              </button>`
+            : null
+        }
+        ${
+          schedule.window
+            ? html`<${Pill} online=${schedule.active} warn=${!schedule.active}>
+                ${
+                  schedule.active
+                    ? "● Window open — downloading allowed"
+                    : "◌ Window closed — queue waits"
+                }
+              <//>`
+            : html`<${Pill} online>● No window — downloads run anytime<//>`
+        }
+      </div>
+    </div>
+  `;
+}
+
 function jobLabel(job, entries) {
   const entry = entries.find((candidate) => candidate.id === job.entryId);
   return entry?.name ?? job.entryId;
@@ -207,6 +299,7 @@ export function StorageView() {
         connected, from the torrent when it is not.
       </p>
       <${Volumes} entries=${entries} />
+      <${Schedule} />
       <${Jobs} entries=${entries} />
       <div class="panel" style="margin-top:18px">
         <h2>Entries kept on disk</h2>

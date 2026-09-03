@@ -13,6 +13,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Archiver } from "../src/archiver.js";
+import { ArchiveSchedule } from "../src/archive-schedule.js";
 import { Library } from "../src/library.js";
 import { TorrServerClient } from "../src/torrserver-client.js";
 import { VolumeRegistry } from "../src/volumes.js";
@@ -120,14 +121,25 @@ async function setup(content: Buffer) {
     updatedAt: new Date().toISOString(),
   };
   await library.setDiskCopy(entry.id, diskCopy);
+  const schedule = new ArchiveSchedule(join(base, "disk-schedule.json"));
   const archiver = new Archiver(library, torrServer, volumes, {
     headroomBytes: 0,
     retryBaseMs: 5,
     playbackYieldMs: 5,
     playbackActive: () => false,
+    schedule,
   });
   archivers.push(archiver);
-  return { base, mountBase, drive, volumes, library, archiver, entry };
+  return {
+    base,
+    mountBase,
+    drive,
+    volumes,
+    library,
+    archiver,
+    entry,
+    schedule,
+  };
 }
 
 async function archivedEntry(library: Library, id: string) {
@@ -194,6 +206,37 @@ describe("Archiver", () => {
     ]);
     const diskCopy = await archivedEntry(library, entry.id);
     expect(diskCopy.files[0].state).toBe("missing");
+  });
+
+  it("waits when the download window is closed and runs once it opens", async () => {
+    const content = Buffer.from("w".repeat(100));
+    const { drive, library, archiver, entry, schedule } = await setup(content);
+    // A window that excludes the current minute, wherever "now" falls.
+    const nowMinute = new Date().getHours() * 60 + new Date().getMinutes();
+    await schedule.set({
+      startMinute: (nowMinute + 120) % 1440,
+      endMinute: (nowMinute + 180) % 1440,
+    });
+
+    archiver.enqueue(entry.id);
+    await archiver.settle();
+    expect(archiver.jobs()).toEqual([
+      {
+        entryId: entry.id,
+        status: "waiting",
+        reason: expect.stringMatching(/^Scheduled \d\d:\d\d–\d\d:\d\d$/),
+      },
+    ]);
+
+    // Opening the window and waking the queue starts the copy.
+    await schedule.set(undefined);
+    archiver.wake();
+    await archiver.settle();
+    const diskCopy = await archivedEntry(library, entry.id);
+    expect(diskCopy.files[0].state).toBe("complete");
+    await expect(
+      stat(join(drive, "Example-1", "Show", "S01E01.mkv")),
+    ).resolves.toBeTruthy();
   });
 
   it("cancellation stops work for the entry", async () => {

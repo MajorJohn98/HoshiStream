@@ -96,6 +96,11 @@ export const configSchema = z.object({
   VOLUMES_PATH: z.string().min(1).default(join(root, "volumes.json")),
   // Deferred disk-copy deletions, applied when the target drive reconnects.
   DISK_CLEANUP_PATH: z.string().min(1).default(join(root, "disk-cleanup.json")),
+  // Global download window for the disk-copy archiver (set via the UI).
+  DISK_SCHEDULE_PATH: z
+    .string()
+    .min(1)
+    .default(join(root, "disk-schedule.json")),
 });
 
 // Compose used to resolve `torrserver` and `addon` as container hostnames. They

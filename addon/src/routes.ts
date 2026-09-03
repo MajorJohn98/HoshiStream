@@ -61,6 +61,14 @@ import {
   removeDiskCopyDirectory,
 } from "./disk-copy.js";
 import type { Archiver } from "./archiver.js";
+import {
+  describeWindow,
+  formatTime,
+  parseTime,
+  TIME_PATTERN,
+  withinWindow,
+  type ArchiveSchedule,
+} from "./archive-schedule.js";
 import { serveMediaSource } from "./media-source.js";
 import { VolumeError, type VolumeRegistry } from "./volumes.js";
 
@@ -88,6 +96,15 @@ const diskCopyRequestSchema = z.object({
   includedSourceKeys: z.array(z.string().min(1)).max(10_000).optional(),
   deleteFiles: z.boolean().optional(),
 });
+const diskScheduleRequestSchema = z
+  .object({
+    enabled: z.boolean(),
+    start: z.string().regex(TIME_PATTERN).optional(),
+    end: z.string().regex(TIME_PATTERN).optional(),
+  })
+  .refine((input) => !input.enabled || (input.start && input.end), {
+    message: "start and end are required to enable the window",
+  });
 
 export function technicalProbeRequested(url: URL): boolean {
   return url.searchParams.get("probe") === "true";
@@ -212,6 +229,7 @@ export function createHandler(
   volumes?: VolumeRegistry,
   diskCleanup?: DiskCleanup,
   archiver?: Archiver,
+  archiveSchedule?: ArchiveSchedule,
 ) {
   setConfiguredSpeed(configuredHomeSpeedMbps);
   return async (request: IncomingMessage, response: ServerResponse) => {
@@ -659,6 +677,45 @@ export function createHandler(
           if (!archiver)
             return reply(response, 409, { error: "Archiver unavailable" });
           return reply(response, 200, { jobs: archiver.jobs() });
+        }
+        if (url.pathname === "/api/disk-schedule") {
+          if (!archiveSchedule)
+            return reply(response, 409, { error: "Schedule unavailable" });
+          if (request.method === "PUT") {
+            const input = diskScheduleRequestSchema.parse(await body(request));
+            await archiveSchedule.set(
+              input.enabled
+                ? {
+                    startMinute: parseTime(input.start!),
+                    endMinute: parseTime(input.end!),
+                  }
+                : undefined,
+            );
+            // Re-check waiting entries: the window may have just opened.
+            archiver?.wake();
+            console.log(
+              JSON.stringify({
+                level: "info",
+                event: "disk_schedule_updated",
+                window: input.enabled
+                  ? `${input.start}-${input.end}`
+                  : "always",
+              }),
+            );
+          } else if (request.method !== "GET") {
+            return reply(response, 405, { error: "Method not allowed" });
+          }
+          const window = await archiveSchedule.window();
+          return reply(response, 200, {
+            window: window
+              ? {
+                  start: formatTime(window.startMinute),
+                  end: formatTime(window.endMinute),
+                  label: describeWindow(window),
+                }
+              : null,
+            active: withinWindow(window),
+          });
         }
         if (url.pathname === "/api/library" && request.method === "GET") {
           return reply(response, 200, await library.list());
