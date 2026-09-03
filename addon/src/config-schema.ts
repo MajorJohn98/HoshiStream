@@ -94,6 +94,8 @@ export const configSchema = z.object({
   // Registered storage volumes for the disk library (external drives are
   // identified by an on-disk marker, not by mount path).
   VOLUMES_PATH: z.string().min(1).default(join(root, "volumes.json")),
+  // Deferred disk-copy deletions, applied when the target drive reconnects.
+  DISK_CLEANUP_PATH: z.string().min(1).default(join(root, "disk-cleanup.json")),
 });
 
 // Compose used to resolve `torrserver` and `addon` as container hostnames. They

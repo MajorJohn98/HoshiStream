@@ -112,9 +112,22 @@ never trusted.
 
 | Method & path | Description |
 |---|---|
-| `GET /api/volumes` | `{volumes: [...]}` — each with `id`, `label`, `state` (`online\|offline\|ambiguous\|permission-denied`), `createdAt`, and, when online, `root`, `freeBytes`, `totalBytes` |
+| `GET /api/volumes` | `{volumes: [...]}` — each with `id`, `label`, `state` (`online\|offline\|ambiguous\|permission-denied`), `createdAt`, and, when online, `root`, `freeBytes`, `totalBytes`. Also sweeps deferred disk-copy deletions for volumes that just came back online |
 | `POST /api/volumes` | Open the native folder picker and register the chosen folder (writes the marker, verifies it, persists the registry) → `201` volume status. Idempotent: an already-registered folder returns the existing volume; a valid foreign marker is adopted under its original id. Overlapping an existing volume root is a `400` |
 | `DELETE /api/volumes/{id}` | Forget a volume → `204`. The marker and any media on the drive are left untouched |
+
+## Disk copies
+
+Per-entry "keep on disk" intent (torrent-backed entries only). The entry's
+`diskCopy` records desired placement and a durable per-file manifest keyed by
+`"<torrent-hash>:<raw-file-id>"`; transfer progress is runtime-only. Deleting
+a library entry also removes its disk copy directory, deferred via a
+tombstone when the drive is offline.
+
+| Method & path | Description |
+|---|---|
+| `PUT /api/library/{id}/disk-copy` | Set intent: `{enabled, volumeId?, scope?, includedSourceKeys?, deleteFiles?}`. Enabling inspects the torrent if needed, builds the manifest (`scope: "all"` archives every selected file and tracks changes; `"selected"` freezes intent to `includedSourceKeys`), and adopts files already on the drive. Disabling drops `diskCopy`; with `deleteFiles` the entry directory is removed now (drive online) or tombstoned for the next sweep. → `200` updated entry |
+| `POST /api/library/{id}/disk-copy/retry` | Rebuild the manifest and reconcile against the drive with retry semantics: sticky `invalid` files are approved for replacement. → `200` updated entry, `409` when disk copy is not enabled |
 
 ## Non-API token-gated routes
 

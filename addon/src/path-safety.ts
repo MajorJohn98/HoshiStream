@@ -19,3 +19,20 @@ export function firstSegmentBelow(
   const [segment] = relative(root, candidate).split(/[\\/]/);
   return segment || undefined;
 }
+
+// True for a normalized, separator-forward relative path that cannot escape
+// its base: no absolute paths, no empty/"."/".." segments, no backslashes.
+// Torrent file paths are untrusted input and must pass this before they are
+// used to build any on-disk destination.
+export function isSafeRelativePath(path: string): boolean {
+  if (!path || isAbsolute(path)) return false;
+  return path
+    .split("/")
+    .every(
+      (segment) =>
+        segment !== "" &&
+        segment !== "." &&
+        segment !== ".." &&
+        !segment.includes("\\"),
+    );
+}

@@ -51,6 +51,15 @@ import {
 } from "./transcode.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 import { createEntrySchema, patchEntrySchema } from "./types.js";
+import {
+  buildManifest,
+  defaultRelativeDir,
+  DiskCleanup,
+  DiskCopyError,
+  computeSourceRevision,
+  reconcileFiles,
+  removeDiskCopyDirectory,
+} from "./disk-copy.js";
 import { VolumeError, type VolumeRegistry } from "./volumes.js";
 
 const JSON_HEADERS = {
@@ -69,6 +78,13 @@ const playRequestSchema = z.object({
 const playerControlSchema = z.object({
   action: z.enum(["pause", "resume", "stop", "seek"]),
   value: z.number().nonnegative().optional(),
+});
+const diskCopyRequestSchema = z.object({
+  enabled: z.boolean(),
+  volumeId: z.string().min(1).optional(),
+  scope: z.enum(["all", "selected"]).optional(),
+  includedSourceKeys: z.array(z.string().min(1)).max(10_000).optional(),
+  deleteFiles: z.boolean().optional(),
 });
 
 export function technicalProbeRequested(url: URL): boolean {
@@ -192,6 +208,7 @@ export function createHandler(
   pointer?: PointerClient,
   deviceNames?: DeviceNames,
   volumes?: VolumeRegistry,
+  diskCleanup?: DiskCleanup,
 ) {
   setConfiguredSpeed(configuredHomeSpeedMbps);
   return async (request: IncomingMessage, response: ServerResponse) => {
@@ -420,9 +437,19 @@ export function createHandler(
           url.pathname,
         );
         const volumeMatch = /^\/api\/volumes\/([^/]+)$/.exec(url.pathname);
+        const diskCopyMatch = /^\/api\/library\/([^/]+)\/disk-copy$/.exec(
+          url.pathname,
+        );
+        const diskCopyRetryMatch =
+          /^\/api\/library\/([^/]+)\/disk-copy\/retry$/.exec(url.pathname);
         if (url.pathname === "/api/volumes" && request.method === "GET") {
           if (!volumes)
             return reply(response, 409, { error: "Volumes unavailable" });
+          // Volume polls are the lazy trigger for deferred cleanup: a drive
+          // that just came back gets its pending deletions applied here.
+          if (diskCleanup) {
+            await diskCleanup.sweep(volumes).catch(() => undefined);
+          }
           return reply(response, 200, { volumes: await volumes.statusAll() });
         }
         if (url.pathname === "/api/volumes" && request.method === "POST") {
@@ -461,6 +488,138 @@ export function createHandler(
             );
           }
           return reply(response, removed ? 204 : 404, { error: "Not found" });
+        }
+        if (diskCopyMatch && request.method === "PUT") {
+          if (!volumes)
+            return reply(response, 409, { error: "Volumes unavailable" });
+          const id = decodeURIComponent(diskCopyMatch[1]);
+          let entry = await library.get(id);
+          if (!entry) return reply(response, 404, { error: "Not found" });
+          const input = diskCopyRequestSchema.parse(await body(request));
+          const current = entry.diskCopy;
+          const cleanup = async (volumeId: string, relativeDir: string) => {
+            const resolution = await volumes.resolve(volumeId);
+            if (resolution.state === "online") {
+              await removeDiskCopyDirectory(resolution.root, relativeDir);
+            } else if (diskCleanup) {
+              // Deferred: applied by the sweep when the drive returns.
+              await diskCleanup.add({ volumeId, relativeDir, entryId: id });
+            }
+          };
+          if (!input.enabled) {
+            if (current && input.deleteFiles) {
+              await cleanup(current.volumeId, current.relativeDir);
+            }
+            await library.setDiskCopy(id, undefined);
+            console.log(
+              JSON.stringify({
+                level: "info",
+                event: "disk_copy_disabled",
+                entryId: id,
+                deleteFiles: Boolean(input.deleteFiles),
+              }),
+            );
+            return reply(response, 200, await library.get(id));
+          }
+          if (
+            entry.localFilePath ||
+            entry.localFolderPath ||
+            !(entry.magnetUri || entry.torrentFilePath)
+          ) {
+            throw new DiskCopyError(
+              "Disk copies require a torrent-backed entry",
+            );
+          }
+          const volumeId = input.volumeId ?? current?.volumeId;
+          if (!volumeId) throw new DiskCopyError("Choose a storage volume");
+          if (!(await volumes.get(volumeId)))
+            throw new DiskCopyError("Unknown storage volume");
+          if (current && current.volumeId !== volumeId && input.deleteFiles) {
+            await cleanup(current.volumeId, current.relativeDir);
+          }
+          if (!entry.inspectionCache) {
+            await inspectEntry(entry, torrServer, library);
+            entry = await library.get(id);
+            if (!entry?.inspectionCache)
+              throw new DiskCopyError("Torrent inspection failed");
+          }
+          const previous = current?.volumeId === volumeId ? current : undefined;
+          const scope = input.scope ?? previous?.scope ?? "all";
+          let files = buildManifest(entry, {
+            scope,
+            includedSourceKeys: input.includedSourceKeys,
+            previous: previous?.files,
+          });
+          const relativeDir =
+            previous?.relativeDir ?? defaultRelativeDir(entry);
+          const resolution = await volumes.resolve(volumeId);
+          if (resolution.state === "online") {
+            // Adopt files that already exist on the drive (idempotent
+            // re-enable) before persisting the manifest.
+            files = (await reconcileFiles(resolution.root, relativeDir, files))
+              .files;
+          }
+          await library.setDiskCopy(id, {
+            desired: "keep",
+            volumeId,
+            relativeDir,
+            sourceRevision: computeSourceRevision(files),
+            scope,
+            files,
+            updatedAt: new Date().toISOString(),
+          });
+          console.log(
+            JSON.stringify({
+              level: "info",
+              event: "disk_copy_enabled",
+              entryId: id,
+              volumeId,
+              scope,
+              files: files.length,
+              included: files.filter((file) => file.included).length,
+            }),
+          );
+          return reply(response, 200, await library.get(id));
+        }
+        if (diskCopyRetryMatch && request.method === "POST") {
+          if (!volumes)
+            return reply(response, 409, { error: "Volumes unavailable" });
+          const id = decodeURIComponent(diskCopyRetryMatch[1]);
+          const entry = await library.get(id);
+          if (!entry) return reply(response, 404, { error: "Not found" });
+          const current = entry.diskCopy;
+          if (!current)
+            return reply(response, 409, { error: "Disk copy is not enabled" });
+          let files = buildManifest(entry, {
+            scope: current.scope,
+            previous: current.files,
+          });
+          const resolution = await volumes.resolve(current.volumeId);
+          if (resolution.state === "online") {
+            files = (
+              await reconcileFiles(
+                resolution.root,
+                current.relativeDir,
+                files,
+                { retry: true },
+              )
+            ).files;
+          } else {
+            // Drive offline: the explicit retry still clears sticky invalid
+            // states so work resumes when it returns.
+            files = files.map((file) =>
+              file.state === "invalid"
+                ? { ...file, state: "missing" as const }
+                : file,
+            );
+          }
+          await library.setDiskCopy(id, {
+            ...current,
+            files,
+            sourceRevision: computeSourceRevision(files),
+            updatedAt: new Date().toISOString(),
+          });
+          return reply(response, 200, await library.get(id));
         }
         if (url.pathname === "/api/library" && request.method === "GET") {
           return reply(response, 200, await library.list());
@@ -889,6 +1048,19 @@ export function createHandler(
           const entry = await library.get(id);
           const removed = await library.remove(id);
           if (removed && entry) await removeManagedMedia(entry);
+          // Disk copies mirror managed media: deleting the entry cleans up
+          // its files, deferred via tombstone when the drive is offline.
+          if (removed && entry?.diskCopy && volumes) {
+            const { volumeId, relativeDir } = entry.diskCopy;
+            const resolution = await volumes.resolve(volumeId);
+            if (resolution.state === "online") {
+              await removeDiskCopyDirectory(resolution.root, relativeDir).catch(
+                () => diskCleanup?.add({ volumeId, relativeDir }),
+              );
+            } else {
+              await diskCleanup?.add({ volumeId, relativeDir });
+            }
+          }
           if (removed) {
             console.log(
               JSON.stringify({
@@ -909,7 +1081,8 @@ export function createHandler(
         error instanceof SyntaxError ||
         error instanceof PickerCancelledError ||
         error instanceof PlayerError ||
-        error instanceof VolumeError;
+        error instanceof VolumeError ||
+        error instanceof DiskCopyError;
       const unavailable = error instanceof PickerUnavailableError;
       console.error(
         JSON.stringify({
@@ -924,7 +1097,8 @@ export function createHandler(
           error instanceof PickerCancelledError ||
           error instanceof PickerUnavailableError ||
           error instanceof PlayerError ||
-          error instanceof VolumeError
+          error instanceof VolumeError ||
+          error instanceof DiskCopyError
             ? error.message
             : clientError
               ? "Invalid request"

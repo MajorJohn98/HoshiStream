@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isAbsolute } from "node:path";
 import { directPlaySchema } from "./direct-play.js";
+import { isSafeRelativePath } from "./path-safety.js";
 
 const absolutePath = z.string().refine(isAbsolute, {
   message: "Local media path must be absolute",
@@ -68,6 +69,53 @@ export const playbackStateSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+// Disk library (see plans/2026-09-02-disk-library-plan.md). Files are keyed
+// by "<torrent-hash>:<raw-file-id>" — raw TorrServer ids can collide across a
+// series' sources, hashes cannot. Only durable state lives here; transfer
+// progress is runtime-only.
+const safeRelativePath = z.string().min(1).refine(isSafeRelativePath, {
+  message: "Relative path must not escape its base directory",
+});
+export const diskCopyFileSchema = z.object({
+  sourceKey: z.string().regex(/^[0-9a-fA-F]+:\d+$/),
+  relativePath: safeRelativePath,
+  length: z.number().int().nonnegative(),
+  // Per-episode intent: only included files are archived.
+  included: z.boolean(),
+  state: z.enum(["missing", "partial", "complete", "invalid"]),
+});
+export const diskCopySchema = z.object({
+  // "remove" persists only while deferred cleanup is outstanding; a settled
+  // disable removes diskCopy from the entry entirely.
+  desired: z.enum(["keep", "remove"]),
+  volumeId: z.string().min(1),
+  relativeDir: safeRelativePath,
+  // Fingerprint of the selected source files; a mismatch tells the
+  // reconciler the copy is stale rather than current.
+  sourceRevision: z.string().min(1),
+  // "all" tracks the entry's selected files as they change; "selected"
+  // freezes intent to the explicitly included files.
+  scope: z.enum(["all", "selected"]),
+  files: z.array(diskCopyFileSchema),
+  updatedAt: z.string().datetime(),
+});
+
+// Disk copies duplicate a torrent source; local entries are already on disk.
+function diskCopyRule(entry: {
+  magnetUri?: string;
+  torrentFilePath?: string;
+  localFilePath?: string;
+  localFolderPath?: string;
+  diskCopy?: unknown;
+}): boolean {
+  if (!entry.diskCopy) return true;
+  return (
+    Boolean(entry.magnetUri || entry.torrentFilePath) &&
+    !entry.localFilePath &&
+    !entry.localFolderPath
+  );
+}
+
 export const libraryEntrySchema = z
   .object({
     id: z.string().min(1),
@@ -92,6 +140,7 @@ export const libraryEntrySchema = z
     inspectionCache: inspectionCacheSchema.optional(),
     directPlay: directPlaySchema.optional(),
     playback: playbackStateSchema.optional(),
+    diskCopy: diskCopySchema.optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -108,6 +157,9 @@ export const libraryEntrySchema = z
   )
   .refine(torrentBackedSeriesRule, {
     message: "extraSources requires a torrent-backed series entry",
+  })
+  .refine(diskCopyRule, {
+    message: "diskCopy requires a torrent-backed entry",
   });
 
 export const createEntrySchema = libraryEntrySchema
@@ -116,6 +168,7 @@ export const createEntrySchema = libraryEntrySchema
     inspectionCache: true,
     directPlay: true,
     playback: true,
+    diskCopy: true,
     createdAt: true,
     updatedAt: true,
   })
@@ -144,6 +197,8 @@ export type LibraryEntry = z.infer<typeof libraryEntrySchema>;
 export type SeriesSource = z.infer<typeof seriesSourceSchema>;
 export type InspectionCache = z.infer<typeof inspectionCacheSchema>;
 export type PlaybackState = z.infer<typeof playbackStateSchema>;
+export type DiskCopy = z.infer<typeof diskCopySchema>;
+export type DiskCopyFile = z.infer<typeof diskCopyFileSchema>;
 export type CreateEntry = z.infer<typeof createEntrySchema>;
 export type PatchEntry = z.infer<typeof patchEntrySchema>;
 export type ContentType = LibraryEntry["type"];

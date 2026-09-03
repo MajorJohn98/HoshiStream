@@ -14,6 +14,7 @@ import type { DirectPlay } from "./direct-play.js";
 import {
   libraryEntrySchema,
   type CreateEntry,
+  type DiskCopy,
   type InspectionCache,
   type LibraryEntry,
   type PlaybackState,
@@ -127,6 +128,21 @@ export class Library {
         ...entries[index],
         directPlay,
       });
+    });
+  }
+
+  // Undefined removes the disk copy from the entry (a settled disable).
+  setDiskCopy(id: string, diskCopy: DiskCopy | undefined): Promise<void> {
+    return this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return;
+      const candidate: Record<string, unknown> = {
+        ...entries[index],
+        diskCopy,
+        updatedAt: new Date().toISOString(),
+      };
+      if (!diskCopy) delete candidate.diskCopy;
+      entries[index] = libraryEntrySchema.parse(candidate);
     });
   }
 
