@@ -70,6 +70,7 @@ import {
   type ArchiveSchedule,
 } from "./archive-schedule.js";
 import { serveMediaSource } from "./media-source.js";
+import type { LibraryAnalysis } from "./library-analysis.js";
 import { VolumeError, type VolumeRegistry } from "./volumes.js";
 
 const JSON_HEADERS = {
@@ -230,6 +231,7 @@ export function createHandler(
   diskCleanup?: DiskCleanup,
   archiver?: Archiver,
   archiveSchedule?: ArchiveSchedule,
+  analysis?: LibraryAnalysis,
 ) {
   setConfiguredSpeed(configuredHomeSpeedMbps);
   return async (request: IncomingMessage, response: ServerResponse) => {
@@ -679,6 +681,32 @@ export function createHandler(
           if (!archiver)
             return reply(response, 409, { error: "Archiver unavailable" });
           return reply(response, 200, { jobs: archiver.jobs() });
+        }
+        if (url.pathname === "/api/analysis") {
+          if (!analysis)
+            return reply(response, 409, { error: "Analysis unavailable" });
+          if (request.method === "POST") {
+            const input = z
+              .object({ force: z.boolean().optional() })
+              .parse((await body(request).catch(() => ({}))) ?? {});
+            const started = await analysis.start(Boolean(input.force));
+            if (!started)
+              return reply(response, 409, {
+                error: "Analysis already running",
+              });
+            console.log(
+              JSON.stringify({
+                level: "info",
+                event: "library_analysis_started",
+                force: Boolean(input.force),
+              }),
+            );
+          } else if (request.method === "DELETE") {
+            analysis.cancel();
+          } else if (request.method !== "GET") {
+            return reply(response, 405, { error: "Method not allowed" });
+          }
+          return reply(response, 200, analysis.status());
         }
         if (url.pathname === "/api/disk-schedule") {
           if (!archiveSchedule)

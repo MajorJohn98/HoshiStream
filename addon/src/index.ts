@@ -16,6 +16,7 @@ import { VolumeRegistry } from "./volumes.js";
 import { DiskCleanup } from "./disk-copy.js";
 import { Archiver } from "./archiver.js";
 import { ArchiveSchedule } from "./archive-schedule.js";
+import { defaultAnalyzer, LibraryAnalysis } from "./library-analysis.js";
 
 // How long an in-flight response — a stream in progress — may keep the server
 // open during shutdown before its socket is destroyed.
@@ -102,6 +103,7 @@ export async function startHoshiStream(settings = config) {
       new DiskCleanup(settings.DISK_CLEANUP_PATH),
       archiver,
       archiveSchedule,
+      new LibraryAnalysis(library, defaultAnalyzer(library, torrServer)),
     ),
   );
   await new Promise<void>((resolve, reject) => {
