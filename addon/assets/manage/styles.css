@@ -122,11 +122,6 @@ h3 {
   letter-spacing: 0.3px;
   padding: 2px 6px;
 }
-.brand img {
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
-}
 .brand em {
   color: var(--accent);
   font-style: normal;

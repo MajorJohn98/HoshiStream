@@ -153,7 +153,6 @@ function Sidebar({ route }) {
   return html`
     <aside class="sidebar">
       <a class="brand" href="#/library" aria-label="HoshiStream">
-        <img src="/assets/hoshistream-logo.png" alt="" />
         <span>Hoshi<em>Stream</em></span>
       </a>
       <input
