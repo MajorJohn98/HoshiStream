@@ -146,6 +146,26 @@ export class Library {
     });
   }
 
+  // Record that a client requested this entry's stream. Throttled: stream
+  // lists and range requests repeat constantly, and one timestamp per few
+  // minutes is plenty for "recently streamed".
+  async markStreamed(id: string): Promise<void> {
+    const current = await this.get(id);
+    if (!current) return;
+    const last = current.lastStreamedAt
+      ? Date.parse(current.lastStreamedAt)
+      : 0;
+    if (Date.now() - last < 180_000) return;
+    await this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return;
+      entries[index] = libraryEntrySchema.parse({
+        ...entries[index],
+        lastStreamedAt: new Date().toISOString(),
+      });
+    });
+  }
+
   private async read(): Promise<LibraryEntry[]> {
     try {
       const info = await stat(this.path);

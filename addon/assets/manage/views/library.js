@@ -180,17 +180,21 @@ async function playHere(entry) {
   );
 }
 
-// The hero spotlights the most recently played title, falling back to the
-// first entry with artwork.
+// The hero spotlights the most recently watched or streamed title — host
+// playback and streams to any device both count — falling back to the first
+// entry with artwork.
+function lastActivity(entry) {
+  return Math.max(
+    Date.parse(entry.playback?.updatedAt ?? 0) || 0,
+    Date.parse(entry.lastStreamedAt ?? 0) || 0,
+  );
+}
+
 function heroEntry(entries) {
-  const played = entries
-    .filter((entry) => entry.playback?.positionSeconds)
-    .sort(
-      (a, b) =>
-        Date.parse(b.playback?.updatedAt ?? 0) -
-        Date.parse(a.playback?.updatedAt ?? 0),
-    );
-  return played[0] ?? entries.find((entry) => entry.poster) ?? entries[0];
+  const recent = entries
+    .filter((entry) => lastActivity(entry) > 0)
+    .sort((a, b) => lastActivity(b) - lastActivity(a));
+  return recent[0] ?? entries.find((entry) => entry.poster) ?? entries[0];
 }
 
 function Hero({ entry }) {
@@ -211,7 +215,13 @@ function Hero({ entry }) {
         }
         <div>
           <div class="kicker">
-            ${resume ? "Continue watching" : "From your library"}
+            ${
+              resume
+                ? "Continue watching"
+                : entry.lastStreamedAt
+                  ? "Recently streamed"
+                  : "From your library"
+            }
           </div>
           <h1>${entry.name}</h1>
           <div class="hero-meta">

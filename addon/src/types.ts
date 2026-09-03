@@ -141,6 +141,9 @@ export const libraryEntrySchema = z
     directPlay: directPlaySchema.optional(),
     playback: playbackStateSchema.optional(),
     diskCopy: diskCopySchema.optional(),
+    // When a client last requested this entry's stream (any device, not just
+    // host playback). Drives "Recently streamed" in the management UI.
+    lastStreamedAt: z.string().datetime().optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -169,6 +172,7 @@ export const createEntrySchema = libraryEntrySchema
     directPlay: true,
     playback: true,
     diskCopy: true,
+    lastStreamedAt: true,
     createdAt: true,
     updatedAt: true,
   })

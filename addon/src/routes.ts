@@ -422,6 +422,7 @@ export function createHandler(
         const entry = await library.get(decodeURIComponent(localMatch[2]));
         if (entry) {
           markStreamActivity();
+          void library.markStreamed(entry.id).catch(() => undefined);
           observeClient(request, "playback");
           return serveLocalMedia(
             request,
@@ -447,6 +448,7 @@ export function createHandler(
         const entry = await library.get(decodeURIComponent(mediaMatch[2]));
         if (entry) {
           markStreamActivity();
+          void library.markStreamed(entry.id).catch(() => undefined);
           observeClient(request, "playback");
           return serveMediaSource(
             request,

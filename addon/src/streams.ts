@@ -107,6 +107,7 @@ export async function getStreams(
     const file = requestedFile(source.selectedFiles, type, id).file;
     if (!file) return { streams: [] };
     markStreamActivity();
+    void library.markStreamed(entry.id).catch(() => undefined);
     return {
       streams: [
         {
@@ -124,6 +125,7 @@ export async function getStreams(
   const file = requestedFile(source.selectedFiles, type, id).file;
   if (!file) return { streams: [] };
   markStreamActivity();
+  void library.markStreamed(entry.id).catch(() => undefined);
 
   // Disk-copy entries get the stable /media URL: the router picks disk or
   // torrent per range request, so the client never reselects a stream when
