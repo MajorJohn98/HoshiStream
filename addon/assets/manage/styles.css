@@ -915,6 +915,243 @@ table.files input[type="number"] {
 video {
   outline: none;
 }
+.player-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: #000;
+  cursor: default;
+}
+.player-stage.hide-chrome {
+  cursor: none;
+}
+.player-stage video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+.pl-top,
+.pl-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 24px;
+  transition: opacity 0.25s;
+  z-index: 2;
+}
+.pl-top {
+  top: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.72), transparent);
+}
+.pl-bottom {
+  bottom: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.78), transparent);
+}
+.hide-chrome .pl-top,
+.hide-chrome .pl-bottom {
+  opacity: 0;
+  pointer-events: none;
+}
+.pl-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pl-title strong {
+  font-size: 16px;
+  font-weight: 750;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pl-title span {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.pl-top-right {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.pl-icon-btn {
+  background: none;
+  border: 0;
+  color: #fff;
+  font-size: 19px;
+  line-height: 1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  opacity: 0.9;
+}
+.pl-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  opacity: 1;
+}
+.pl-menu-wrap {
+  position: relative;
+}
+.pl-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 650;
+  padding: 8px 12px;
+  border-radius: 10px;
+  opacity: 0.92;
+}
+.pl-menu-btn:hover,
+.pl-menu-btn.on {
+  background: rgba(255, 255, 255, 0.12);
+  opacity: 1;
+}
+.pl-ico {
+  font-size: 15px;
+  opacity: 0.85;
+}
+.pl-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 210px;
+  max-height: 55vh;
+  overflow-y: auto;
+  background: rgba(18, 20, 26, 0.97);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.6);
+}
+.pl-bottom .pl-menu {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+.pl-menu-head {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.pl-menu-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+.pl-menu-item:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+.pl-menu-item.on {
+  color: var(--accent-2);
+  font-weight: 700;
+}
+.pl-menu-item.muted-item {
+  color: var(--muted);
+  cursor: default;
+}
+.pl-menu-episodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 10px 8px;
+  max-width: 300px;
+}
+.pl-seek-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.pl-seek {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.pl-seek::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.pl-seek-buffer {
+  position: absolute;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.35);
+}
+.pl-seek-fill {
+  position: absolute;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--accent);
+}
+.pl-seek-knob {
+  position: absolute;
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.pl-seek:hover .pl-seek-knob {
+  opacity: 1;
+}
+.pl-time {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.85);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pl-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pl-volume {
+  width: 90px;
+  accent-color: var(--accent);
+}
+.pl-spacer {
+  flex: 1;
+}
+.pl-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  z-index: 1;
+}
 .episode-rail {
   display: flex;
   gap: 8px;

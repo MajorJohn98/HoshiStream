@@ -1,7 +1,7 @@
 // Detail modal: overview, source, files, storage, and playback tabs for one
 // entry. Rendered by App whenever state.selected is set; closing clears it.
 import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
-import { api, fmt, notify, token, headers } from "../api.js";
+import { api, fmt, notify, token } from "../api.js";
 import { setState, useStore, load } from "../store.js";
 
 function agoLabel(iso) {
@@ -41,46 +41,13 @@ async function patch(state, d) {
   });
 }
 
-async function playHere(state, fileId) {
-  const r = await fetch("/api/player/play", {
-    method: "POST",
-    headers: { ...headers, "content-type": "application/json" },
-    body: JSON.stringify({
-      entryId: state.selected.id,
-      ...(fileId === undefined ? {} : { fileId }),
-    }),
-  });
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.error || "Playback failed");
-  const queued = d.queued
-    ? " · " +
-      d.queued +
-      " more episode" +
-      (d.queued === 1 ? "" : "s") +
-      " queued"
-    : "";
-  notify(
-    d.mode === "system"
-      ? "Opened " + d.title + " in your player"
-      : (d.resumedAt
-          ? "Resumed " + d.title + " at " + Math.round(d.resumedAt) + "s"
-          : "Playing " + d.title) + queued,
-  );
-}
-
-function usePlayHere(state) {
-  const [playing, setPlaying] = useState(false);
-  const play = async (fileId) => {
-    setPlaying(true);
-    try {
-      await playHere(state, fileId);
-    } catch (error) {
-      notify(error.message);
-    } finally {
-      setPlaying(false);
-    }
-  };
-  return [playing, play];
+// All play actions route to the in-browser player (#/play). The external
+// player handoff was removed in the 0.12 redesign.
+function goWatch(entryId, fileId) {
+  location.hash =
+    "#/play/" +
+    encodeURIComponent(entryId) +
+    (fileId === undefined ? "" : "/" + fileId);
 }
 
 function useInspect(state) {
@@ -375,7 +342,6 @@ function SourceTab({ state }) {
 
 function CachedFilesTable({ state, cache }) {
   const [busy, run] = useInspect(state);
-  const [, play] = usePlayHere(state);
   return html`
     <div class="toolbar">
       <div>
@@ -413,28 +379,13 @@ function CachedFilesTable({ state, cache }) {
                 <td>${f.season ?? "—"}</td>
                 <td>${f.episode ?? "—"}</td>
                 <td>
-                  <div class="row" style="gap:6px;flex-wrap:nowrap">
-                    <button
-                      class="secondary"
-                      title="Play this file on this Mac"
-                      onClick=${() => play(f.id)}
-                    >
-                      ▶
-                    </button>
-                    <button
-                      class="secondary"
-                      title="Play this file in the browser"
-                      onClick=${() => {
-                        location.hash =
-                          "#/play/" +
-                          encodeURIComponent(state.selected.id) +
-                          "/" +
-                          f.id;
-                      }}
-                    >
-                      ⧉
-                    </button>
-                  </div>
+                  <button
+                    class="secondary"
+                    title="Play this file"
+                    onClick=${() => goWatch(state.selected.id, f.id)}
+                  >
+                    ▶
+                  </button>
                 </td>
               </tr>
             `,
@@ -609,7 +560,6 @@ async function testPlayback(state) {
 
 function PlaybackTab({ state }) {
   const [busy, run] = useInspect(state);
-  const [playing, play] = usePlayHere(state);
   if (!state.inspection?.technical)
     return html`<${InspectionPrompt}
       state=${state}
@@ -677,10 +627,9 @@ function PlaybackTab({ state }) {
           <div class="actions">
             <button
               class="primary"
-              disabled=${playing}
-              onClick=${() => play(f?.id)}
+              onClick=${() => goWatch(state.selected.id, f?.id)}
             >
-              ${playing ? "Starting…" : "▶ Play this file"}
+              ▶ Play this file
             </button>
             <button class="secondary" onClick=${() => testPlayback(state)}>
               Test playback
@@ -1106,7 +1055,6 @@ function diskBadge(entry) {
 export function DetailSheet() {
   const state = useStore();
   const entry = state.selected;
-  const [playing, play] = usePlayHere(state);
   useEffect(() => {
     if (!entry) return;
     if (state.tab && state.tab !== "overview") {
@@ -1192,29 +1140,14 @@ export function DetailSheet() {
                 <div class="hero-cta">
                   <button
                     class="primary"
-                    disabled=${playing}
-                    onClick=${() => play()}
-                  >
-                    ${
-                      playing
-                        ? "Starting…"
-                        : resume
-                          ? "▶ Resume on this Mac"
-                          : "▶ Play on this Mac"
-                    }
-                  </button>
-                  <button
-                    class="secondary"
                     onClick=${() => {
                       const fileId =
                         entry.playback?.fileId ??
-                        entry.inspectionCache?.selectedFiles?.[0]?.id ??
-                        0;
-                      location.hash =
-                        "#/play/" + encodeURIComponent(entry.id) + "/" + fileId;
+                        entry.inspectionCache?.selectedFiles?.[0]?.id;
+                      goWatch(entry.id, fileId);
                     }}
                   >
-                    Watch in browser
+                    ${resume ? "▶ Resume" : "▶ Watch now"}
                   </button>
                 </div>
               </div>

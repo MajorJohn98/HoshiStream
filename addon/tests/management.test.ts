@@ -180,7 +180,7 @@ describe("management assets", () => {
 
   it("player view switches episodes and can autoplay the next one", async () => {
     const playerJs = await asset("views/player.js");
-    expect(playerJs).toContain("EpisodeRail");
+    expect(playerJs).toContain("pl-menu-episodes");
     expect(playerJs).toContain("hashchange");
     expect(playerJs).toContain("goEpisode");
     expect(playerJs).toContain("autoNext && next");

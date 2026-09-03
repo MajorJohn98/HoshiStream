@@ -1,11 +1,11 @@
-// In-browser player view (#/play/{entryId}/{fileId}): plays the same stream
-// URLs the Stremio clients receive. MP4-class sources play natively; HLS
-// repair sessions play natively on Safari and through hls.js elsewhere.
-// Series get an episode rail with next/previous and autoplay-next.
+// In-browser player (#/play/{entryId}/{fileId}) with custom cinema chrome:
+// top bar (back, title, quality + audio/subtitles menus), bottom scrubber
+// with time, transport controls, episode popover for series, fullscreen, and
+// auto-hiding controls. Plays the same stream URLs Stremio clients receive:
+// MP4-class sources natively, HLS repair sessions via hls.js when needed.
 import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { token } from "../api.js";
 import { useStore } from "../store.js";
-import { Shell } from "../components/shell.js";
 
 function params() {
   const match = /^#\/play\/([^/]+)(?:\/(\d+))?/.exec(location.hash);
@@ -17,8 +17,6 @@ function params() {
     : undefined;
 }
 
-// Episodes come from the inspection cache, which the server keeps sorted by
-// season/episode.
 function episodeList(entry) {
   if (entry?.type !== "series") return [];
   return entry.inspectionCache?.selectedFiles ?? [];
@@ -61,53 +59,35 @@ function attachSource(video, url) {
   });
 }
 
-function EpisodeRail({ entry, activeFile, autoNext, onToggleAutoNext }) {
-  const episodes = episodeList(entry);
-  const seasons = [...new Set(episodes.map((episode) => episode.season))];
-  const [season, setSeason] = useState(activeFile?.season ?? seasons[0]);
-  useEffect(() => {
-    if (activeFile) setSeason(activeFile.season);
-  }, [activeFile?.id]);
-  if (!episodes.length) return null;
+function clock(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "–:––";
+  const s = Math.floor(seconds % 60);
+  const m = Math.floor((seconds / 60) % 60);
+  const h = Math.floor(seconds / 3600);
+  const mm = h ? String(m).padStart(2, "0") : String(m);
+  return (h ? h + ":" : "") + mm + ":" + String(s).padStart(2, "0");
+}
+
+function runtime(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return h ? h + "h " + m + "m" : m + "m";
+}
+
+// Quality menu entries come from the stream variants the server offers
+// (Direct / Compatible repair / Lower bitrate).
+function qualityLabel(stream) {
+  return stream.description.split("•")[0].trim();
+}
+
+function Menu({ label, icon, open, onToggle, children }) {
   return html`
-    <div class="panel" style="margin-top:14px">
-      <div class="toolbar" style="margin-bottom:10px">
-        <div class="chips">
-          ${seasons.map(
-            (candidate) => html`
-              <button
-                class="chip ${season === candidate ? "active" : ""}"
-                onClick=${() => setSeason(candidate)}
-              >
-                Season ${candidate}
-              </button>
-            `,
-          )}
-        </div>
-        <label class="muted" style="display:flex;gap:8px;align-items:center">
-          <input
-            type="checkbox"
-            checked=${autoNext}
-            onChange=${(event) => onToggleAutoNext(event.target.checked)}
-          />
-          Autoplay next
-        </label>
-      </div>
-      <div class="episode-rail">
-        ${episodes
-          .filter((episode) => episode.season === season)
-          .map(
-            (episode) => html`
-              <button
-                class="episode ${episode.id === activeFile?.id ? "active" : ""}"
-                title=${episode.path}
-                onClick=${() => goEpisode(entry.id, episode.id)}
-              >
-                E${episode.episode}
-              </button>
-            `,
-          )}
-      </div>
+    <div class="pl-menu-wrap">
+      <button class="pl-menu-btn ${open ? "on" : ""}" onClick=${onToggle}>
+        <span class="pl-ico">${icon}</span>${label}
+      </button>
+      ${open ? html`<div class="pl-menu">${children}</div>` : null}
     </div>
   `;
 }
@@ -115,10 +95,21 @@ function EpisodeRail({ entry, activeFile, autoNext, onToggleAutoNext }) {
 export function PlayerView() {
   const { entries } = useStore();
   const videoRef = useRef(null);
+  const stageRef = useRef(null);
+  const hideTimer = useRef(null);
   const [request, setRequest] = useState(params());
   const [streams, setStreams] = useState(null);
   const [active, setActive] = useState(0);
   const [error, setError] = useState("");
+  const [paused, setPaused] = useState(true);
+  const [time, setTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [buffered, setBuffered] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const [chrome, setChrome] = useState(true);
+  const [menu, setMenu] = useState(null); // "quality" | "tracks" | "episodes"
+  const [tracks, setTracks] = useState({ audio: [], text: [] });
   const [autoNext, setAutoNext] = useState(
     localStorage.getItem("hoshi-autonext") !== "false",
   );
@@ -126,11 +117,20 @@ export function PlayerView() {
   const file = currentFile(entry, request?.fileId);
   const episodes = episodeList(entry);
   const index = episodes.findIndex((episode) => episode.id === file?.id);
-  const previous = index > 0 ? episodes[index - 1] : undefined;
   const next = index >= 0 ? episodes[index + 1] : undefined;
 
-  // Episode switches change only the hash inside this route, so the player
-  // tracks hashchange itself.
+  const showChrome = () => {
+    setChrome(true);
+    clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => {
+      const video = videoRef.current;
+      if (video && !video.paused) {
+        setChrome(false);
+        setMenu(null);
+      }
+    }, 3000);
+  };
+
   useEffect(() => {
     const onHash = () => {
       const nextRequest = params();
@@ -145,6 +145,7 @@ export function PlayerView() {
     return () => removeEventListener("hashchange", onHash);
   }, []);
 
+  // Resolve streams for the requested title/episode.
   useEffect(() => {
     if (!entry) return;
     let alive = true;
@@ -173,6 +174,7 @@ export function PlayerView() {
     };
   }, [entry?.id, file?.id]);
 
+  // Attach the active stream and persist the resume position.
   useEffect(() => {
     const video = videoRef.current;
     const stream = streams?.[active];
@@ -205,6 +207,89 @@ export function PlayerView() {
     };
   }, [streams, active]);
 
+  // Mirror element state into the chrome.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const sync = () => {
+      setPaused(video.paused);
+      setTime(video.currentTime);
+      setDuration(video.duration || 0);
+      setVolume(video.volume);
+      setMuted(video.muted);
+      const ranges = video.buffered;
+      setBuffered(ranges.length ? ranges.end(ranges.length - 1) : 0);
+      const audio = video.audioTracks
+        ? [...video.audioTracks].map((track, i) => ({
+            id: i,
+            label: track.label || track.language || "Track " + (i + 1),
+            enabled: track.enabled,
+          }))
+        : [];
+      const text = video.textTracks
+        ? [...video.textTracks].map((track, i) => ({
+            id: i,
+            label: track.label || track.language || "Subtitle " + (i + 1),
+            enabled: track.mode === "showing",
+          }))
+        : [];
+      setTracks({ audio, text });
+    };
+    const events = [
+      "play",
+      "pause",
+      "timeupdate",
+      "durationchange",
+      "volumechange",
+      "progress",
+      "loadedmetadata",
+    ];
+    for (const name of events) video.addEventListener(name, sync);
+    sync();
+    return () => {
+      for (const name of events) video.removeEventListener(name, sync);
+    };
+  }, [streams, active]);
+
+  // Keyboard transport.
+  useEffect(() => {
+    const onKey = (event) => {
+      const video = videoRef.current;
+      if (!video || event.target.tagName === "INPUT") return;
+      showChrome();
+      if (event.key === " " || event.key === "k") {
+        event.preventDefault();
+        if (video.paused) void video.play();
+        else video.pause();
+      } else if (event.key === "ArrowLeft") video.currentTime -= 10;
+      else if (event.key === "ArrowRight") video.currentTime += 10;
+      else if (event.key === "m") video.muted = !video.muted;
+      else if (event.key === "f") toggleFullscreen();
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => () => clearTimeout(hideTimer.current), []);
+
+  const toggleFullscreen = () => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void stage.requestFullscreen?.();
+  };
+
+  const seekTo = (event) => {
+    const video = videoRef.current;
+    if (!video || !duration) return;
+    const bar = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(
+      1,
+      Math.max(0, (event.clientX - bar.left) / bar.width),
+    );
+    video.currentTime = ratio * duration;
+  };
+
   if (!request || !entry)
     return html`<div class="empty">
       Title not found.
@@ -213,104 +298,286 @@ export function PlayerView() {
       </button>
     </div>`;
 
+  const video = videoRef.current;
+  const subtitle =
+    entry.type === "series" && file
+      ? "S" + file.season + " E" + file.episode + " · " + runtime(duration)
+      : runtime(duration);
+  const seasons = [...new Set(episodes.map((episode) => episode.season))];
+
   return html`
-    <${Shell}
-      title=${
-        entry.type === "series" && file
-          ? `${entry.name} · S${file.season} E${file.episode}`
-          : entry.name
+    <div
+      ref=${stageRef}
+      class="player-stage ${chrome ? "" : "hide-chrome"}"
+      onMouseMove=${showChrome}
+      onClick=${() => setMenu(null)}
+    >
+      <video
+        ref=${videoRef}
+        playsinline
+        onClick=${(event) => {
+          event.stopPropagation();
+          setMenu(null);
+          if (video?.paused) void video.play();
+          else video?.pause();
+        }}
+        onEnded=${() => {
+          if (autoNext && next) goEpisode(entry.id, next.id);
+        }}
+      ></video>
+
+      ${
+        error
+          ? html`<div class="pl-error">
+              <p class="danger">${error}</p>
+              <p class="muted">
+                Browsers cannot decode every codec — try the Compatible quality
+                if one is offered.
+              </p>
+            </div>`
+          : !streams
+            ? html`<div class="pl-error"><p class="muted">Loading…</p></div>`
+            : null
       }
-      actions=${html`
-        <div class="row">
+
+      <header class="pl-top">
+        <button
+          class="pl-icon-btn"
+          aria-label="Back to library"
+          onClick=${(event) => {
+            event.stopPropagation();
+            location.hash = "#/library";
+          }}
+        >
+          ←
+        </button>
+        <div class="pl-title">
+          <strong>${entry.name}</strong>
+          <span>${subtitle}</span>
+        </div>
+        <div class="pl-top-right" onClick=${(event) => event.stopPropagation()}>
           ${
-            previous
-              ? html`<button
-                  class="secondary"
-                  onClick=${() => goEpisode(entry.id, previous.id)}
+            streams && streams.length > 1
+              ? html`<${Menu}
+                  label="Quality"
+                  icon="▸"
+                  open=${menu === "quality"}
+                  onToggle=${() =>
+                    setMenu(menu === "quality" ? null : "quality")}
                 >
-                  ⏮ E${previous.episode}
-                </button>`
+                  ${streams.map(
+                    (stream, streamIndex) => html`
+                      <button
+                        class="pl-menu-item ${
+                          active === streamIndex ? "on" : ""
+                        }"
+                        onClick=${() => {
+                          setError("");
+                          setActive(streamIndex);
+                          setMenu(null);
+                        }}
+                      >
+                        ${qualityLabel(stream)}
+                      </button>
+                    `,
+                  )}
+                <//>`
               : null
           }
+          <${Menu}
+            label="Audio & Subtitles"
+            icon="◨"
+            open=${menu === "tracks"}
+            onToggle=${() => setMenu(menu === "tracks" ? null : "tracks")}
+          >
+            <div class="pl-menu-head">Audio</div>
+            ${
+              tracks.audio.length
+                ? tracks.audio.map(
+                    (track) => html`
+                      <button
+                        class="pl-menu-item ${track.enabled ? "on" : ""}"
+                        onClick=${() => {
+                          const list = videoRef.current?.audioTracks;
+                          if (!list) return;
+                          for (let i = 0; i < list.length; i++)
+                            list[i].enabled = i === track.id;
+                          setMenu(null);
+                        }}
+                      >
+                        ${track.label}
+                      </button>
+                    `,
+                  )
+                : html`<div class="pl-menu-item muted-item">Default</div>`
+            }
+            <div class="pl-menu-head">Subtitles</div>
+            ${
+              tracks.text.length
+                ? html`
+                    <button
+                      class="pl-menu-item ${
+                        tracks.text.some((track) => track.enabled) ? "" : "on"
+                      }"
+                      onClick=${() => {
+                        const list = videoRef.current?.textTracks;
+                        if (!list) return;
+                        for (const track of list) track.mode = "hidden";
+                        setMenu(null);
+                      }}
+                    >
+                      Off
+                    </button>
+                    ${tracks.text.map(
+                      (track) => html`
+                        <button
+                          class="pl-menu-item ${track.enabled ? "on" : ""}"
+                          onClick=${() => {
+                            const list = videoRef.current?.textTracks;
+                            if (!list) return;
+                            for (let i = 0; i < list.length; i++)
+                              list[i].mode =
+                                i === track.id ? "showing" : "hidden";
+                            setMenu(null);
+                          }}
+                        >
+                          ${track.label}
+                        </button>
+                      `,
+                    )}
+                  `
+                : html`<div class="pl-menu-item muted-item">
+                    None in this stream
+                  </div>`
+            }
+          <//>
+        </div>
+      </header>
+
+      <footer class="pl-bottom" onClick=${(event) => event.stopPropagation()}>
+        <div class="pl-seek-row">
+          <div class="pl-seek" onClick=${seekTo}>
+            <div
+              class="pl-seek-buffer"
+              style=${
+                "width:" + (duration ? (buffered / duration) * 100 : 0) + "%"
+              }
+            ></div>
+            <div
+              class="pl-seek-fill"
+              style=${"width:" + (duration ? (time / duration) * 100 : 0) + "%"}
+            >
+              <span class="pl-seek-knob"></span>
+            </div>
+          </div>
+          <span class="pl-time">${clock(time)} / ${clock(duration)}</span>
+        </div>
+        <div class="pl-controls">
+          <button
+            class="pl-icon-btn"
+            aria-label=${paused ? "Play" : "Pause"}
+            onClick=${() => {
+              if (video?.paused) void video.play();
+              else video?.pause();
+            }}
+          >
+            ${paused ? "▶" : "⏸"}
+          </button>
+          <button
+            class="pl-icon-btn"
+            aria-label="Back 10 seconds"
+            onClick=${() => video && (video.currentTime -= 10)}
+          >
+            ↺10
+          </button>
+          <button
+            class="pl-icon-btn"
+            aria-label="Forward 10 seconds"
+            onClick=${() => video && (video.currentTime += 10)}
+          >
+            ↻10
+          </button>
+          <button
+            class="pl-icon-btn"
+            aria-label=${muted ? "Unmute" : "Mute"}
+            onClick=${() => video && (video.muted = !video.muted)}
+          >
+            ${muted || volume === 0 ? "🔇" : "🔊"}
+          </button>
+          <input
+            class="pl-volume"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value=${muted ? 0 : volume}
+            onInput=${(event) => {
+              if (!video) return;
+              video.volume = Number(event.target.value);
+              video.muted = video.volume === 0;
+            }}
+          />
+          <div class="pl-spacer"></div>
           ${
-            next
-              ? html`<button
-                  class="secondary"
-                  onClick=${() => goEpisode(entry.id, next.id)}
+            episodes.length
+              ? html`<${Menu}
+                  label="Episodes"
+                  icon="▦"
+                  open=${menu === "episodes"}
+                  onToggle=${() =>
+                    setMenu(menu === "episodes" ? null : "episodes")}
                 >
-                  E${next.episode} ⏭
-                </button>`
+                  <label class="pl-menu-item" style="cursor:pointer">
+                    <input
+                      type="checkbox"
+                      checked=${autoNext}
+                      onChange=${(event) => {
+                        setAutoNext(event.target.checked);
+                        localStorage.setItem(
+                          "hoshi-autonext",
+                          String(event.target.checked),
+                        );
+                      }}
+                    />
+                    Autoplay next
+                  </label>
+                  ${seasons.map(
+                    (season) => html`
+                      <div class="pl-menu-head">Season ${season}</div>
+                      <div class="pl-menu-episodes">
+                        ${episodes
+                          .filter((episode) => episode.season === season)
+                          .map(
+                            (episode) => html`
+                              <button
+                                class="episode ${
+                                  episode.id === file?.id ? "active" : ""
+                                }"
+                                title=${episode.path}
+                                onClick=${() => {
+                                  setMenu(null);
+                                  goEpisode(entry.id, episode.id);
+                                }}
+                              >
+                                E${episode.episode}
+                              </button>
+                            `,
+                          )}
+                      </div>
+                    `,
+                  )}
+                <//>`
               : null
           }
           <button
-            class="secondary"
-            onClick=${() => (location.hash = "#/library")}
+            class="pl-icon-btn"
+            aria-label="Fullscreen"
+            onClick=${toggleFullscreen}
           >
-            Back to library
+            ⛶
           </button>
         </div>
-      `}
-    >
-      ${
-        error
-          ? html`<div class="empty">
-              <p class="danger">${error}</p>
-              <p class="muted">
-                Browsers cannot decode every codec. If direct play fails, try
-                the Compatible stream, or use "Play on this Mac" from the
-                title's detail view.
-              </p>
-            </div>`
-          : null
-      }
-      <div class="panel" style="padding:0;overflow:hidden">
-        <video
-          ref=${videoRef}
-          controls
-          playsinline
-          onEnded=${() => {
-            if (autoNext && next) goEpisode(entry.id, next.id);
-          }}
-          style="width:100%;display:block;background:#000;aspect-ratio:16/9"
-        ></video>
-      </div>
-      ${
-        streams && streams.length > 1
-          ? html`<div class="chips" style="margin-top:12px">
-              ${streams.map(
-                (stream, streamIndex) => html`
-                  <button
-                    class="chip ${active === streamIndex ? "active" : ""}"
-                    onClick=${() => {
-                      setError("");
-                      setActive(streamIndex);
-                    }}
-                  >
-                    ${stream.description.split("•")[0].trim()}
-                  </button>
-                `,
-              )}
-            </div>`
-          : null
-      }
-      ${
-        streams
-          ? html`<p class="muted" style="margin-top:8px">
-              ${streams[active]?.description}
-              ${" — repaired streams show no total time until the session"}
-              ${" finishes encoding."}
-            </p>`
-          : html`<p class="muted">Resolving stream…</p>`
-      }
-      <${EpisodeRail}
-        entry=${entry}
-        activeFile=${file}
-        autoNext=${autoNext}
-        onToggleAutoNext=${(value) => {
-          setAutoNext(value);
-          localStorage.setItem("hoshi-autonext", String(value));
-        }}
-      />
-    <//>
+      </footer>
+    </div>
   `;
 }

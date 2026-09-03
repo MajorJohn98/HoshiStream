@@ -2,7 +2,7 @@
 // Stremio catalog refresh flow. The import-review and Stremio modals stay as
 // body-level DOM (outside the preact root), same as the detail modal.
 import { html, useState } from "../vendor/preact-htm.js";
-import { api, esc, headers, notify, token } from "../api.js";
+import { api, esc, notify, token } from "../api.js";
 import { state, setState, useStore, load } from "../store.js";
 import { Shell, Pill } from "../components/shell.js";
 import { classifyLibraryImports } from "../classify-imports.js";
@@ -165,19 +165,13 @@ const VERDICT_DOTS = {
   risky: ["May not play", "v risky"],
 };
 
-async function playHere(entry) {
-  const response = await fetch("/api/player/play", {
-    method: "POST",
-    headers: { ...headers, "content-type": "application/json" },
-    body: JSON.stringify({ entryId: entry.id }),
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Playback failed");
-  notify(
-    data.resumedAt
-      ? "Resumed " + data.title + " at " + Math.round(data.resumedAt) + "s"
-      : "Playing " + data.title,
-  );
+function watchNow(entry) {
+  const fileId =
+    entry.playback?.fileId ?? entry.inspectionCache?.selectedFiles?.[0]?.id;
+  location.hash =
+    "#/play/" +
+    encodeURIComponent(entry.id) +
+    (fileId === undefined ? "" : "/" + fileId);
 }
 
 // The hero spotlights the most recently watched or streamed title — host
@@ -198,7 +192,6 @@ function heroEntry(entries) {
 }
 
 function Hero({ entry }) {
-  const [starting, setStarting] = useState(false);
   if (!entry) return null;
   const verdict = entry.directPlay
     ? VERDICT_DOTS[entry.directPlay.compatibility]
@@ -244,40 +237,8 @@ function Hero({ entry }) {
             </span>
           </div>
           <div class="hero-cta">
-            <button
-              class="primary"
-              disabled=${starting}
-              onClick=${async () => {
-                setStarting(true);
-                try {
-                  await playHere(entry);
-                } catch (error) {
-                  notify(error.message);
-                } finally {
-                  setStarting(false);
-                }
-              }}
-            >
-              ${
-                starting
-                  ? "Starting…"
-                  : resume
-                    ? "▶ Resume on this Mac"
-                    : "▶ Play on this Mac"
-              }
-            </button>
-            <button
-              class="secondary"
-              onClick=${() => {
-                const fileId =
-                  entry.playback?.fileId ??
-                  entry.inspectionCache?.selectedFiles?.[0]?.id ??
-                  0;
-                location.hash =
-                  "#/play/" + encodeURIComponent(entry.id) + "/" + fileId;
-              }}
-            >
-              Watch in browser
+            <button class="primary" onClick=${() => watchNow(entry)}>
+              ${resume ? "▶ Resume" : "▶ Watch now"}
             </button>
             <button class="secondary" onClick=${() => openDetail(entry)}>
               Details
