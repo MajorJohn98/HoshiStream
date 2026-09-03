@@ -102,6 +102,20 @@ Available only when `TRANSCODE_ENABLED=true`; the UI's "Stream Repair" view is b
 | `POST /api/torrent-upload?batch=&name=` | Upload a `.torrent` → `201 {"path": ...}` |
 | `POST /api/native-picker/{file\|folder}` | Open a native Finder picker; returns a grant (native app only) |
 
+## Storage volumes
+
+Registered storage locations for the disk library (see the disk library
+plan). A volume is identified by a `.hoshistream-volume.json` marker written
+at its root — never by mount path or drive name — so an external drive is
+recognized even when it remounts under a new name, and a look-alike drive is
+never trusted.
+
+| Method & path | Description |
+|---|---|
+| `GET /api/volumes` | `{volumes: [...]}` — each with `id`, `label`, `state` (`online\|offline\|ambiguous\|permission-denied`), `createdAt`, and, when online, `root`, `freeBytes`, `totalBytes` |
+| `POST /api/volumes` | Open the native folder picker and register the chosen folder (writes the marker, verifies it, persists the registry) → `201` volume status. Idempotent: an already-registered folder returns the existing volume; a valid foreign marker is adopted under its original id. Overlapping an existing volume root is a `400` |
+| `DELETE /api/volumes/{id}` | Forget a volume → `204`. The marker and any media on the drive are left untouched |
+
 ## Non-API token-gated routes
 
 | Method & path | Description |

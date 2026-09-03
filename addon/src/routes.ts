@@ -51,6 +51,7 @@ import {
 } from "./transcode.js";
 import type { TorrServerClient } from "./torrserver-client.js";
 import { createEntrySchema, patchEntrySchema } from "./types.js";
+import { VolumeError, type VolumeRegistry } from "./volumes.js";
 
 const JSON_HEADERS = {
   "access-control-allow-origin": "*",
@@ -190,6 +191,7 @@ export function createHandler(
   resourceDirs?: ResourceDirs,
   pointer?: PointerClient,
   deviceNames?: DeviceNames,
+  volumes?: VolumeRegistry,
 ) {
   setConfiguredSpeed(configuredHomeSpeedMbps);
   return async (request: IncomingMessage, response: ServerResponse) => {
@@ -417,6 +419,49 @@ export function createHandler(
         const pickerMatch = /^\/api\/native-picker\/(file|folder)$/.exec(
           url.pathname,
         );
+        const volumeMatch = /^\/api\/volumes\/([^/]+)$/.exec(url.pathname);
+        if (url.pathname === "/api/volumes" && request.method === "GET") {
+          if (!volumes)
+            return reply(response, 409, { error: "Volumes unavailable" });
+          return reply(response, 200, { volumes: await volumes.statusAll() });
+        }
+        if (url.pathname === "/api/volumes" && request.method === "POST") {
+          if (!volumes)
+            return reply(response, 409, { error: "Volumes unavailable" });
+          const selected = await nativePicker.selectStorage();
+          const volume = await volumes.register(selected);
+          console.log(
+            JSON.stringify({
+              level: "info",
+              event: "volume_registered",
+              volumeId: volume.id,
+              label: volume.label,
+            }),
+          );
+          const statuses = await volumes.statusAll();
+          return reply(
+            response,
+            201,
+            statuses.find((status) => status.id === volume.id) ?? volume,
+          );
+        }
+        if (volumeMatch && request.method === "DELETE") {
+          if (!volumes)
+            return reply(response, 409, { error: "Volumes unavailable" });
+          const removed = await volumes.forget(
+            decodeURIComponent(volumeMatch[1]),
+          );
+          if (removed) {
+            console.log(
+              JSON.stringify({
+                level: "info",
+                event: "volume_forgotten",
+                volumeId: decodeURIComponent(volumeMatch[1]),
+              }),
+            );
+          }
+          return reply(response, removed ? 204 : 404, { error: "Not found" });
+        }
         if (url.pathname === "/api/library" && request.method === "GET") {
           return reply(response, 200, await library.list());
         }
@@ -863,7 +908,8 @@ export function createHandler(
         error instanceof ZodError ||
         error instanceof SyntaxError ||
         error instanceof PickerCancelledError ||
-        error instanceof PlayerError;
+        error instanceof PlayerError ||
+        error instanceof VolumeError;
       const unavailable = error instanceof PickerUnavailableError;
       console.error(
         JSON.stringify({
@@ -877,7 +923,8 @@ export function createHandler(
         error:
           error instanceof PickerCancelledError ||
           error instanceof PickerUnavailableError ||
-          error instanceof PlayerError
+          error instanceof PlayerError ||
+          error instanceof VolumeError
             ? error.message
             : clientError
               ? "Invalid request"

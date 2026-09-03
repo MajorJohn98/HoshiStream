@@ -71,8 +71,25 @@ export class NativePicker {
   }
 
   async select(kind: PickerKind): Promise<string> {
+    return validateNativePath(await this.request(kind), kind);
+  }
+
+  /**
+   * Pick a storage folder for the volume registry. Uses the same Finder
+   * folder dialog but only requires a directory — a fresh drive folder has
+   * no video files yet.
+   */
+  async selectStorage(): Promise<string> {
+    const path = await this.request("folder");
+    const actual = await realpath(path);
+    if (!(await stat(actual)).isDirectory())
+      throw new SyntaxError("Choose a folder to use as storage");
+    return actual;
+  }
+
+  private async request(kind: PickerKind): Promise<string> {
     const nonce = randomUUID();
-    const path = await new Promise<string>((resolve, reject) => {
+    return new Promise<string>((resolve, reject) => {
       const socket = createConnection(this.socketPath);
       let settled = false;
       let received = "";
@@ -125,6 +142,5 @@ export class NativePicker {
         finish(new PickerUnavailableError("Finder connection closed")),
       );
     });
-    return validateNativePath(path, kind);
   }
 }

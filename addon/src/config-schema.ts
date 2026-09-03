@@ -91,6 +91,9 @@ export const configSchema = z.object({
     .default(join(root, "pointer-state.json")),
   // User-assigned device names shown in the Devices panel, keyed by IP.
   DEVICE_NAMES_PATH: z.string().min(1).default(join(root, "device-names.json")),
+  // Registered storage volumes for the disk library (external drives are
+  // identified by an on-disk marker, not by mount path).
+  VOLUMES_PATH: z.string().min(1).default(join(root, "volumes.json")),
 });
 
 // Compose used to resolve `torrserver` and `addon` as container hostnames. They

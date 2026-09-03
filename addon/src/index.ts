@@ -12,6 +12,7 @@ import { MdnsResponder } from "./mdns.js";
 import { PointerClient } from "./pointer.js";
 import { DeviceNames } from "./device-names.js";
 import { runSpeedTest } from "./speedtest.js";
+import { VolumeRegistry } from "./volumes.js";
 
 // How long an in-flight response — a stream in progress — may keep the server
 // open during shutdown before its socket is destroyed.
@@ -89,6 +90,7 @@ export async function startHoshiStream(settings = config) {
       },
       pointer,
       new DeviceNames(settings.DEVICE_NAMES_PATH),
+      new VolumeRegistry(settings.VOLUMES_PATH),
     ),
   );
   await new Promise<void>((resolve, reject) => {
