@@ -59,6 +59,7 @@
 - [changelog/0.1.0-mvp.md](changelog/0.1.0-mvp.md) — Five completed MVP phases, post-MVP additions, known gaps.
 - [changelog/0.3.0-reliability.md](changelog/0.3.0-reliability.md) — Git init, host-derived URLs, library recovery, retries, inspection cache, supervisor hardening, sleep prevention.
 - [changelog/0.4.0-management-ui.md](changelog/0.4.0-management-ui.md) — UI restructured into static ES modules, Finder linking/relinking, cache-aware detail view, status refresh.
+- [changelog/0.11.0-disk-library.md](changelog/0.11.0-disk-library.md) — Disk library: marker-identified storage volumes, per-episode disk copies, resumable archiver, stable `/media` playback URL with torrent fallback, Storage UI.
 - [changelog/0.5.0-tunnel-lan-detection.md](changelog/0.5.0-tunnel-lan-detection.md) — Cloudflare Tunnel support with LAN-aware stream URLs for at-home clients.
 - [changelog/0.7.0-native-only.md](changelog/0.7.0-native-only.md) — Docker removed; native app is the only deployment mode, config retargeted to real paths, TorrServer defaults shipped with the app.
 - [changelog/0.6.0-performance.md](changelog/0.6.0-performance.md) — TorrServer throughput tuning, hot-path caching, larger read buffers, stream prewarming, direct-play detection, a built-in mpv player, and Windows vendoring groundwork.

@@ -1,8 +1,8 @@
-// Detail modal: overview, source, files, and playback tabs for one entry.
-// Rendered by App whenever state.selected is set; closing clears it.
-import { html, useRef, useState } from "../vendor/preact-htm.js";
+// Detail modal: overview, source, files, storage, and playback tabs for one
+// entry. Rendered by App whenever state.selected is set; closing clears it.
+import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { api, fmt, notify, token, headers } from "../api.js";
-import { setState, useStore } from "../store.js";
+import { setState, useStore, load } from "../store.js";
 
 function agoLabel(iso) {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
@@ -737,10 +737,349 @@ function PlaybackTab({ state }) {
   `;
 }
 
+// Disk copy: keep this entry's files on a registered storage volume.
+// Playback prefers the disk copy whenever the drive is connected and falls
+// back to the torrent otherwise — same stream URL either way.
+const FILE_STATE_ICONS = {
+  complete: "✓",
+  partial: "◔",
+  missing: "○",
+  invalid: "⚠",
+};
+
+function manifestSourceKey(cacheHash, file) {
+  return (file.hash ?? cacheHash) + ":" + (file.id % 100000);
+}
+
+function episodeLabel(cache, manifestFile) {
+  const selected = cache?.selectedFiles?.find(
+    (file) => manifestSourceKey(cache.hash, file) === manifestFile.sourceKey,
+  );
+  const name = manifestFile.relativePath.split("/").pop();
+  if (selected?.season !== undefined && selected?.episode !== undefined) {
+    return "S" + selected.season + "E" + selected.episode + " · " + name;
+  }
+  return name;
+}
+
+function StorageTab({ state }) {
+  const entry = state.selected;
+  const diskCopy = entry.diskCopy;
+  const [volumes, setVolumes] = useState(null);
+  const [volumeId, setVolumeId] = useState(diskCopy?.volumeId ?? "");
+  const [picking, setPicking] = useState(diskCopy?.scope === "selected");
+  const [picked, setPicked] = useState(
+    () =>
+      new Set(
+        (diskCopy?.files ?? [])
+          .filter((file) => file.included)
+          .map((file) => file.sourceKey),
+      ),
+  );
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api("volumes")
+      .then((report) => setVolumes(report.volumes))
+      .catch(() => setVolumes([]));
+  }, []);
+  const torrentBacked =
+    (entry.magnetUri || entry.torrentFilePath) &&
+    !entry.localFilePath &&
+    !entry.localFolderPath;
+  if (!torrentBacked) {
+    return html`<div class="panel">
+      <p class="muted">
+        Disk copies apply to torrent-backed entries — local entries already play
+        from disk.
+      </p>
+    </div>`;
+  }
+  const put = async (body, message) => {
+    setBusy(true);
+    try {
+      const updated = await api(
+        "library/" + encodeURIComponent(entry.id) + "/disk-copy",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      setState({ selected: updated });
+      void load();
+      if (message) notify(message);
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const retry = async () => {
+    setBusy(true);
+    try {
+      const updated = await api(
+        "library/" + encodeURIComponent(entry.id) + "/disk-copy/retry",
+        { method: "POST" },
+      );
+      setState({ selected: updated });
+      void load();
+      notify("Reconciled — archiving resumes");
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const volume = volumes?.find(
+    (candidate) => candidate.id === diskCopy?.volumeId,
+  );
+
+  if (!diskCopy) {
+    return html`<div class="panel">
+      <h2>Keep on disk</h2>
+      <p class="muted">
+        Copy this entry to a storage volume. When the drive is connected,
+        playback streams from disk; when it is not, the torrent takes over
+        automatically.
+      </p>
+      ${
+        volumes === null
+          ? html`<p class="muted">Loading volumes…</p>`
+          : volumes.length === 0
+            ? html`<p class="muted">
+                No storage registered yet — add a drive or folder on the Storage
+                page first.
+              </p>`
+            : html`<div class="row" style="gap:8px;align-items:center">
+                <select
+                  value=${volumeId}
+                  onChange=${(event) => setVolumeId(event.target.value)}
+                >
+                  <option value="">Choose a volume…</option>
+                  ${volumes.map(
+                    (candidate) =>
+                      html`<option value=${candidate.id}>
+                        ${candidate.label}
+                        ${candidate.state === "online" ? "" : " (offline)"}
+                      </option>`,
+                  )}
+                </select>
+                <button
+                  class="primary"
+                  disabled=${busy || !volumeId}
+                  onClick=${() =>
+                    put(
+                      { enabled: true, volumeId },
+                      "Keeping on disk — archiving starts now",
+                    )}
+                >
+                  Keep on disk
+                </button>
+              </div>`
+      }
+    </div>`;
+  }
+
+  const files = diskCopy.files;
+  const included = files.filter((file) => file.included);
+  const complete = included.filter((file) => file.state === "complete");
+  const troubled = included.filter(
+    (file) => file.state === "invalid" || file.state === "missing",
+  );
+  const togglePicked = (key) => {
+    const next = new Set(picked);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setPicked(next);
+  };
+  const seasonOf = (file) => {
+    const selected = entry.inspectionCache?.selectedFiles?.find(
+      (candidate) =>
+        manifestSourceKey(entry.inspectionCache.hash, candidate) ===
+        file.sourceKey,
+    );
+    return selected?.season;
+  };
+  const seasons = [
+    ...new Set(files.map(seasonOf).filter((season) => season !== undefined)),
+  ].sort((a, b) => a - b);
+  const toggleSeason = (season) => {
+    const keys = files
+      .filter((file) => seasonOf(file) === season)
+      .map((file) => file.sourceKey);
+    const next = new Set(picked);
+    const allPicked = keys.every((key) => next.has(key));
+    for (const key of keys) {
+      if (allPicked) next.delete(key);
+      else next.add(key);
+    }
+    setPicked(next);
+  };
+  return html`<div class="panel">
+    <h2>Keep on disk</h2>
+    <div class="statusbar">
+      <span class="badge">
+        ${
+          volume
+            ? volume.label +
+              (volume.state === "online" ? "" : " · drive offline")
+            : "Volume " + diskCopy.volumeId.slice(0, 8)
+        }
+      </span>
+      <span class="badge">
+        ${
+          complete.length === included.length
+            ? "On disk ✓"
+            : complete.length + " of " + included.length + " files on disk"
+        }
+      </span>
+      ${
+        troubled.some((file) => file.state === "invalid")
+          ? html`<span class="badge">Needs attention</span>`
+          : null
+      }
+    </div>
+    ${
+      entry.type === "series" && files.length > 1
+        ? html`<div style="margin-top:12px">
+            <label style="display:flex;gap:6px;align-items:center">
+              <input
+                type="checkbox"
+                checked=${picking}
+                onChange=${(event) => setPicking(event.target.checked)}
+              />
+              Only selected episodes
+            </label>
+            ${
+              picking
+                ? html`
+                    ${
+                      seasons.length > 1
+                        ? html`<div class="row" style="gap:6px;margin-top:8px">
+                            ${seasons.map(
+                              (season) =>
+                                html`<button
+                                  class="secondary"
+                                  onClick=${() => toggleSeason(season)}
+                                >
+                                  Season ${season}
+                                </button>`,
+                            )}
+                          </div>`
+                        : null
+                    }
+                    <ul class="plain-list" style="margin-top:8px">
+                      ${files.map(
+                        (file) =>
+                          html`<li>
+                            <label
+                              style="display:flex;gap:6px;align-items:center"
+                            >
+                              <input
+                                type="checkbox"
+                                checked=${picked.has(file.sourceKey)}
+                                onChange=${() => togglePicked(file.sourceKey)}
+                              />
+                              ${FILE_STATE_ICONS[file.state]}${" "}
+                              ${episodeLabel(entry.inspectionCache, file)}
+                              <span class="muted">${fmt(file.length)}</span>
+                            </label>
+                          </li>`,
+                      )}
+                    </ul>
+                    <button
+                      class="primary"
+                      disabled=${busy || picked.size === 0}
+                      onClick=${() =>
+                        put(
+                          {
+                            enabled: true,
+                            volumeId: diskCopy.volumeId,
+                            scope: "selected",
+                            includedSourceKeys: [...picked],
+                          },
+                          "Selection saved",
+                        )}
+                    >
+                      Apply selection
+                    </button>
+                  `
+                : diskCopy.scope === "selected"
+                  ? html`<button
+                      class="secondary"
+                      disabled=${busy}
+                      onClick=${() =>
+                        put(
+                          {
+                            enabled: true,
+                            volumeId: diskCopy.volumeId,
+                            scope: "all",
+                          },
+                          "Keeping every episode",
+                        )}
+                    >
+                      Switch back to all episodes
+                    </button>`
+                  : null
+            }
+          </div>`
+        : html`<ul class="plain-list" style="margin-top:12px">
+            ${included.map(
+              (file) =>
+                html`<li>
+                  ${FILE_STATE_ICONS[file.state]}${" "}
+                  ${episodeLabel(entry.inspectionCache, file)}
+                  <span class="muted">${fmt(file.length)}</span>
+                </li>`,
+            )}
+          </ul>`
+    }
+    <div class="row" style="gap:8px;margin-top:14px">
+      ${
+        troubled.length
+          ? html`<button class="secondary" disabled=${busy} onClick=${retry}>
+              Retry missing files
+            </button>`
+          : null
+      }
+      <button
+        class="secondary"
+        disabled=${busy}
+        onClick=${() => put({ enabled: false }, "Stopped — files kept")}
+      >
+        Stop (keep files)
+      </button>
+      <button
+        class="secondary"
+        disabled=${busy}
+        onClick=${() => {
+          if (
+            confirm(
+              "Delete the copied files from " +
+                (volume?.label ?? "the drive") +
+                "? The torrent source stays in your library." +
+                (volume?.state === "online"
+                  ? ""
+                  : " The drive is offline, so deletion runs when it returns."),
+            )
+          )
+            put(
+              { enabled: false, deleteFiles: true },
+              "Stopped — files will be removed",
+            );
+        }}
+      >
+        Stop and delete files
+      </button>
+    </div>
+  </div>`;
+}
+
 const TABS = {
   overview: OverviewTab,
   source: SourceTab,
   files: FilesTab,
+  storage: StorageTab,
   playback: PlaybackTab,
 };
 

@@ -461,6 +461,14 @@ span.danger {
   gap: 12px;
   margin-top: 12px;
 }
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .metric {
   background: var(--surface);
   border: 1px solid var(--line);
