@@ -1075,25 +1075,60 @@ function StorageTab({ state }) {
   </div>`;
 }
 
-const TABS = {
-  overview: OverviewTab,
-  source: SourceTab,
-  files: FilesTab,
-  storage: StorageTab,
-  playback: PlaybackTab,
+// The entry sheet: a full-screen overlay media page. The hero keeps Play as
+// the unmistakable primary action; admin work lives in stacked sections with
+// sticky chips instead of tabs, so everything about one title is a single
+// scroll. state.tab (set by HUD/System deep links) picks the initial section.
+const SECTIONS = [
+  ["overview", "Details", OverviewTab],
+  ["storage", "Keep on disk", StorageTab],
+  ["source", "Source", SourceTab],
+  ["files", "Files", FilesTab],
+  ["playback", "Playback check", PlaybackTab],
+];
+
+const VERDICTS = {
+  direct: ["Direct play", "direct"],
+  caution: ["Check device", "caution"],
+  risky: ["May not play", "risky"],
 };
 
-export function DetailModal() {
+function diskBadge(entry) {
+  const diskCopy = entry.diskCopy;
+  if (diskCopy?.desired !== "keep") return null;
+  const included = diskCopy.files.filter((file) => file.included);
+  const complete = included.filter((file) => file.state === "complete");
+  return complete.length === included.length
+    ? "On disk ✓"
+    : "Disk " + complete.length + "/" + included.length;
+}
+
+export function DetailSheet() {
   const state = useStore();
   const entry = state.selected;
   const [playing, play] = usePlayHere(state);
+  useEffect(() => {
+    if (!entry) return;
+    if (state.tab && state.tab !== "overview") {
+      document
+        .querySelector("#section-" + state.tab)
+        ?.scrollIntoView({ block: "start" });
+    }
+  }, [entry?.id]);
   if (!entry) return null;
-  const Tab = TABS[state.tab] || OverviewTab;
   const resume =
     entry.playback?.fileId !== undefined || entry.playback?.positionSeconds;
+  const verdict = entry.directPlay && VERDICTS[entry.directPlay.compatibility];
+  const disk = diskBadge(entry);
+  const jump = (key) => (event) => {
+    event.preventDefault();
+    document
+      .querySelector("#section-" + key)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   return html`
     <div
-      class="modal-backdrop"
+      class="sheet-backdrop"
       onClick=${(e) => {
         if (e.target === e.currentTarget) closeDetail();
       }}
@@ -1102,7 +1137,7 @@ export function DetailModal() {
       }}
     >
       <section
-        class="modal"
+        class="sheet"
         role="dialog"
         aria-modal="true"
         aria-label=${entry.name + " details"}
@@ -1115,63 +1150,94 @@ export function DetailModal() {
         >
           ×
         </button>
-        <div class="title-row">
-          <div class="title-summary">
-            ${
-              entry.poster
-                ? html`<img class="poster" src=${entry.poster} alt="" />`
-                : html`<div class="poster placeholder">★</div>`
-            }
-            <div>
-              <h1>${entry.name}</h1>
-              <span class="badge">${entry.type}</span>${" "}
-              <span class="badge">
-                ${
-                  entry.localFilePath || entry.localFolderPath
-                    ? "Local"
-                    : "Torrent"
-                }
-              </span>
+        <header
+          class="sheet-hero"
+          style=${
+            entry.background || entry.poster
+              ? "background-image:url('" +
+                encodeURI(entry.background || entry.poster) +
+                "')"
+              : ""
+          }
+        >
+          <div class="sheet-hero-scrim">
+            <div class="title-summary">
+              ${
+                entry.poster
+                  ? html`<img class="poster" src=${entry.poster} alt="" />`
+                  : html`<div class="poster placeholder">★</div>`
+              }
+              <div>
+                <h1>${entry.name}</h1>
+                <div class="hero-meta">
+                  <span class="badge">
+                    ${entry.type === "series" ? "Series" : "Movie"}
+                  </span>
+                  <span class="badge">
+                    ${
+                      entry.localFilePath || entry.localFolderPath
+                        ? "Local"
+                        : "Torrent"
+                    }
+                  </span>
+                  ${
+                    verdict
+                      ? html`<span class="badge ${verdict[1]}">
+                          ● ${verdict[0]}
+                        </span>`
+                      : null
+                  }
+                  ${disk ? html`<span class="badge disk">${disk}</span>` : null}
+                </div>
+                <div class="hero-cta">
+                  <button
+                    class="primary"
+                    disabled=${playing}
+                    onClick=${() => play()}
+                  >
+                    ${
+                      playing
+                        ? "Starting…"
+                        : resume
+                          ? "▶ Resume on this Mac"
+                          : "▶ Play on this Mac"
+                    }
+                  </button>
+                  <button
+                    class="secondary"
+                    onClick=${() => {
+                      const fileId =
+                        entry.playback?.fileId ??
+                        entry.inspectionCache?.selectedFiles?.[0]?.id ??
+                        0;
+                      location.hash =
+                        "#/play/" + encodeURIComponent(entry.id) + "/" + fileId;
+                    }}
+                  >
+                    Watch in browser
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="head-actions">
-            <button
-              class="secondary"
-              onClick=${() => {
-                const fileId =
-                  entry.playback?.fileId ??
-                  entry.inspectionCache?.selectedFiles?.[0]?.id ??
-                  0;
-                location.hash =
-                  "#/play/" + encodeURIComponent(entry.id) + "/" + fileId;
-              }}
-            >
-              ▶ Watch in browser
-            </button>
-            <button class="primary" disabled=${playing} onClick=${() => play()}>
-              ${
-                playing
-                  ? "Starting…"
-                  : resume
-                    ? "▶ Resume on this Mac"
-                    : "▶ Play on this Mac"
-              }
-            </button>
-          </div>
-        </div>
-        <div class="tabs">
-          ${Object.keys(TABS).map(
-            (tab) => html`
-              <button
-                class="tab ${state.tab === tab ? "active" : ""}"
-                onClick=${() => setState({ tab })}
-              >
-                ${tab[0].toUpperCase() + tab.slice(1)}
-              </button>
+        </header>
+        <nav class="section-chips sheet-chips">
+          ${SECTIONS.map(
+            ([key, label]) => html`
+              <a class="chip" href="#" onClick=${jump(key)}>${label}</a>
+            `,
+          )}
+        </nav>
+        <div class="sheet-body">
+          ${SECTIONS.map(
+            ([key, label, Section]) => html`
+              <section class="sheet-section" id=${"section-" + key} key=${key}>
+                <h2 class="section-title">${label}</h2>
+                <${Section} state=${state} />
+              </section>
             `,
           )}
         </div>
-        <section><${Tab} state=${state} /></section>
       </section>
     </div>
   `;

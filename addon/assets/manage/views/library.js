@@ -295,6 +295,11 @@ const Card = ({ entry }) => html`
             ></span>`
           : null
       }
+      ${
+        entry.diskCopy?.desired === "keep"
+          ? html`<span class="disk-flag" title="Kept on disk">⛃ disk</span>`
+          : null
+      }
       <div class="hover-actions">
         <button
           class="danger"

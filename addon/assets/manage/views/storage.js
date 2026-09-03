@@ -1,10 +1,11 @@
-// Storage view: registered volumes (external drives or folders identified by
-// their on-disk marker), live online state and free space, plus the archive
-// queue. Volume status polls also trigger deferred-cleanup sweeps server-side.
+// Storage section for the System page: registered volumes (external drives
+// or folders identified by their on-disk marker), live state and free space,
+// the download schedule, and the archive queue. Volume status polls also
+// trigger deferred-cleanup sweeps server-side.
 import { html, useEffect, useState } from "../vendor/preact-htm.js";
 import { api, fmt, notify } from "../api.js";
 import { setState, useStore } from "../store.js";
-import { Shell, Pill } from "../components/shell.js";
+import { Pill } from "../components/shell.js";
 
 function usePoll(path, intervalMs, refreshTick = 0) {
   const [value, setValue] = useState(null);
@@ -243,8 +244,8 @@ function jobLabel(job, entries) {
 }
 
 function Jobs({ entries }) {
-  const report = usePoll("disk-jobs", 3000);
-  const jobs = report?.jobs ?? [];
+  const { activity } = useStore();
+  const jobs = activity.jobs;
   return html`
     <div class="panel" style="margin-top:18px">
       <h2>Archive queue</h2>
@@ -289,62 +290,58 @@ function Jobs({ entries }) {
   `;
 }
 
-export function StorageView() {
+export function StorageSection() {
   const { entries } = useStore();
   const stored = entries.filter((entry) => entry.diskCopy?.desired === "keep");
   return html`
-    <${Shell} title="Storage">
-      <p class="muted">
-        Keep entries playable from disk — streamed from the drive when it is
-        connected, from the torrent when it is not.
-      </p>
-      <${Volumes} entries=${entries} />
-      <${Schedule} />
-      <${Jobs} entries=${entries} />
-      <div class="panel" style="margin-top:18px">
-        <h2>Entries kept on disk</h2>
-        ${
-          stored.length === 0
-            ? html`<p class="muted">
-                None yet — open an entry and switch on “Keep on disk” in its
-                Storage tab.
-              </p>`
-            : html`<div class="metrics">
-                ${stored.map((entry) => {
-                  const files = entry.diskCopy.files.filter(
-                    (file) => file.included,
-                  );
-                  const complete = files.filter(
-                    (file) => file.state === "complete",
-                  ).length;
-                  return html`
-                    <div
-                      class="metric"
-                      style="cursor:pointer"
-                      onClick=${() =>
-                        setState({ selected: entry, tab: "storage" })}
+    <p class="muted">
+      Keep entries playable from disk — streamed from the drive when it is
+      connected, from the torrent when it is not.
+    </p>
+    <${Volumes} entries=${entries} />
+    <${Schedule} />
+    <${Jobs} entries=${entries} />
+    <div class="panel" style="margin-top:18px">
+      <h2>Entries kept on disk</h2>
+      ${
+        stored.length === 0
+          ? html`<p class="muted">
+              None yet — open an entry and switch on “Keep on disk” in its
+              Storage tab.
+            </p>`
+          : html`<div class="metrics">
+              ${stored.map((entry) => {
+                const files = entry.diskCopy.files.filter(
+                  (file) => file.included,
+                );
+                const complete = files.filter(
+                  (file) => file.state === "complete",
+                ).length;
+                return html`
+                  <div
+                    class="metric"
+                    style="cursor:pointer"
+                    onClick=${() =>
+                      setState({ selected: entry, tab: "storage" })}
+                  >
+                    <span
+                      class=${complete === files.length ? "online" : "muted"}
                     >
-                      <span
-                        class=${complete === files.length ? "online" : "muted"}
-                      >
-                        ${
-                          complete === files.length
-                            ? "● On disk"
-                            : "◌ " + complete + " of " + files.length + " files"
-                        }
-                      </span>
-                      <strong>${entry.name}</strong>
-                      <span class="muted">
-                        ${fmt(
-                          files.reduce((sum, file) => sum + file.length, 0),
-                        )}
-                      </span>
-                    </div>
-                  `;
-                })}
-              </div>`
-        }
-      </div>
-    <//>
+                      ${
+                        complete === files.length
+                          ? "● On disk"
+                          : "◌ " + complete + " of " + files.length + " files"
+                      }
+                    </span>
+                    <strong>${entry.name}</strong>
+                    <span class="muted">
+                      ${fmt(files.reduce((sum, file) => sum + file.length, 0))}
+                    </span>
+                  </div>
+                `;
+              })}
+            </div>`
+      }
+    </div>
   `;
 }

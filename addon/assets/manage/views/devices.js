@@ -1,9 +1,10 @@
-// Devices view (plan C dashboard): recent clients observed by this server,
-// live TorrServer playback, and remote-pointer health. All client data is
-// local and ephemeral — nothing is logged in the cloud.
+// Devices section for the System page: recent clients observed by this
+// server, live TorrServer playback, and remote-pointer health. All client
+// data is local and ephemeral — nothing is logged in the cloud.
 import { html, useEffect, useState } from "../vendor/preact-htm.js";
 import { api, fmt, notify } from "../api.js";
-import { Shell, Pill } from "../components/shell.js";
+import { Pill } from "../components/shell.js";
+import { useStore } from "../store.js";
 
 function agoLabel(iso) {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
@@ -113,8 +114,8 @@ function Clients() {
 }
 
 function Playback() {
-  const report = usePoll("playback", 5000);
-  const sessions = report?.sessions ?? [];
+  const { activity } = useStore();
+  const sessions = activity.playback;
   const active = sessions.filter((session) => session.active);
   return html`
     <div class="panel" style="margin-top:18px">
@@ -252,15 +253,10 @@ function PointerCard() {
   `;
 }
 
-export function DevicesView() {
+export function DevicesSection() {
   return html`
-    <${Shell} title="Devices">
-      <p class="muted">
-        Who is connected, what is playing, and remote pointer health
-      </p>
-      <${PointerCard} />
-      <${Playback} />
-      <${Clients} />
-    <//>
+    <${PointerCard} />
+    <${Playback} />
+    <${Clients} />
   `;
 }

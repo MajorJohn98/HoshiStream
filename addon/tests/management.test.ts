@@ -28,18 +28,33 @@ describe("management page shell", () => {
 });
 
 describe("management assets", () => {
-  it("app module wires the router and detail modal", async () => {
+  it("app module wires the sidebar shell, router, and entry sheet", async () => {
     const appJs = await asset("app.js");
     expect(appJs).toContain('from "./vendor/preact-htm.js"');
     expect(appJs).toContain('import { LibraryView } from "./views/library.js"');
     expect(appJs).toContain('import { AddView } from "./views/add.js"');
-    expect(appJs).toContain('import { StatusView } from "./views/status.js"');
-    expect(appJs).toContain(
-      'import { SessionsView } from "./views/sessions.js"',
-    );
-    expect(appJs).toContain('import { DetailModal } from "./views/detail.js"');
+    expect(appJs).toContain('import { SystemView } from "./views/system.js"');
+    expect(appJs).toContain('import { DetailSheet } from "./views/detail.js"');
+    expect(appJs).toContain("startActivityPolling");
+    // Old bookmarks land on their merged System section.
+    expect(appJs).toContain('status: "system/health"');
+    expect(appJs).toContain('storage: "system/storage"');
     expect(appJs).toContain("hashchange");
     expect(appJs).not.toContain("ACCESS_TOKEN");
+  });
+
+  it("sidebar HUD surfaces health, playback, copies, and drive issues", async () => {
+    const appJs = await asset("app.js");
+    expect(appJs).toContain("TorrServer offline");
+    expect(appJs).toContain("activity.jobs.slice(0, 3)");
+    expect(appJs).toContain("Drive offline");
+    expect(appJs).toContain("playback falls back to torrent");
+    expect(appJs).toContain("hud-bar");
+    const storeJs = await asset("store.js");
+    expect(storeJs).toContain('api("disk-jobs")');
+    expect(storeJs).toContain('api("playback")');
+    expect(storeJs).toContain('api("volumes")');
+    expect(storeJs).toContain("document.hidden");
   });
 
   it("api module wires the token and bearer auth", async () => {
@@ -117,17 +132,22 @@ describe("management assets", () => {
     expect(detailJs).toContain("function agoLabel");
   });
 
-  it("status view reports service health, mode, and sleep behavior", async () => {
+  it("health section reports service health, mode, and sleep behavior", async () => {
     const statusJs = await asset("views/status.js");
-    expect(statusJs).toContain("System Status");
+    expect(statusJs).toContain("HealthSection");
     expect(statusJs).toContain("TorrServer");
     expect(statusJs).toContain("Streaming now");
     expect(statusJs).toContain("status.streamingActive");
     expect(statusJs).toContain("Native macOS app");
-    expect(statusJs).toContain("Docker mode");
     expect(statusJs).toContain("Kept awake automatically during playback");
     expect(statusJs).toContain("Run caffeinate or keep the Mac awake");
     expect(statusJs).not.toContain('"diagnostics"');
+    const systemJs = await asset("views/system.js");
+    expect(systemJs).toContain("HealthSection");
+    expect(systemJs).toContain("StorageSection");
+    expect(systemJs).toContain("DevicesSection");
+    expect(systemJs).toContain("RepairSection");
+    expect(systemJs).toContain("#/system/");
   });
 
   it("status view measures speed and polls resource usage", async () => {
@@ -139,12 +159,12 @@ describe("management assets", () => {
     expect(statusJs).toContain("Torrent cache on disk");
   });
 
-  it("sessions view polls the transcode API and can stop sessions", async () => {
+  it("repair section lists transcode sessions and can stop them", async () => {
     const sessionsJs = await asset("views/sessions.js");
-    expect(sessionsJs).toContain('api("transcode/sessions")');
+    expect(sessionsJs).toContain("RepairSection");
+    expect(sessionsJs).toContain("activity.repair");
     expect(sessionsJs).toContain('method: "DELETE"');
     expect(sessionsJs).toContain("TRANSCODE_ENABLED=true");
-    expect(sessionsJs).toContain("setInterval(poll, 2000)");
   });
 
   it("player view resolves streams and supports HLS via vendored hls.js", async () => {
@@ -169,8 +189,8 @@ describe("management assets", () => {
 
   it("stylesheet keeps the disabled-button affordance", async () => {
     const css = await asset("styles.css");
-    expect(css).toContain("color: #151719");
     expect(css).toContain(".primary:disabled");
+    expect(css).toContain(".secondary:disabled");
   });
 });
 

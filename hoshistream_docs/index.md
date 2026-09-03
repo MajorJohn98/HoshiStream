@@ -53,6 +53,7 @@
 - [plans/2026-09-01-multi-torrent-series-plan.md](plans/2026-09-01-multi-torrent-series-plan.md) — One series entry backed by several torrents: extra sources, composite file IDs, merged episode list.
 - [plans/2026-09-02-multi-tenant-pointer-and-dashboard-plan.md](plans/2026-09-02-multi-tenant-pointer-and-dashboard-plan.md) — Multi-tenant pointer server (token-keyed, claim-on-first-push), public-release hardening, and the local connected-clients dashboard.
 - [plans/2026-09-02-disk-library-plan.md](plans/2026-09-02-disk-library-plan.md) — Save-to-disk toggle: volume registry for external drives, background archiver, disk-first playback with torrent fallback.
+- [plans/2026-09-03-ui-redesign-plan.md](plans/2026-09-03-ui-redesign-plan.md) — Cinema shelf + live sidebar UI redesign: HUD, merged System page, entry sheet.
 
 ## Changelog
 
@@ -60,6 +61,7 @@
 - [changelog/0.3.0-reliability.md](changelog/0.3.0-reliability.md) — Git init, host-derived URLs, library recovery, retries, inspection cache, supervisor hardening, sleep prevention.
 - [changelog/0.4.0-management-ui.md](changelog/0.4.0-management-ui.md) — UI restructured into static ES modules, Finder linking/relinking, cache-aware detail view, status refresh.
 - [changelog/0.11.0-disk-library.md](changelog/0.11.0-disk-library.md) — Disk library: marker-identified storage volumes, per-episode disk copies, resumable archiver, stable `/media` playback URL with torrent fallback, Storage UI.
+- [changelog/0.12.0-ui-redesign.md](changelog/0.12.0-ui-redesign.md) — Cinema shelf UI: sidebar with live activity HUD, merged System control center, full-screen entry sheet.
 - [changelog/0.5.0-tunnel-lan-detection.md](changelog/0.5.0-tunnel-lan-detection.md) — Cloudflare Tunnel support with LAN-aware stream URLs for at-home clients.
 - [changelog/0.7.0-native-only.md](changelog/0.7.0-native-only.md) — Docker removed; native app is the only deployment mode, config retargeted to real paths, TorrServer defaults shipped with the app.
 - [changelog/0.6.0-performance.md](changelog/0.6.0-performance.md) — TorrServer throughput tuning, hot-path caching, larger read buffers, stream prewarming, direct-play detection, a built-in mpv player, and Windows vendoring groundwork.
