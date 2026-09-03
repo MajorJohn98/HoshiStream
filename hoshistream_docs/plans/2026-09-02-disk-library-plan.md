@@ -1,7 +1,7 @@
 # Disk Library Plan — Save-to-Disk Toggle with External-Drive Fallback
 
 **Date:** 2026-09-02
-**Status:** Scenario-refined sketch — Phases 1–3 (volumes, placement state, archiver) implemented
+**Status:** Scenario-refined sketch — Phases 1–4 (volumes, placement state, archiver, playback router) implemented; UI (phase 5) pending
 
 ## Goal
 

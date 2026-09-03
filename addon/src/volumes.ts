@@ -96,6 +96,7 @@ export class VolumeRegistry {
   constructor(
     private readonly path: string,
     private readonly mountBase = defaultMountBase(),
+    private readonly resolutionTtlMs = RESOLUTION_TTL_MS,
   ) {}
 
   async list(): Promise<StorageVolume[]> {
@@ -202,7 +203,7 @@ export class VolumeRegistry {
     if (!volume) return { state: "offline" };
     const value = await this.locate(volume);
     this.resolutions.set(id, {
-      expiresAt: Date.now() + RESOLUTION_TTL_MS,
+      expiresAt: Date.now() + this.resolutionTtlMs,
       value,
     });
     if (value.state === "online" && value.root !== volume.lastKnownRoot) {

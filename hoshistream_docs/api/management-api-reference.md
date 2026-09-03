@@ -137,6 +137,7 @@ tombstone when the drive is offline.
 | `GET /manage/{token}` | Management page shell (HTML, CSP `script-src 'self'; style-src 'self'`) |
 | `GET /manage-assets/{file}` | Static UI modules and stylesheet from `addon/assets/manage/` (public, whitelisted names only, cached 5 min) |
 | `GET\|HEAD /local/{token}/{entryId}[/{fileId}]` | Range-capable local media streaming |
+| `GET\|HEAD /media/{token}/{entryId}/{sourceKey}` | Stable playback URL for disk-copy entries. Every range request independently resolves the source: a valid complete disk file on an online volume serves local bytes; anything else proxies the same range from TorrServer. Plugging or unplugging a drive switches sources on the client's next request — never mid-response |
 | `GET\|HEAD /hls/{token}/{entryId}/{fileId}/{auto\|video}/{asset}` | Stream-repair HLS session assets (`index.m3u8`, `init.mp4`, `seg-N.m4s`); the first playlist request starts the ffmpeg session lazily, and sessions are reaped 60 s after requests stop |
 | `GET /assets/hoshistream-logo.png` | Logo (public, cached 1 day) |
 

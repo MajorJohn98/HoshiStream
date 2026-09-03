@@ -28,6 +28,12 @@ const CONTENT_TYPES: Record<string, string> = {
   ".webm": "video/webm",
 };
 
+export function mediaContentType(path: string): string {
+  return (
+    CONTENT_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream"
+  );
+}
+
 // Media players issue many range requests per seek. Without this cache each one
 // re-walks the entry's directory tree and stats every file it contains.
 const INSPECTION_TTL_MS = 30_000;

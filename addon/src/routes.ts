@@ -61,6 +61,7 @@ import {
   removeDiskCopyDirectory,
 } from "./disk-copy.js";
 import type { Archiver } from "./archiver.js";
+import { serveMediaSource } from "./media-source.js";
 import { VolumeError, type VolumeRegistry } from "./volumes.js";
 
 const JSON_HEADERS = {
@@ -409,6 +410,34 @@ export function createHandler(
             response,
             entry,
             localMatch[3] === undefined ? undefined : Number(localMatch[3]),
+          );
+        }
+      }
+
+      // Stable playback URL for disk-copy entries: every range request
+      // independently resolves disk vs torrent, so plugging or unplugging a
+      // drive changes the source on the client's next request.
+      const mediaMatch = /^\/media\/([^/]+)\/([^/]+)\/([0-9a-fA-F]+:\d+)$/.exec(
+        url.pathname,
+      );
+      if (
+        mediaMatch &&
+        ["GET", "HEAD"].includes(request.method ?? "") &&
+        volumes &&
+        validToken(decodeURIComponent(mediaMatch[1]), accessToken)
+      ) {
+        const entry = await library.get(decodeURIComponent(mediaMatch[2]));
+        if (entry) {
+          markStreamActivity();
+          observeClient(request, "playback");
+          return serveMediaSource(
+            request,
+            response,
+            entry,
+            mediaMatch[3],
+            volumes,
+            torrServer,
+            library,
           );
         }
       }

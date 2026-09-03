@@ -2,6 +2,7 @@ import type { Library } from "./library.js";
 import type { SelectedFile } from "./media-file-selection.js";
 import { markStreamActivity } from "./activity.js";
 import { directPlayLabel } from "./direct-play.js";
+import { sourceKey } from "./disk-copy.js";
 import { resolveStreamSource } from "./inspection.js";
 import { repairTier, repairDescription } from "./transcode.js";
 import type { TorrServerClient } from "./torrserver-client.js";
@@ -124,10 +125,28 @@ export async function getStreams(
   if (!file) return { streams: [] };
   markStreamActivity();
 
-  const url = rewritePublicUrl(
-    torrServer.streamUrl(source.hash, file),
-    publicTorrServerUrl,
-  );
+  // Disk-copy entries get the stable /media URL: the router picks disk or
+  // torrent per range request, so the client never reselects a stream when
+  // the drive comes and goes. Others keep the direct TorrServer URL (no
+  // proxy hop).
+  const diskCopy =
+    entry.diskCopy?.desired === "keep" ? entry.diskCopy : undefined;
+  const key = diskCopy && sourceKey(source.hash, file);
+  const manifestFile =
+    diskCopy && diskCopy.files.find((candidate) => candidate.sourceKey === key);
+  const url =
+    diskCopy && manifestFile?.included
+      ? `${publicAddonUrl}/media/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${key}`
+      : rewritePublicUrl(
+          torrServer.streamUrl(source.hash, file),
+          publicTorrServerUrl,
+        );
+  const label =
+    diskCopy && manifestFile?.included
+      ? manifestFile.state === "complete"
+        ? "Disk"
+        : "Disk (syncing)"
+      : "Torrent";
   console.log(
     JSON.stringify({
       level: "info",
@@ -141,7 +160,7 @@ export async function getStreams(
     streams: [
       {
         name: "HoshiStream",
-        description: describe("Torrent", file, entry),
+        description: describe(label, file, entry),
         url,
         behaviorHints: streamBehaviorHints(entry.id, file),
       },
