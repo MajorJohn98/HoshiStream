@@ -40,6 +40,18 @@ tail -f ~/Library/Logs/HoshiStream/server.log
 
 Then open `http://127.0.0.1:8090/swagger/index.html`. The add-on's `/ready` endpoint also checks TorrServer `/echo`.
 
+## Menu bar stuck on "Recovering… (attempt N)"
+
+The log shows `Error open bboltDB: …/torrserver/config/config.db` after a
+`timeout`: an orphaned TorrServer from a previous app instance is still
+holding the database lock, so every restart attempt dies. This can happen
+after replacing the app bundle while it was running.
+
+```bash
+pgrep -fl TorrServer        # two entries means one is an orphan
+kill <older PID>            # the supervisor recovers on its next attempt
+```
+
 ## No playable files
 
 Inspect the entry (management page or `POST /api/library/{id}/inspect`). Supported extensions: `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.m4v`. If automatic selection is wrong, set `preferredFileIndex` to an inspected playable file ID.
