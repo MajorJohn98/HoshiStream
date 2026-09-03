@@ -52,6 +52,7 @@
 - [plans/2026-09-01-stable-manifest-pointer-plan.md](plans/2026-09-01-stable-manifest-pointer-plan.md) — Stable manifest URL via a Vercel pointer/redirector server with a manual menu-bar IP push.
 - [plans/2026-09-01-multi-torrent-series-plan.md](plans/2026-09-01-multi-torrent-series-plan.md) — One series entry backed by several torrents: extra sources, composite file IDs, merged episode list.
 - [plans/2026-09-02-multi-tenant-pointer-and-dashboard-plan.md](plans/2026-09-02-multi-tenant-pointer-and-dashboard-plan.md) — Multi-tenant pointer server (token-keyed, claim-on-first-push), public-release hardening, and the local connected-clients dashboard.
+- [plans/2026-09-02-disk-library-plan.md](plans/2026-09-02-disk-library-plan.md) — Save-to-disk toggle: volume registry for external drives, background archiver, disk-first playback with torrent fallback.
 
 ## Changelog
 
