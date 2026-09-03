@@ -127,7 +127,8 @@ tombstone when the drive is offline.
 | Method & path | Description |
 |---|---|
 | `PUT /api/library/{id}/disk-copy` | Set intent: `{enabled, volumeId?, scope?, includedSourceKeys?, deleteFiles?}`. Enabling inspects the torrent if needed, builds the manifest (`scope: "all"` archives every selected file and tracks changes; `"selected"` freezes intent to `includedSourceKeys`), and adopts files already on the drive. Disabling drops `diskCopy`; with `deleteFiles` the entry directory is removed now (drive online) or tombstoned for the next sweep. → `200` updated entry |
-| `POST /api/library/{id}/disk-copy/retry` | Rebuild the manifest and reconcile against the drive with retry semantics: sticky `invalid` files are approved for replacement. → `200` updated entry, `409` when disk copy is not enabled |
+| `POST /api/library/{id}/disk-copy/retry` | Rebuild the manifest and reconcile against the drive with retry semantics: sticky `invalid` files are approved for replacement. Requeues the archiver. → `200` updated entry, `409` when disk copy is not enabled |
+| `GET /api/disk-jobs` | Runtime archive queue: `{jobs: [{entryId, status: "copying"\|"queued"\|"waiting", reason?, file?: {sourceKey, received, length}}]}` |
 
 ## Non-API token-gated routes
 

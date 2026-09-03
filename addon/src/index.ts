@@ -14,6 +14,7 @@ import { DeviceNames } from "./device-names.js";
 import { runSpeedTest } from "./speedtest.js";
 import { VolumeRegistry } from "./volumes.js";
 import { DiskCleanup } from "./disk-copy.js";
+import { Archiver } from "./archiver.js";
 
 // How long an in-flight response — a stream in progress — may keep the server
 // open during shutdown before its socket is destroyed.
@@ -23,6 +24,8 @@ export async function startHoshiStream(settings = config) {
   const library = new Library(settings.LIBRARY_PATH);
   const torrServer = new TorrServerClient(settings.TORRSERVER_INTERNAL_URL);
   const nativePicker = new NativePicker(settings.NATIVE_PICKER_SOCKET);
+  const volumes = new VolumeRegistry(settings.VOLUMES_PATH);
+  const archiver = new Archiver(library, torrServer, volumes);
   let transcode: TranscodeManager | undefined;
   if (settings.TRANSCODE_ENABLED) {
     const videoEncoder = await detectVideoEncoder(settings.FFMPEG_PATH);
@@ -91,8 +94,9 @@ export async function startHoshiStream(settings = config) {
       },
       pointer,
       new DeviceNames(settings.DEVICE_NAMES_PATH),
-      new VolumeRegistry(settings.VOLUMES_PATH),
+      volumes,
       new DiskCleanup(settings.DISK_CLEANUP_PATH),
+      archiver,
     ),
   );
   await new Promise<void>((resolve, reject) => {
@@ -114,6 +118,8 @@ export async function startHoshiStream(settings = config) {
     mdns = new MdnsResponder({ port: settings.ADDON_PORT });
     mdns.start();
   }
+  // Resume any disk-copy work left outstanding by the previous run.
+  await archiver.start();
   // Measure the real link speed once at startup; failures keep the
   // configured HOME_SPEED_MBPS fallback and are only logged.
   void runSpeedTest().catch((error: unknown) =>
@@ -128,6 +134,7 @@ export async function startHoshiStream(settings = config) {
   return {
     close: async () => {
       mdns?.close();
+      await archiver.close();
       await transcode?.close();
       // server.close() only stops new connections; it resolves once every
       // socket is gone. Idle keep-alive clients — an open management tab is

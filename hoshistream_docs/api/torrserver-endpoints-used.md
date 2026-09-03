@@ -10,7 +10,7 @@ The adapter (`addon/src/torrserver-client.ts`) talks to the pinned `ghcr.io/your
 | `POST /torrents` `{action:"list"}` | List registered torrents |
 | `POST /torrents` `{action:"rem", hash}` | Remove a torrent |
 | `POST /torrent/upload` (multipart) | Register a `.torrent` file |
-| `GET /play/{hash}/{id}` | Direct playback URL handed to Nuvio (rewritten to the public URL) |
+| `GET /play/{hash}/{id}` | Direct playback URL handed to Nuvio (rewritten to the public URL); also read by the disk-copy archiver with standard `Range` headers to copy authorized files onto registered storage volumes |
 
 ## Client behavior
 

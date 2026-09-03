@@ -60,6 +60,7 @@ import {
   reconcileFiles,
   removeDiskCopyDirectory,
 } from "./disk-copy.js";
+import type { Archiver } from "./archiver.js";
 import { VolumeError, type VolumeRegistry } from "./volumes.js";
 
 const JSON_HEADERS = {
@@ -209,6 +210,7 @@ export function createHandler(
   deviceNames?: DeviceNames,
   volumes?: VolumeRegistry,
   diskCleanup?: DiskCleanup,
+  archiver?: Archiver,
 ) {
   setConfiguredSpeed(configuredHomeSpeedMbps);
   return async (request: IncomingMessage, response: ServerResponse) => {
@@ -507,6 +509,7 @@ export function createHandler(
             }
           };
           if (!input.enabled) {
+            archiver?.cancel(id);
             if (current && input.deleteFiles) {
               await cleanup(current.volumeId, current.relativeDir);
             }
@@ -579,6 +582,7 @@ export function createHandler(
               included: files.filter((file) => file.included).length,
             }),
           );
+          archiver?.enqueue(id);
           return reply(response, 200, await library.get(id));
         }
         if (diskCopyRetryMatch && request.method === "POST") {
@@ -619,7 +623,13 @@ export function createHandler(
             sourceRevision: computeSourceRevision(files),
             updatedAt: new Date().toISOString(),
           });
+          archiver?.enqueue(id);
           return reply(response, 200, await library.get(id));
+        }
+        if (url.pathname === "/api/disk-jobs" && request.method === "GET") {
+          if (!archiver)
+            return reply(response, 409, { error: "Archiver unavailable" });
+          return reply(response, 200, { jobs: archiver.jobs() });
         }
         if (url.pathname === "/api/library" && request.method === "GET") {
           return reply(response, 200, await library.list());
@@ -1051,6 +1061,7 @@ export function createHandler(
           // Disk copies mirror managed media: deleting the entry cleans up
           // its files, deferred via tombstone when the drive is offline.
           if (removed && entry?.diskCopy && volumes) {
+            archiver?.cancel(id);
             const { volumeId, relativeDir } = entry.diskCopy;
             const resolution = await volumes.resolve(volumeId);
             if (resolution.state === "online") {
