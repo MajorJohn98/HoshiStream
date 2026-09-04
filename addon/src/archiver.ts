@@ -4,19 +4,19 @@ import { dirname } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
-import { recentStreamActivity } from "./activity.js";
-import { describeWindow, type ArchiveSchedule } from "./archive-schedule.js";
+import { recentStreamActivity } from "./activity.ts";
+import { describeWindow, type ArchiveSchedule } from "./archive-schedule.ts";
 import {
   PARTIAL_SUFFIX,
   destinationPath,
   reconcileFiles,
   sourceKey,
-} from "./disk-copy.js";
-import { resolveStreamSource } from "./inspection.js";
-import type { Library } from "./library.js";
-import type { TorrServerClient } from "./torrserver-client.js";
-import type { DiskCopyFile, LibraryEntry } from "./types.js";
-import type { VolumeRegistry } from "./volumes.js";
+} from "./disk-copy.ts";
+import { resolveStreamSource } from "./inspection.ts";
+import type { Library } from "./library.ts";
+import type { TorrServerClient } from "./torrserver-client.ts";
+import type { DiskCopyFile, LibraryEntry } from "./types.ts";
+import type { VolumeRegistry } from "./volumes.ts";
 
 // Archive playback quality first: while streams are active the queue waits
 // instead of competing for TorrServer's cache and the drive's bandwidth.
@@ -80,13 +80,19 @@ export class Archiver {
   private readonly wakeIntervalMs: number;
   private readonly playbackActive: () => boolean;
   private readonly schedule?: ArchiveSchedule;
+  private readonly library: Library;
+  private readonly torrServer: TorrServerClient;
+  private readonly volumes: VolumeRegistry;
 
   constructor(
-    private readonly library: Library,
-    private readonly torrServer: TorrServerClient,
-    private readonly volumes: VolumeRegistry,
+    library: Library,
+    torrServer: TorrServerClient,
+    volumes: VolumeRegistry,
     options: ArchiverOptions = {},
   ) {
+    this.library = library;
+    this.torrServer = torrServer;
+    this.volumes = volumes;
     this.headroomBytes = options.headroomBytes ?? HEADROOM_BYTES;
     this.retryBaseMs = options.retryBaseMs ?? 2_000;
     this.playbackYieldMs = options.playbackYieldMs ?? PLAYBACK_YIELD_MS;

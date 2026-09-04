@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessDirectPlay, directPlayLabel } from "../src/direct-play.js";
+import { assessDirectPlay, directPlayLabel } from "../src/direct-play.ts";
 
 describe("direct play assessment", () => {
   it("treats a common H.264 + AAC MP4 as direct play", () => {

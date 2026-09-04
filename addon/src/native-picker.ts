@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { access, realpath, readdir, stat } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { basename, join } from "node:path";
-import { isPlayablePath } from "./media-file-selection.js";
+import { isPlayablePath } from "./media-file-selection.ts";
 
 export type PickerKind = "file" | "folder";
 
@@ -39,7 +39,11 @@ type Grant = { expiresAt: number; kind: PickerKind; path: string };
 export class NativePicker {
   private readonly grants = new Map<string, Grant>();
 
-  constructor(private readonly socketPath: string) {}
+  private readonly socketPath: string;
+
+  constructor(socketPath: string) {
+    this.socketPath = socketPath;
+  }
 
   /** True when the supervisor socket exists, so Finder pickers can work. */
   async available(): Promise<boolean> {

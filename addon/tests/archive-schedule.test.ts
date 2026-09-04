@@ -8,7 +8,7 @@ import {
   formatTime,
   parseTime,
   withinWindow,
-} from "../src/archive-schedule.js";
+} from "../src/archive-schedule.ts";
 
 const temporary: string[] = [];
 

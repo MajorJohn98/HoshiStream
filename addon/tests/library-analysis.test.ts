@@ -2,8 +2,8 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { Library } from "../src/library.js";
-import { LibraryAnalysis } from "../src/library-analysis.js";
+import { Library } from "../src/library.ts";
+import { LibraryAnalysis } from "../src/library-analysis.ts";
 
 async function seededLibrary() {
   const directory = await mkdtemp(join(tmpdir(), "hoshistream-analysis-"));

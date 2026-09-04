@@ -5,7 +5,7 @@ import {
   containerHostnameWarning,
   parseConfig,
   stateRoot,
-} from "../src/config-schema.js";
+} from "../src/config-schema.ts";
 
 const valid = {
   TORRSERVER_INTERNAL_URL: "http://127.0.0.1:8090",

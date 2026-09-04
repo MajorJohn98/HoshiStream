@@ -1,6 +1,6 @@
-import type { LibraryEntry, SeriesSource } from "./types.js";
-import type { Library } from "./library.js";
-import { inspectLocalEntry } from "./local-media.js";
+import type { LibraryEntry, SeriesSource } from "./types.ts";
+import type { Library } from "./library.ts";
+import { inspectLocalEntry } from "./local-media.ts";
 import {
   compositeFileId,
   fileSourceIndex,
@@ -8,8 +8,8 @@ import {
   selectMediaFiles,
   type SelectedFile,
   type TorrentFile,
-} from "./media-file-selection.js";
-import type { TorrServerClient } from "./torrserver-client.js";
+} from "./media-file-selection.ts";
+import type { TorrServerClient } from "./torrserver-client.ts";
 
 // The primary source is index 0; extraSources follow in order. Composite file
 // ids encode this index (see media-file-selection.ts).

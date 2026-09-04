@@ -1,11 +1,11 @@
-import type { Library } from "./library.js";
-import type { SelectedFile } from "./media-file-selection.js";
-import { markStreamActivity } from "./activity.js";
-import { directPlayLabel } from "./direct-play.js";
-import { sourceKey } from "./disk-copy.js";
-import { resolveStreamSource } from "./inspection.js";
-import { repairTier, repairDescription } from "./transcode.js";
-import type { TorrServerClient } from "./torrserver-client.js";
+import type { Library } from "./library.ts";
+import type { SelectedFile } from "./media-file-selection.ts";
+import { markStreamActivity } from "./activity.ts";
+import { directPlayLabel } from "./direct-play.ts";
+import { sourceKey } from "./disk-copy.ts";
+import { resolveStreamSource } from "./inspection.ts";
+import { repairTier, repairDescription } from "./transcode.ts";
+import type { TorrServerClient } from "./torrserver-client.ts";
 
 const episodeId = /^(hoshi:[^:]+):(\d+):(\d+)$/;
 

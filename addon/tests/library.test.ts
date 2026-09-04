@@ -8,8 +8,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { Library, LibraryError } from "../src/library.js";
-import { createEntrySchema } from "../src/types.js";
+import { Library, LibraryError } from "../src/library.ts";
+import { createEntrySchema } from "../src/types.ts";
 
 async function temporaryLibrary() {
   const directory = await mkdtemp(join(tmpdir(), "hoshistream-"));

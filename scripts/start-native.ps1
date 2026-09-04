@@ -1,6 +1,7 @@
 # Starts the HoshiStream native server on Windows — the counterpart of
 # start-native.sh. Works from a checkout (builds the add-on first) and from
-# the packaged zip (prebuilt dist, bundled Node under bin\).
+# the packaged zip (prebuilt dist, bundled Node under bin\). Pass --dev to
+# skip the build and run the add-on straight from addon\src.
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
@@ -32,7 +33,9 @@ $Node = @(
 if (-not $Node) { $Node = "node" }
 
 # A checkout has add-on sources that must be compiled; the zip ships dist only.
-if (Test-Path (Join-Path $Root "addon\src")) {
+# --dev runs those sources directly instead.
+$Dev = $args -contains "--dev"
+if (-not $Dev -and (Test-Path (Join-Path $Root "addon\src"))) {
   Push-Location (Join-Path $Root "addon")
   try { npm run build | Out-Null } finally { Pop-Location }
 }

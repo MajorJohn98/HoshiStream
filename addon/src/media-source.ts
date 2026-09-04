@@ -9,13 +9,13 @@ import {
   computeSourceRevision,
   destinationPath,
   sourceKey,
-} from "./disk-copy.js";
-import { resolveStreamSource } from "./inspection.js";
-import type { Library } from "./library.js";
-import { mediaContentType, mediaHeaders, parseRange } from "./local-media.js";
-import type { TorrServerClient } from "./torrserver-client.js";
-import type { LibraryEntry } from "./types.js";
-import type { VolumeRegistry } from "./volumes.js";
+} from "./disk-copy.ts";
+import { resolveStreamSource } from "./inspection.ts";
+import type { Library } from "./library.ts";
+import { mediaContentType, mediaHeaders, parseRange } from "./local-media.ts";
+import type { TorrServerClient } from "./torrserver-client.ts";
+import type { LibraryEntry } from "./types.ts";
+import type { VolumeRegistry } from "./volumes.ts";
 
 const MEDIA_HIGH_WATER_MARK = 4 * 1024 * 1024;
 

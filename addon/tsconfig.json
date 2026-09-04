@@ -7,7 +7,16 @@
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // Source imports use ".ts" specifiers so Node can run src/ directly via
+    // type stripping; tsc rewrites them to ".js" in dist/. erasableSyntaxOnly
+    // and verbatimModuleSyntax reject the TypeScript-only runtime syntax
+    // (enums, parameter properties, value-imported types) that stripping
+    // cannot handle. See ADR 0014.
+    "rewriteRelativeImportExtensions": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true
   },
   "include": ["src"]
 }

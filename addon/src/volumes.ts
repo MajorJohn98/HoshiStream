@@ -13,7 +13,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
 import { z } from "zod";
-import { containsPath } from "./path-safety.js";
+import { containsPath } from "./path-safety.ts";
 
 // A drive is identified by this marker, never by its mount path or name. The
 // marker carries only a format version and a random id — no tokens, no URIs.
@@ -92,12 +92,19 @@ export class VolumeRegistry {
     string,
     { expiresAt: number; value: VolumeResolution }
   >();
+  private readonly path: string;
+  private readonly mountBase: string | undefined;
+  private readonly resolutionTtlMs: number;
 
   constructor(
-    private readonly path: string,
-    private readonly mountBase = defaultMountBase(),
-    private readonly resolutionTtlMs = RESOLUTION_TTL_MS,
-  ) {}
+    path: string,
+    mountBase = defaultMountBase(),
+    resolutionTtlMs = RESOLUTION_TTL_MS,
+  ) {
+    this.path = path;
+    this.mountBase = mountBase;
+    this.resolutionTtlMs = resolutionTtlMs;
+  }
 
   async list(): Promise<StorageVolume[]> {
     await this.queue;

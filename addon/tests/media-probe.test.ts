@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeProbe } from "../src/media-probe.js";
+import { summarizeProbe } from "../src/media-probe.ts";
 
 describe("media probe summary", () => {
   it("calculates a recommended speed with 50% headroom", () => {

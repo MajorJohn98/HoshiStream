@@ -3,11 +3,11 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Library } from "../src/library.js";
-import { NativePicker } from "../src/native-picker.js";
-import { createHandler } from "../src/routes.js";
-import type { AddonInterface } from "../src/server-types.js";
-import type { TorrServerClient } from "../src/torrserver-client.js";
+import { Library } from "../src/library.ts";
+import { NativePicker } from "../src/native-picker.ts";
+import { createHandler } from "../src/routes.ts";
+import type { AddonInterface } from "../src/server-types.ts";
+import type { TorrServerClient } from "../src/torrserver-client.ts";
 
 const TOKEN = "an-access-token-for-route-tests";
 

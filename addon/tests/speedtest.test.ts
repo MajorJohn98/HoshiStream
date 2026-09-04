@@ -6,7 +6,7 @@ import {
   resetSpeed,
   runSpeedTest,
   setConfiguredSpeed,
-} from "../src/speedtest.js";
+} from "../src/speedtest.ts";
 
 function fakeFetch(chunkSize: number, chunks: number): typeof fetch {
   return (async (url: RequestInfo | URL) => {

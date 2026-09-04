@@ -1,7 +1,7 @@
-import { toMetaPreview } from "./catalog.js";
-import { resolveStreamSource, warmStreamSource } from "./inspection.js";
-import type { Library } from "./library.js";
-import type { TorrServerClient } from "./torrserver-client.js";
+import { toMetaPreview } from "./catalog.ts";
+import { resolveStreamSource, warmStreamSource } from "./inspection.ts";
+import type { Library } from "./library.ts";
+import type { TorrServerClient } from "./torrserver-client.ts";
 
 export async function getMetadata(
   library: Library,

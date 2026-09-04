@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { z } from "zod";
-import { rawFileId, type TorrentFile } from "./media-file-selection.js";
+import { rawFileId, type TorrentFile } from "./media-file-selection.ts";
 
 const torrentFileSchema = z.object({
   id: z.number().int().positive(),
@@ -33,11 +33,15 @@ export type TorrentStatus = z.infer<typeof torrentStatusSchema>;
 export class TorrServerError extends Error {}
 
 export class TorrServerClient {
-  constructor(
-    private readonly baseUrl: string,
-    private readonly timeoutMs = 10_000,
-    private readonly retryDelayMs = 500,
-  ) {}
+  private readonly baseUrl: string;
+  private readonly timeoutMs: number;
+  private readonly retryDelayMs: number;
+
+  constructor(baseUrl: string, timeoutMs = 10_000, retryDelayMs = 500) {
+    this.baseUrl = baseUrl;
+    this.timeoutMs = timeoutMs;
+    this.retryDelayMs = retryDelayMs;
+  }
 
   async health(): Promise<string> {
     return this.requestText("/echo");

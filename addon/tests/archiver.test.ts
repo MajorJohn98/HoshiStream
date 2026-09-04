@@ -12,12 +12,12 @@ import { tmpdir } from "node:os";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { Archiver } from "../src/archiver.js";
-import { ArchiveSchedule } from "../src/archive-schedule.js";
-import { Library } from "../src/library.js";
-import { TorrServerClient } from "../src/torrserver-client.js";
-import { VolumeRegistry } from "../src/volumes.js";
-import { libraryEntrySchema } from "../src/types.js";
+import { Archiver } from "../src/archiver.ts";
+import { ArchiveSchedule } from "../src/archive-schedule.ts";
+import { Library } from "../src/library.ts";
+import { TorrServerClient } from "../src/torrserver-client.ts";
+import { VolumeRegistry } from "../src/volumes.ts";
+import { libraryEntrySchema } from "../src/types.ts";
 
 const temporary: string[] = [];
 const servers: Server[] = [];

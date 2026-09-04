@@ -11,10 +11,10 @@ import { tmpdir } from "node:os";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { diskSourcePath, serveMediaSource } from "../src/media-source.js";
-import { Library } from "../src/library.js";
-import { TorrServerClient } from "../src/torrserver-client.js";
-import { VolumeRegistry } from "../src/volumes.js";
+import { diskSourcePath, serveMediaSource } from "../src/media-source.ts";
+import { Library } from "../src/library.ts";
+import { TorrServerClient } from "../src/torrserver-client.ts";
+import { VolumeRegistry } from "../src/volumes.ts";
 
 const temporary: string[] = [];
 const servers: Server[] = [];
@@ -115,7 +115,7 @@ async function setup(content: Buffer, options: { complete?: boolean } = {}) {
     relativeDir: "Example-1",
     // Matches computeSourceRevision for this single selected file; media
     // routing recomputes and compares.
-    sourceRevision: (await import("../src/disk-copy.js")).computeSourceRevision(
+    sourceRevision: (await import("../src/disk-copy.ts")).computeSourceRevision(
       [
         {
           sourceKey: "aaaa:1",

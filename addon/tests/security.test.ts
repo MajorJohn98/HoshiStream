@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bearerToken, validToken } from "../src/security.js";
+import { bearerToken, validToken } from "../src/security.ts";
 
 describe("token validation", () => {
   it("accepts only the complete shared token", () => {

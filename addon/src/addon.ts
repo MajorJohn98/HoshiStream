@@ -1,11 +1,11 @@
 import sdk from "stremio-addon-sdk";
-import { getCatalog } from "./catalog.js";
-import type { Library } from "./library.js";
-import { manifest } from "./manifest.js";
-import { getMetadata } from "./metadata.js";
-import type { AddonInterface } from "./server-types.js";
-import { getStreams } from "./streams.js";
-import type { TorrServerClient } from "./torrserver-client.js";
+import { getCatalog } from "./catalog.ts";
+import type { Library } from "./library.ts";
+import { manifest } from "./manifest.ts";
+import { getMetadata } from "./metadata.ts";
+import type { AddonInterface } from "./server-types.ts";
+import { getStreams } from "./streams.ts";
+import type { TorrServerClient } from "./torrserver-client.ts";
 
 export function createAddon(
   library: Library,

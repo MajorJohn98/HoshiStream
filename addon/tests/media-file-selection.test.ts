@@ -7,8 +7,8 @@ import {
   rawFileId,
   selectMediaFiles,
   type TorrentFile,
-} from "../src/media-file-selection.js";
-import { inspectionCacheSchema } from "../src/types.js";
+} from "../src/media-file-selection.ts";
+import { inspectionCacheSchema } from "../src/types.ts";
 
 const files: TorrentFile[] = [
   { id: 1, path: "Movie.sample.mkv", length: 50 },

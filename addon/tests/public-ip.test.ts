@@ -3,7 +3,7 @@ import {
   ownPublicIp,
   parseTraceIp,
   resetPublicIpCache,
-} from "../src/public-ip.js";
+} from "../src/public-ip.ts";
 
 function traceResponse(body: string, ok = true): typeof fetch {
   return (async () =>

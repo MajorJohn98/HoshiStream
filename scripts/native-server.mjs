@@ -25,6 +25,10 @@ const options = Object.fromEntries(
     }),
 );
 const torrServerPort = Number(options["torrserver-port"] ?? 8090);
+// --dev runs the add-on straight from addon/src via Node's type stripping,
+// skipping the tsc build. Only meaningful from a checkout; packaged bundles
+// ship dist/ alone.
+const devMode = options.dev === "true";
 // Upper bound on shutdown before the process terminates itself.
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 const projectRoot = resolve(options["project-root"] ?? runtimeRoot);
@@ -310,8 +314,9 @@ try {
     FFMPEG_PATH: await ffmpegBinary(),
     FFPROBE_PATH: await ffprobeBinary(),
   });
+  const addonEntry = devMode ? "addon/src/index.ts" : "addon/dist/index.js";
   const { startHoshiStream } = await import(
-    new URL("addon/dist/index.js", `${pathToFileURL(runtimeRoot)}/`)
+    new URL(addonEntry, `${pathToFileURL(runtimeRoot)}/`)
   );
   addon = await startHoshiStream();
   await waitFor(`http://127.0.0.1:${addonPort}/ready`);
@@ -323,6 +328,7 @@ try {
       addonPort,
       torrServerPort,
       stateRoot,
+      ...(devMode ? { devMode, addonEntry } : {}),
     }),
   );
 } catch (error) {

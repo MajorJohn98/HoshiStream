@@ -1,5 +1,5 @@
 import { extname } from "node:path";
-import type { ContentType } from "./types.js";
+import type { ContentType } from "./types.ts";
 
 export const VIDEO_EXTENSIONS = new Set([
   ".mp4",

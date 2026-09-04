@@ -1,4 +1,4 @@
-import type { manifest } from "./manifest.js";
+import type { manifest } from "./manifest.ts";
 
 export type AddonInterface = {
   manifest: typeof manifest;

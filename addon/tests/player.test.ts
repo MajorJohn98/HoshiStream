@@ -6,7 +6,7 @@ import {
   Player,
   resolvePlayerBinary,
   systemPlayerCommand,
-} from "../src/player.js";
+} from "../src/player.ts";
 
 // A stand-in for mpv: it parses --input-ipc-server, listens on that socket and
 // answers the same line-delimited JSON, so the real spawn and connect path is
@@ -186,7 +186,7 @@ describe("system handoff", () => {
     );
     if (process.platform !== "darwin" || installed.length === 0) return;
 
-    const { handOffToSystem } = await import("../src/player.js");
+    const { handOffToSystem } = await import("../src/player.ts");
     expect(typeof handOffToSystem).toBe("function");
     // The resolution order must put a real player ahead of `open <url>`.
     expect(installed[0]).toBe(

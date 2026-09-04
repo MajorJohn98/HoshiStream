@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TorrServerClient } from "../src/torrserver-client.js";
+import { TorrServerClient } from "../src/torrserver-client.ts";
 
 afterEach(() => vi.unstubAllGlobals());
 

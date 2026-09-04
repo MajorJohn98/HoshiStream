@@ -20,9 +20,9 @@ import {
   removeDiskCopyDirectory,
   safeRelativePath,
   sourceKey,
-} from "../src/disk-copy.js";
-import { VolumeRegistry } from "../src/volumes.js";
-import { libraryEntrySchema, type LibraryEntry } from "../src/types.js";
+} from "../src/disk-copy.ts";
+import { VolumeRegistry } from "../src/volumes.ts";
+import { libraryEntrySchema, type LibraryEntry } from "../src/types.ts";
 
 const temporary: string[] = [];
 

@@ -1,6 +1,6 @@
 import { win32, posix } from "node:path";
 import { describe, expect, it } from "vitest";
-import { containsPath, firstSegmentBelow } from "../src/path-safety.js";
+import { containsPath, firstSegmentBelow } from "../src/path-safety.ts";
 
 describe("path containment", () => {
   it("accepts paths inside the root", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TorrServerClient } from "../src/torrserver-client.js";
+import { TorrServerClient } from "../src/torrserver-client.ts";
 
 const baseUrl = process.env.TORRSERVER_TEST_URL;
 

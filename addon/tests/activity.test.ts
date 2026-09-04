@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { markStreamActivity, recentStreamActivity } from "../src/activity.js";
+import { markStreamActivity, recentStreamActivity } from "../src/activity.ts";
 
 describe("stream activity", () => {
   it("reports recent activity only within the window", () => {

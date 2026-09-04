@@ -1,10 +1,10 @@
-import { assessDirectPlay } from "./direct-play.js";
-import { inspectEntry } from "./inspection.js";
-import type { Library } from "./library.js";
-import { probeMedia } from "./media-probe.js";
-import { homeSpeedMbps } from "./speedtest.js";
-import type { TorrServerClient } from "./torrserver-client.js";
-import type { LibraryEntry } from "./types.js";
+import { assessDirectPlay } from "./direct-play.ts";
+import { inspectEntry } from "./inspection.ts";
+import type { Library } from "./library.ts";
+import { probeMedia } from "./media-probe.ts";
+import { homeSpeedMbps } from "./speedtest.ts";
+import type { TorrServerClient } from "./torrserver-client.ts";
+import type { LibraryEntry } from "./types.ts";
 
 // Library-wide playback analysis: one entry at a time, same pipeline as the
 // per-entry "Analyze playback" action (inspect → ffprobe → direct-play
@@ -53,11 +53,13 @@ export class LibraryAnalysis {
     cancelled: false,
   };
   #generation = 0;
+  private readonly library: Library;
+  private readonly analyze: EntryAnalyzer;
 
-  constructor(
-    private readonly library: Library,
-    private readonly analyze: EntryAnalyzer,
-  ) {}
+  constructor(library: Library, analyze: EntryAnalyzer) {
+    this.library = library;
+    this.analyze = analyze;
+  }
 
   status(): AnalysisStatus {
     return structuredClone(this.#status);

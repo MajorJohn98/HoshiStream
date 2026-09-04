@@ -1,6 +1,6 @@
-import type { Library } from "./library.js";
-import { resolveStreamSource } from "./inspection.js";
-import { inspectLocalEntry } from "./local-media.js";
+import type { Library } from "./library.ts";
+import { resolveStreamSource } from "./inspection.ts";
+import { inspectLocalEntry } from "./local-media.ts";
 import {
   handOffToSystem,
   Player,
@@ -8,9 +8,9 @@ import {
   resolvePlayerBinary,
   type PlayerChoice,
   type PlayerStatus,
-} from "./player.js";
-import type { TorrServerClient } from "./torrserver-client.js";
-import type { LibraryEntry } from "./types.js";
+} from "./player.ts";
+import type { TorrServerClient } from "./torrserver-client.ts";
+import type { LibraryEntry } from "./types.ts";
 
 // Writing every position update would rewrite the library JSON several times a
 // second, so persist at most this often.
@@ -22,12 +22,19 @@ export class Playback {
   private player?: Player;
   private mode?: PlaybackMode;
   private lastWrite = 0;
+  private readonly library: Library;
+  private readonly torrServer: TorrServerClient;
+  private readonly choice: PlayerChoice;
 
   constructor(
-    private readonly library: Library,
-    private readonly torrServer: TorrServerClient,
-    private readonly choice: PlayerChoice = "auto",
-  ) {}
+    library: Library,
+    torrServer: TorrServerClient,
+    choice: PlayerChoice = "auto",
+  ) {
+    this.library = library;
+    this.torrServer = torrServer;
+    this.choice = choice;
+  }
 
   async play(
     entryId: string,

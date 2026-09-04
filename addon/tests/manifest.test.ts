@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { manifest } from "../src/manifest.js";
+import { manifest } from "../src/manifest.ts";
 
 describe("manifest", () => {
   it("declares the private movie and series resources", () => {

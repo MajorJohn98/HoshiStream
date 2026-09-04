@@ -32,8 +32,8 @@ afterEach(async () => {
 
 async function start() {
   const port = nextPort();
-  const { parseConfig } = await import("../src/config-schema.js");
-  const { startHoshiStream } = await import("../src/index.js");
+  const { parseConfig } = await import("../src/config-schema.ts");
+  const { startHoshiStream } = await import("../src/index.ts");
   const directory = await mkdtemp(join(tmpdir(), "hoshistream-shutdown-"));
   const libraryPath = join(directory, "library.json");
   await writeFile(libraryPath, "[]\n");

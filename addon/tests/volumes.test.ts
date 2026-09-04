@@ -14,7 +14,7 @@ import {
   MARKER_FILENAME,
   VolumeError,
   VolumeRegistry,
-} from "../src/volumes.js";
+} from "../src/volumes.ts";
 
 const temporary: string[] = [];
 

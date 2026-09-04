@@ -6,11 +6,11 @@ import {
   inspectEntry,
   resolveStreamSource,
   warmStreamSource,
-} from "../src/inspection.js";
-import { Library } from "../src/library.js";
-import { getMetadata } from "../src/metadata.js";
-import type { TorrServerClient } from "../src/torrserver-client.js";
-import type { LibraryEntry } from "../src/types.js";
+} from "../src/inspection.ts";
+import { Library } from "../src/library.ts";
+import { getMetadata } from "../src/metadata.ts";
+import type { TorrServerClient } from "../src/torrserver-client.ts";
+import type { LibraryEntry } from "../src/types.ts";
 
 async function temporaryLibrary() {
   const directory = await mkdtemp(join(tmpdir(), "hoshistream-"));

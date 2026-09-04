@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
-import { lanIPv4 } from "./mdns.js";
+import { lanIPv4 } from "./mdns.ts";
 
 // Manual "phone-home" for the Vercel pointer server (ADR 0012): the pointer
 // record is only updated when the user explicitly triggers a push (menu-bar

@@ -10,10 +10,10 @@ import {
 } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
-import { rawFileId, type SelectedFile } from "./media-file-selection.js";
-import { containsPath, isSafeRelativePath } from "./path-safety.js";
-import type { DiskCopy, DiskCopyFile, LibraryEntry } from "./types.js";
-import type { VolumeRegistry } from "./volumes.js";
+import { rawFileId, type SelectedFile } from "./media-file-selection.ts";
+import { containsPath, isSafeRelativePath } from "./path-safety.ts";
+import type { DiskCopy, DiskCopyFile, LibraryEntry } from "./types.ts";
+import type { VolumeRegistry } from "./volumes.ts";
 
 export class DiskCopyError extends Error {}
 
@@ -217,7 +217,11 @@ export type DiskCleanupTombstone = z.infer<typeof tombstoneSchema>;
 export class DiskCleanup {
   #queue: Promise<void> = Promise.resolve();
 
-  constructor(private readonly path: string) {}
+  private readonly path: string;
+
+  constructor(path: string) {
+    this.path = path;
+  }
 
   async list(): Promise<DiskCleanupTombstone[]> {
     await this.#queue;

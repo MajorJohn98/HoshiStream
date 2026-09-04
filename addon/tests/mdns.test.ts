@@ -5,7 +5,7 @@ import {
   lanIPv4,
   questionNames,
   readName,
-} from "../src/mdns.js";
+} from "../src/mdns.ts";
 
 function encodeQuery(names: string[]): Buffer {
   const header = Buffer.alloc(12);

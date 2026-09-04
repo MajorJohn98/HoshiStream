@@ -7,8 +7,8 @@ import {
   inspectLocalEntry,
   mediaHeaders,
   parseRange,
-} from "../src/local-media.js";
-import { createEntrySchema, type LibraryEntry } from "../src/types.js";
+} from "../src/local-media.ts";
+import { createEntrySchema, type LibraryEntry } from "../src/types.ts";
 
 describe("local media ranges", () => {
   it("parses normal and suffix ranges and rejects invalid ranges", () => {

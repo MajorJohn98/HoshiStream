@@ -113,7 +113,6 @@ HOME_SPEED_MBPS=10
 
 The app derives everything else — `TORRSERVER_INTERNAL_URL`, the public LAN URLs, the library path, and the vendored ffmpeg paths — from the detected LAN address and install layout. The remaining variables in `.env.example` apply only when running the add-on directly with `npm start`. To confirm the LAN address the app will advertise, run `./scripts/find-lan-ip.sh`.
 
-
 ## Add media
 
 Every management request requires `Authorization: Bearer`:
@@ -290,6 +289,11 @@ TORRSERVER_TEST_URL=http://127.0.0.1:8090 npm test
 ```
 
 The optional integration test checks only health and the empty/list response; it downloads no media.
+
+To run the server from a checkout without building or installing the app, use
+`./scripts/start-native.sh --dev` (or `npm run dev:native` from `addon/` for a
+foreground process that restarts on save). The add-on runs straight from
+`addon/src` — no `tsc` step. See `hoshistream_docs/guides/development.md`.
 
 ## Cleanup and uninstall
 

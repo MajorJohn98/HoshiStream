@@ -5,7 +5,7 @@ import {
   resolvePublicUrls,
   rewritePublicUrl,
   streamBehaviorHints,
-} from "../src/streams.js";
+} from "../src/streams.ts";
 
 const fallback = {
   addonUrl: "http://192.168.1.50:7000",

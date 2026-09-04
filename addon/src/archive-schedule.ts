@@ -51,7 +51,11 @@ export class ArchiveSchedule {
   #window: ArchiveWindow | undefined;
   #loaded = false;
 
-  constructor(private readonly path: string) {}
+  private readonly path: string;
+
+  constructor(path: string) {
+    this.path = path;
+  }
 
   async window(): Promise<ArchiveWindow | undefined> {
     if (!this.#loaded) {

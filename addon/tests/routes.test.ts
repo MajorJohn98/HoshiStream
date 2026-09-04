@@ -3,7 +3,7 @@ import {
   manageAssetPath,
   noStoreProtocolResource,
   technicalProbeRequested,
-} from "../src/routes.js";
+} from "../src/routes.ts";
 
 describe("inspection route", () => {
   it("runs the slow technical probe only when explicitly requested", () => {

@@ -5,7 +5,7 @@ import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PlayerIpc } from "./player-ipc.js";
+import { PlayerIpc } from "./player-ipc.ts";
 
 export class PlayerError extends Error {}
 
@@ -154,15 +154,24 @@ export class Player {
   private ipc?: PlayerIpc;
   private socketPath?: string;
   private current?: { entryId: string; fileId?: number; title?: string };
+  private readonly binary: string;
+  private readonly onPosition?: (
+    entryId: string,
+    positionSeconds: number,
+    fileId?: number,
+  ) => void;
 
   constructor(
-    private readonly binary: string,
-    private readonly onPosition?: (
+    binary: string,
+    onPosition?: (
       entryId: string,
       positionSeconds: number,
       fileId?: number,
     ) => void,
-  ) {}
+  ) {
+    this.binary = binary;
+    this.onPosition = onPosition;
+  }
 
   get running(): boolean {
     return Boolean(this.process && this.ipc?.connected);

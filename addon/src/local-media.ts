@@ -10,10 +10,10 @@ import {
 } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, extname, join, relative, resolve } from "node:path";
-import { containsPath, firstSegmentBelow } from "./path-safety.js";
+import { containsPath, firstSegmentBelow } from "./path-safety.ts";
 import { pipeline } from "node:stream/promises";
-import { isPlayablePath, selectMediaFiles } from "./media-file-selection.js";
-import type { LibraryEntry } from "./types.js";
+import { isPlayablePath, selectMediaFiles } from "./media-file-selection.ts";
+import type { LibraryEntry } from "./types.ts";
 
 const MEDIA_ROOT = resolve(process.env.MEDIA_ROOT ?? "/media");
 const UPLOAD_ROOT = resolve(process.env.UPLOAD_ROOT ?? "/data/media");

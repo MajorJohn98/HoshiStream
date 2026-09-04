@@ -26,11 +26,13 @@ export class PlayerIpc {
   private readonly listeners = new Set<
     (event: string, payload: unknown) => void
   >();
+  private readonly socketPath: string;
+  private readonly timeoutMs: number;
 
-  constructor(
-    private readonly socketPath: string,
-    private readonly timeoutMs = 5_000,
-  ) {}
+  constructor(socketPath: string, timeoutMs = 5_000) {
+    this.socketPath = socketPath;
+    this.timeoutMs = timeoutMs;
+  }
 
   get connected(): boolean {
     return Boolean(this.socket && !this.socket.destroyed);

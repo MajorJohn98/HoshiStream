@@ -8,7 +8,7 @@ import {
   groupProcesses,
   parsePsOutput,
   resetDiskCache,
-} from "../src/resources.js";
+} from "../src/resources.ts";
 
 const PS_FIXTURE = `  PID  PPID    RSS  %CPU COMM
   100     1  10240   1.5 /usr/bin/something

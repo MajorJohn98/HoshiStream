@@ -2,10 +2,10 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { Library } from "../src/library.js";
-import { Playback } from "../src/playback.js";
-import { clearLocalInspectionCache } from "../src/local-media.js";
-import type { TorrServerClient } from "../src/torrserver-client.js";
+import { Library } from "../src/library.ts";
+import { Playback } from "../src/playback.ts";
+import { clearLocalInspectionCache } from "../src/local-media.ts";
+import type { TorrServerClient } from "../src/torrserver-client.ts";
 
 async function seriesLibrary() {
   const directory = await mkdtemp(join(tmpdir(), "hoshistream-pb-"));

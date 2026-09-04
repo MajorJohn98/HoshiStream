@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { PlayerIpc, PlayerIpcError } from "../src/player-ipc.js";
+import { PlayerIpc, PlayerIpcError } from "../src/player-ipc.ts";
 
 // Speaks the same line-delimited JSON protocol as mpv's --input-ipc-server so
 // the client can be exercised without the real binary installed.

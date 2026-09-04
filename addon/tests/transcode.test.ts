@@ -10,7 +10,7 @@ import {
   ffmpegArgs,
   repairDescription,
   repairTier,
-} from "../src/transcode.js";
+} from "../src/transcode.ts";
 
 describe("repairTier", () => {
   it("chooses the audio tier for risky audio codecs", () => {

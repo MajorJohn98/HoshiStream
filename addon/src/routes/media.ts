@@ -1,15 +1,15 @@
-import { markStreamActivity } from "../activity.js";
-import { resolveStreamSource } from "../inspection.js";
-import { inspectLocalEntry, serveLocalMedia } from "../local-media.js";
-import { serveMediaSource } from "../media-source.js";
-import { validToken } from "../security.js";
-import { repairTier, TranscodeBusyError } from "../transcode.js";
+import { markStreamActivity } from "../activity.ts";
+import { resolveStreamSource } from "../inspection.ts";
+import { inspectLocalEntry, serveLocalMedia } from "../local-media.ts";
+import { serveMediaSource } from "../media-source.ts";
+import { validToken } from "../security.ts";
+import { repairTier, TranscodeBusyError } from "../transcode.ts";
 import {
   isReadMethod,
   observeClient,
   reply,
   type RouteHandler,
-} from "./context.js";
+} from "./context.ts";
 
 // Repaired-stream HLS sessions (ADR 0010). The session starts lazily on the
 // first playlist request and is reaped when segment requests stop.

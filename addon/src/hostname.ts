@@ -5,7 +5,7 @@
 //   2. an mDNS reverse PTR query on 224.0.0.251:5353 (RFC 6762).
 import { createSocket } from "node:dgram";
 import { reverse } from "node:dns/promises";
-import { readName } from "./mdns.js";
+import { readName } from "./mdns.ts";
 
 const MDNS_ADDRESS = "224.0.0.251";
 const MDNS_PORT = 5353;

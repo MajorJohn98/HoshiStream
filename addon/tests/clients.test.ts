@@ -4,7 +4,7 @@ import {
   listClients,
   recordClient,
   resetClients,
-} from "../src/clients.js";
+} from "../src/clients.ts";
 
 afterEach(() => resetClients());
 

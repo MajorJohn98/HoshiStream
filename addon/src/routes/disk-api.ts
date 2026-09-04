@@ -5,7 +5,7 @@ import {
   parseTime,
   TIME_PATTERN,
   withinWindow,
-} from "../archive-schedule.js";
+} from "../archive-schedule.ts";
 import {
   buildManifest,
   computeSourceRevision,
@@ -13,9 +13,9 @@ import {
   DiskCopyError,
   reconcileFiles,
   removeDiskCopyDirectory,
-} from "../disk-copy.js";
-import { inspectEntry } from "../inspection.js";
-import { body, logInfo, reply, type RouteHandler } from "./context.js";
+} from "../disk-copy.ts";
+import { inspectEntry } from "../inspection.ts";
+import { body, logInfo, reply, type RouteHandler } from "./context.ts";
 
 const diskCopyRequestSchema = z.object({
   enabled: z.boolean(),
