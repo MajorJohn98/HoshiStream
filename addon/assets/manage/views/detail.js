@@ -1055,8 +1055,13 @@ function diskBadge(entry) {
 export function DetailSheet() {
   const state = useStore();
   const entry = state.selected;
+  const closeButton = useRef(null);
+  // Focus and initial scroll happen once per opened entry. An inline ref
+  // callback would refocus the close button on every poll-driven re-render,
+  // yanking the sheet back to the top mid-scroll.
   useEffect(() => {
     if (!entry) return;
+    closeButton.current?.focus({ preventScroll: true });
     if (state.tab && state.tab !== "overview") {
       document
         .querySelector("#section-" + state.tab)
@@ -1093,7 +1098,7 @@ export function DetailSheet() {
         <button
           class="modal-close"
           aria-label="Close"
-          ref=${(el) => el?.focus()}
+          ref=${closeButton}
           onClick=${closeDetail}
         >
           ×
