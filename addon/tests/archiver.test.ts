@@ -4,6 +4,7 @@ import {
   mkdtemp,
   readFile,
   realpath,
+  rename,
   rm,
   stat,
   writeFile,
@@ -87,7 +88,7 @@ async function setup(content: Buffer) {
   const mountBase = join(base, "Volumes");
   const drive = join(mountBase, "Seagate", "HoshiStream");
   await mkdir(drive, { recursive: true });
-  const volumes = new VolumeRegistry(join(base, "volumes.json"), mountBase);
+  const volumes = new VolumeRegistry(join(base, "volumes.json"), mountBase, 0);
   const volume = await volumes.register(drive);
   const library = new Library(join(base, "library.json"));
   const { url } = await fakeTorrServer(content);
@@ -201,8 +202,18 @@ describe("Archiver", () => {
     // Drain the queue without closing so the waiting state stays observable.
     await archiver.settle();
 
-    expect(archiver.jobs()).toEqual([
-      { entryId: entry.id, status: "waiting", reason: "Waiting for drive" },
+    expect(await archiver.jobs()).toEqual([
+      {
+        entryId: entry.id,
+        status: "waiting",
+        reason: "Drive disconnected",
+        progress: {
+          doneBytes: 0,
+          totalBytes: 100,
+          doneFiles: 0,
+          totalFiles: 1,
+        },
+      },
     ]);
     const diskCopy = await archivedEntry(library, entry.id);
     expect(diskCopy.files[0].state).toBe("missing");
@@ -220,11 +231,17 @@ describe("Archiver", () => {
 
     archiver.enqueue(entry.id);
     await archiver.settle();
-    expect(archiver.jobs()).toEqual([
+    expect(await archiver.jobs()).toEqual([
       {
         entryId: entry.id,
         status: "waiting",
         reason: expect.stringMatching(/^Scheduled \d\d:\d\d–\d\d:\d\d$/),
+        progress: {
+          doneBytes: 0,
+          totalBytes: 100,
+          doneFiles: 0,
+          totalFiles: 1,
+        },
       },
     ]);
 
@@ -253,5 +270,71 @@ describe("Archiver", () => {
     await expect(
       stat(join(drive, "Example-1", "Show", "S01E01.mkv")),
     ).resolves.toBeTruthy();
+  });
+
+  it("pause stops the entry and survives a wake; resume completes it", async () => {
+    const content = Buffer.from("p".repeat(100));
+    const { drive, library, archiver, entry } = await setup(content);
+
+    expect(await archiver.pause(entry.id)).toBe(true);
+    expect((await archivedEntry(library, entry.id)).paused).toBe(true);
+    archiver.wake();
+    await archiver.settle();
+    expect(await archiver.jobs()).toEqual([
+      expect.objectContaining({ entryId: entry.id, status: "paused" }),
+    ]);
+    await expect(
+      stat(join(drive, "Example-1", "Show", "S01E01.mkv")),
+    ).rejects.toThrow();
+
+    expect(await archiver.resume(entry.id)).toBe(true);
+    await archiver.settle();
+    const diskCopy = await archivedEntry(library, entry.id);
+    expect(diskCopy.paused).toBeUndefined();
+    expect(diskCopy.files[0].state).toBe("complete");
+  });
+
+  it("a returning drive is woken by reason and resumes the copy", async () => {
+    const content = Buffer.from("d".repeat(100));
+    const { mountBase, drive, library, archiver, entry } = await setup(content);
+    // Outside the mount base, so the marker scan cannot find it "renamed".
+    const parked = join(mountBase, "..", "parked");
+    await rename(join(mountBase, "Seagate"), parked);
+    archiver.enqueue(entry.id);
+    await archiver.settle();
+    expect((await archiver.jobs())[0]).toMatchObject({
+      status: "waiting",
+      reason: "Drive disconnected",
+    });
+
+    // Waking for an unrelated reason leaves it parked.
+    archiver.wake("Scheduled");
+    await archiver.settle();
+    expect((await archiver.jobs())[0]).toMatchObject({ status: "waiting" });
+
+    await rename(parked, join(mountBase, "Seagate"));
+    archiver.wake("Drive disconnected");
+    await archiver.settle();
+    expect((await archivedEntry(library, entry.id)).files[0].state).toBe(
+      "complete",
+    );
+    await expect(
+      stat(join(drive, "Example-1", "Show", "S01E01.mkv")),
+    ).resolves.toBeTruthy();
+  });
+
+  it("reports byte progress across completed and active files", async () => {
+    const content = Buffer.from("q".repeat(100));
+    const { library, archiver, entry } = await setup(content);
+    archiver.enqueue(entry.id);
+    await archiver.settle();
+    expect(await archiver.progress(entry.id)).toEqual({
+      doneBytes: 100,
+      totalBytes: 100,
+      doneFiles: 1,
+      totalFiles: 1,
+    });
+    expect(await archiver.jobs()).toEqual([]);
+    void library;
   });
 });

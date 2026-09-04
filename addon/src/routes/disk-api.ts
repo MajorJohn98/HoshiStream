@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WAITING_FOR_DRIVE } from "../archiver.ts";
 import {
   describeWindow,
   formatTime,
@@ -35,7 +36,7 @@ const diskScheduleRequestSchema = z
   });
 
 export const handleVolumes: RouteHandler = async (
-  { volumes, diskCleanup, nativePicker },
+  { volumes, diskCleanup, nativePicker, archiver },
   { response, url, method },
 ) => {
   const volumeMatch = /^\/api\/volumes\/([^/]+)$/.exec(url.pathname);
@@ -49,7 +50,12 @@ export const handleVolumes: RouteHandler = async (
     // Volume polls are the lazy trigger for deferred cleanup: a drive that
     // just came back gets its pending deletions applied here.
     if (diskCleanup) await diskCleanup.sweep(volumes).catch(() => undefined);
-    return reply(response, 200, { volumes: await volumes.statusAll() });
+    const status = await volumes.statusAll();
+    // A drive that just came back should resume its downloads now, not on
+    // the next wake-timer tick.
+    if (status.some((volume) => volume.state === "online"))
+      archiver?.wake(WAITING_FOR_DRIVE);
+    return reply(response, 200, { volumes: status });
   }
   if (collection && method === "POST") {
     const selected = await nativePicker.selectStorage();
@@ -81,12 +87,27 @@ export const handleDiskCopy: RouteHandler = async (
   const retryMatch = /^\/api\/library\/([^/]+)\/disk-copy\/retry$/.exec(
     url.pathname,
   );
+  const pauseMatch =
+    /^\/api\/library\/([^/]+)\/disk-copy\/(pause|resume)$/.exec(url.pathname);
   if (
     !(diskCopyMatch && method === "PUT") &&
-    !(retryMatch && method === "POST")
+    !(retryMatch && method === "POST") &&
+    !(pauseMatch && method === "POST")
   )
     return false;
   if (!volumes) return reply(response, 409, { error: "Volumes unavailable" });
+
+  if (pauseMatch) {
+    if (!archiver)
+      return reply(response, 409, { error: "Archiver unavailable" });
+    const id = decodeURIComponent(pauseMatch[1]);
+    const ok =
+      pauseMatch[2] === "pause"
+        ? await archiver.pause(id)
+        : await archiver.resume(id);
+    if (!ok) return reply(response, 409, { error: "Disk copy is not enabled" });
+    return reply(response, 200, await library.get(id));
+  }
 
   if (retryMatch) {
     const id = decodeURIComponent(retryMatch[1]);
@@ -211,7 +232,7 @@ export const handleDiskJobs: RouteHandler = async (
 ) => {
   if (url.pathname !== "/api/disk-jobs" || method !== "GET") return false;
   if (!archiver) return reply(response, 409, { error: "Archiver unavailable" });
-  return reply(response, 200, { jobs: archiver.jobs() });
+  return reply(response, 200, { jobs: await archiver.jobs() });
 };
 
 export const handleDiskSchedule: RouteHandler = async (

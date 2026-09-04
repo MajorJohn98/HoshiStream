@@ -25,6 +25,10 @@ const PLAYBACK_YIELD_MS = 15_000;
 const WAKE_INTERVAL_MS = 60_000;
 const HEADROOM_BYTES = 1 << 30;
 const MAX_FILE_RETRIES = 3;
+// While a file streams to disk, re-check that its volume is still there. An
+// unplugged drive usually fails the write outright, but a slow or buffered
+// loss should also stop the transfer within a few seconds.
+const VOLUME_GUARD_MS = 5_000;
 
 export interface ArchiverOptions {
   headroomBytes?: number;
@@ -38,11 +42,24 @@ export interface ArchiverOptions {
   schedule?: ArchiveSchedule;
 }
 
+// Waiting reasons the queue distinguishes: drive loss is woken by volume
+// polls, a user pause only by resume(); everything else by the wake timer.
+export const WAITING_FOR_DRIVE = "Drive disconnected";
+export const PAUSED = "Paused";
+
+export interface DiskJobProgress {
+  doneBytes: number;
+  totalBytes: number;
+  doneFiles: number;
+  totalFiles: number;
+}
+
 export interface DiskJob {
   entryId: string;
-  status: "queued" | "copying" | "waiting";
+  status: "queued" | "copying" | "waiting" | "paused";
   reason?: string;
   file?: { sourceKey: string; received: number; length: number };
+  progress: DiskJobProgress;
 }
 
 function log(level: "info" | "warn", event: string, context: object): void {
@@ -69,6 +86,9 @@ export class Archiver {
     length: number;
     controller: AbortController;
   };
+  // Bytes known to sit in .partial files, by sourceKey, so entry progress
+  // counts interrupted transfers without stat()ing the drive on every poll.
+  private readonly partialBytes = new Map<string, number>();
   private running = false;
   private closed = false;
   private wakeTimer?: NodeJS.Timeout;
@@ -124,7 +144,8 @@ export class Archiver {
             (file.state === "missing" || file.state === "partial"),
         )
       ) {
-        this.enqueue(entry.id);
+        if (entry.diskCopy.paused) this.waiting.set(entry.id, PAUSED);
+        else this.enqueue(entry.id);
       }
     }
     this.wakeTimer = setInterval(() => this.wake(), this.wakeIntervalMs);
@@ -136,6 +157,45 @@ export class Archiver {
     this.waiting.delete(entryId);
     if (!this.pending.includes(entryId)) this.pending.push(entryId);
     void this.run();
+  }
+
+  /** Stop this entry's transfer and keep it stopped until resume(). */
+  async pause(entryId: string): Promise<boolean> {
+    const entry = await this.library.get(entryId);
+    if (!entry?.diskCopy || entry.diskCopy.desired !== "keep") return false;
+    await this.library.setDiskCopy(entryId, {
+      ...entry.diskCopy,
+      paused: true,
+      updatedAt: new Date().toISOString(),
+    });
+    this.cancel(entryId);
+    if (this.hasOutstandingWork(entry.diskCopy.files))
+      this.waiting.set(entryId, PAUSED);
+    log("info", "disk_archive_paused", { entryId });
+    return true;
+  }
+
+  async resume(entryId: string): Promise<boolean> {
+    const entry = await this.library.get(entryId);
+    if (!entry?.diskCopy || entry.diskCopy.desired !== "keep") return false;
+    if (entry.diskCopy.paused) {
+      const diskCopy = {
+        ...entry.diskCopy,
+        updatedAt: new Date().toISOString(),
+      };
+      delete diskCopy.paused;
+      await this.library.setDiskCopy(entryId, diskCopy);
+    }
+    this.enqueue(entryId);
+    log("info", "disk_archive_resumed", { entryId });
+    return true;
+  }
+
+  private hasOutstandingWork(files: DiskCopyFile[]): boolean {
+    return files.some(
+      (file) =>
+        file.included && (file.state === "missing" || file.state === "partial"),
+    );
   }
 
   /** Invalidate any queued or in-flight work for the entry. */
@@ -160,33 +220,77 @@ export class Archiver {
     return this.settled;
   }
 
-  /** Runtime queue snapshot for the management UI. */
-  jobs(): DiskJob[] {
+  /** Runtime queue snapshot for the management UI, with entry progress. */
+  async jobs(): Promise<DiskJob[]> {
     const jobs: DiskJob[] = [];
-    if (this.active) {
+    const active = this.active;
+    if (active) {
       jobs.push({
-        entryId: this.active.entryId,
+        entryId: active.entryId,
         status: "copying",
         file: {
-          sourceKey: this.active.sourceKey,
-          received: this.active.received,
-          length: this.active.length,
+          sourceKey: active.sourceKey,
+          received: active.received,
+          length: active.length,
         },
+        progress: await this.progress(active.entryId),
       });
     }
     for (const entryId of this.pending) {
-      if (entryId !== this.active?.entryId)
-        jobs.push({ entryId, status: "queued" });
+      if (entryId !== active?.entryId)
+        jobs.push({
+          entryId,
+          status: "queued",
+          progress: await this.progress(entryId),
+        });
     }
     for (const [entryId, reason] of this.waiting) {
-      jobs.push({ entryId, status: "waiting", reason });
+      jobs.push({
+        entryId,
+        status: reason === PAUSED ? "paused" : "waiting",
+        reason,
+        progress: await this.progress(entryId),
+      });
     }
     return jobs;
   }
 
-  /** Move waiting entries back into the queue (drive may have returned). */
-  wake(): void {
-    for (const entryId of [...this.waiting.keys()]) this.enqueue(entryId);
+  /** Bytes and files done across the entry's included manifest. */
+  async progress(entryId: string): Promise<DiskJobProgress> {
+    const entry = await this.library.get(entryId);
+    const files = (entry?.diskCopy?.files ?? []).filter((f) => f.included);
+    let doneBytes = 0;
+    let doneFiles = 0;
+    for (const file of files) {
+      if (file.state === "complete") {
+        doneBytes += file.length;
+        doneFiles += 1;
+      } else if (this.active?.sourceKey === file.sourceKey) {
+        doneBytes += this.active.received;
+      } else {
+        doneBytes += this.partialBytes.get(file.sourceKey) ?? 0;
+      }
+    }
+    return {
+      doneBytes,
+      totalBytes: files.reduce((sum, file) => sum + file.length, 0),
+      doneFiles,
+      totalFiles: files.length,
+    };
+  }
+
+  /**
+   * Move waiting entries back into the queue. Without a filter every waiter
+   * except user-paused ones is retried (the wake timer); with one, only
+   * entries waiting for that reason — volume polls pass WAITING_FOR_DRIVE so
+   * a reconnected drive resumes within seconds.
+   */
+  wake(onlyReason?: string): void {
+    for (const [entryId, reason] of [...this.waiting]) {
+      if (reason === PAUSED) continue;
+      if (onlyReason && reason !== onlyReason) continue;
+      this.enqueue(entryId);
+    }
   }
 
   private generation(entryId: string): number {
@@ -223,6 +327,10 @@ export class Archiver {
     const entry = await this.library.get(entryId);
     const diskCopy = entry?.diskCopy;
     if (!entry || !diskCopy || diskCopy.desired !== "keep") return;
+    if (diskCopy.paused) {
+      this.waiting.set(entryId, PAUSED);
+      return;
+    }
     const scheduled = await this.scheduledPause();
     if (scheduled) {
       this.waiting.set(entryId, scheduled);
@@ -230,7 +338,7 @@ export class Archiver {
     }
     const resolution = await this.volumes.resolve(diskCopy.volumeId);
     if (resolution.state !== "online") {
-      this.waiting.set(entryId, "Waiting for drive");
+      this.waiting.set(entryId, WAITING_FOR_DRIVE);
       log("info", "disk_archive_waiting", {
         entryId,
         state: resolution.state,
@@ -286,9 +394,13 @@ export class Archiver {
       const entry = await this.library.get(entryId);
       const diskCopy = entry?.diskCopy;
       if (!entry || !diskCopy || diskCopy.desired !== "keep") return "stop";
+      if (diskCopy.paused) {
+        this.waiting.set(entryId, PAUSED);
+        return "stop";
+      }
       const resolution = await this.volumes.resolve(diskCopy.volumeId);
       if (resolution.state !== "online") {
-        this.waiting.set(entryId, "Waiting for drive");
+        this.waiting.set(entryId, WAITING_FOR_DRIVE);
         return "stop";
       }
       const destination = destinationPath(
@@ -298,6 +410,7 @@ export class Archiver {
       );
       const partial = `${destination}${PARTIAL_SUFFIX}`;
       const offset = (await stat(partial).catch(() => undefined))?.size ?? 0;
+      this.partialBytes.set(file.sourceKey, offset);
       const space = await statfs(resolution.root).catch(() => undefined);
       const free = space ? space.bavail * space.bsize : 0;
       if (free < file.length - offset + this.headroomBytes) {
@@ -310,19 +423,25 @@ export class Archiver {
         return "stop";
       }
       try {
-        const state = await this.transfer(entry, file, {
-          destination,
-          partial,
-          offset,
-        });
+        const state = await this.transfer(
+          entry,
+          file,
+          { destination, partial, offset },
+          diskCopy.volumeId,
+        );
+        if (state === "complete") this.partialBytes.delete(file.sourceKey);
         return state;
       } catch (error) {
+        // Whatever landed before the interruption is resumable and counts.
+        if (this.active?.sourceKey === file.sourceKey)
+          this.partialBytes.set(file.sourceKey, this.active.received);
         if (this.cancelled(entryId, generation) || this.closed) return "stop";
-        // Drive loss pauses without consuming the retry budget.
+        // Drive loss pauses without consuming the retry budget; the volume
+        // poll wakes the entry when the drive is back.
         if (
           (await this.volumes.resolve(diskCopy.volumeId)).state !== "online"
         ) {
-          this.waiting.set(entryId, "Waiting for drive");
+          this.waiting.set(entryId, WAITING_FOR_DRIVE);
           return "stop";
         }
         if (attempt >= MAX_FILE_RETRIES) {
@@ -346,6 +465,7 @@ export class Archiver {
     entry: LibraryEntry,
     file: DiskCopyFile,
     target: { destination: string; partial: string; offset: number },
+    volumeId?: string,
   ): Promise<DiskCopyFile["state"]> {
     const source = await resolveStreamSource(
       entry,
@@ -389,11 +509,24 @@ export class Archiver {
         callback(null, chunk);
       },
     });
-    await pipeline(
-      Readable.fromWeb(response.body as WebReadableStream),
-      counter,
-      createWriteStream(target.partial, { flags: resumed ? "a" : "w" }),
-    );
+    const guard = volumeId
+      ? setInterval(() => {
+          void this.volumes.resolve(volumeId).then((resolution) => {
+            if (resolution.state !== "online")
+              controller.abort(new Error("Drive disconnected"));
+          });
+        }, VOLUME_GUARD_MS)
+      : undefined;
+    guard?.unref();
+    try {
+      await pipeline(
+        Readable.fromWeb(response.body as WebReadableStream),
+        counter,
+        createWriteStream(target.partial, { flags: resumed ? "a" : "w" }),
+      );
+    } finally {
+      if (guard) clearInterval(guard);
+    }
     const written = await stat(target.partial);
     if (written.size === file.length) {
       // The only transition to complete: verified size, then atomic rename.

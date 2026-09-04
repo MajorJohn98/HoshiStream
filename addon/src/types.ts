@@ -98,6 +98,9 @@ export const diskCopySchema = z.object({
   // freezes intent to the explicitly included files.
   scope: z.enum(["all", "selected"]),
   files: z.array(diskCopyFileSchema),
+  // User-paused: the archiver skips this entry until resumed, even after a
+  // restart or a drive reconnect.
+  paused: z.boolean().optional(),
   updatedAt: z.string().datetime(),
 });
 

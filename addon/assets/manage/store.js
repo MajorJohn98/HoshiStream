@@ -59,6 +59,13 @@ export async function load() {
   setState({ entries, status, tags: tags.tags, loaded: true, loadError: "" });
 }
 
+// Refresh the download queue now rather than on the next poll tick, so a
+// pause or resume shows immediately.
+export async function loadJobs() {
+  const report = await api("disk-jobs");
+  setState({ activity: { ...state.activity, jobs: report.jobs } });
+}
+
 export async function loadTags() {
   const { tags } = await api("tags");
   setState({ tags });

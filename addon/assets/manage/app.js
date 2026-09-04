@@ -110,10 +110,12 @@ function Hud() {
         `,
       )}
       ${activity.jobs.slice(0, 3).map((job) => {
-        const percent = job.file?.length
+        const percent = job.progress?.totalBytes
           ? Math.min(
               100,
-              Math.round((job.file.received / job.file.length) * 100),
+              Math.round(
+                (job.progress.doneBytes / job.progress.totalBytes) * 100,
+              ),
             )
           : 0;
         return html`
@@ -127,7 +129,9 @@ function Hud() {
                     ? "Copying " + percent + "%"
                     : job.status === "queued"
                       ? "Queued"
-                      : job.reason || "Waiting"
+                      : job.status === "paused"
+                        ? "Paused " + percent + "%"
+                        : job.reason || "Waiting"
                 }
               </strong>
               ${name(job.entryId)}

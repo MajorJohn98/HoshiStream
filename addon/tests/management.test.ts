@@ -204,6 +204,17 @@ describe("management assets", () => {
     expect(await asset("views/add.js")).toContain("<${TagPicker}");
   });
 
+  it("storage page shows download progress with pause, resume, and delete", async () => {
+    const storageJs = await asset("views/storage.js");
+    expect(storageJs).toContain("job.progress");
+    expect(storageJs).toContain('"/disk-copy/" + action');
+    expect(storageJs).toContain("Resume");
+    expect(storageJs).toContain("Pause");
+    expect(storageJs).toContain("enabled: false, deleteFiles: true");
+    const appJs = await asset("app.js");
+    expect(appJs).toContain("job.progress?.totalBytes");
+  });
+
   it("library page hosts playback analysis behind an Analyze button", async () => {
     const libraryJs = await asset("views/library.js");
     expect(libraryJs).toContain('from "./analysis.js"');

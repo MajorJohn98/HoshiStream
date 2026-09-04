@@ -1013,6 +1013,10 @@ span.danger {
   background: var(--surface2);
   overflow: hidden;
 }
+.rowitem .bar.quiet span {
+  background: var(--surface2);
+  filter: brightness(1.6);
+}
 .rowitem .bar span {
   display: block;
   height: 100%;

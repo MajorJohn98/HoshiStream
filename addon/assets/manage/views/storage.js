@@ -4,7 +4,7 @@
 // sweeps server-side.
 import { html, useEffect, useState } from "../vendor/preact-htm.js";
 import { api, fmt, notify } from "../api.js";
-import { setState, useStore } from "../store.js";
+import { setState, useStore, load, loadJobs } from "../store.js";
 import { Shell } from "../components/shell.js";
 
 function usePoll(path, intervalMs, refreshTick = 0) {
@@ -251,74 +251,117 @@ function jobLabel(job, entries) {
   return entry?.name ?? job.entryId;
 }
 
+async function diskAction(entryId, action, message) {
+  try {
+    await api(
+      "library/" + encodeURIComponent(entryId) + "/disk-copy/" + action,
+      { method: "POST" },
+    );
+    notify(message);
+    await Promise.all([load(), loadJobs()]);
+  } catch (error) {
+    notify(error.message);
+  }
+}
+
 function Jobs({ entries }) {
   const { activity } = useStore();
   const jobs = activity.jobs;
   const copying = jobs.filter((job) => job.status === "copying").length;
+  const paused = jobs.filter((job) => job.status === "paused").length;
   return html`
     <section class="page-section" id="storage-queue">
       <div class="section-head">
-        <h2 class="section-title">Archive queue</h2>
+        <div>
+          <h2 class="section-title">Downloads</h2>
+          <p class="muted">
+            One title copies at a time. Paused downloads stay paused until you
+            resume them; a disconnected drive pauses its downloads until it is
+            back.
+          </p>
+        </div>
         <span class="inline-note">
           ${
             jobs.length
-              ? copying + " copying · " + (jobs.length - copying) + " waiting"
+              ? [
+                  copying + " copying",
+                  jobs.length - copying - paused + " waiting",
+                  paused ? paused + " paused" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
               : "Idle"
           }
         </span>
       </div>
       ${
         jobs.length === 0
-          ? html`<p class="empty quiet">Nothing copying right now.</p>`
+          ? html`<p class="empty quiet">Nothing to download right now.</p>`
           : html`<ul class="rows">
               ${jobs.map((job) => {
-                const percent = job.file?.length
+                const p = job.progress;
+                const percent = p.totalBytes
                   ? Math.min(
                       100,
-                      Math.round((job.file.received / job.file.length) * 100),
+                      Math.round((p.doneBytes / p.totalBytes) * 100),
                     )
                   : 0;
                 const tone =
                   job.status === "copying"
                     ? "live"
-                    : job.status === "queued"
+                    : job.status === "paused"
                       ? "idle"
-                      : "warn";
+                      : job.status === "queued"
+                        ? "idle"
+                        : "warn";
+                const label =
+                  job.status === "copying"
+                    ? "Copying"
+                    : job.status === "paused"
+                      ? "Paused"
+                      : job.status === "queued"
+                        ? "Queued"
+                        : job.reason || "Waiting";
+                const detail =
+                  fmt(p.doneBytes) +
+                  " of " +
+                  fmt(p.totalBytes) +
+                  (p.totalFiles > 1
+                    ? " · " + p.doneFiles + " of " + p.totalFiles + " files"
+                    : "");
                 return html`
                   <li class="rowitem" key=${job.entryId}>
                     <span class="lead"><i class="dot ${tone}"></i></span>
                     <span class="main">
                       <strong>${jobLabel(job, entries)}</strong>
-                      <span class="meta">
-                        ${
-                          job.status === "copying"
-                            ? "Copying"
-                            : job.status === "queued"
-                              ? "Queued"
-                              : job.reason || "Waiting"
-                        }${
-                          job.file
-                            ? " · " +
-                              fmt(job.file.received) +
-                              " of " +
-                              fmt(job.file.length)
-                            : ""
-                        }
+                      <span class="meta">${label} · ${detail}</span>
+                      <span
+                        class="bar ${job.status === "copying" ? "" : "quiet"}"
+                      >
+                        <span
+                          style=${"transform:scaleX(" + percent / 100 + ")"}
+                        ></span>
                       </span>
-                      ${
-                        job.status === "copying"
-                          ? html`<span class="bar">
-                              <span
-                                style=${"transform:scaleX(" + percent / 100 + ")"}
-                              ></span>
-                            </span>`
-                          : null
-                      }
                     </span>
                     <span class="trail">
-                      <span class="value">
-                        ${job.status === "copying" ? percent + "%" : ""}
-                      </span>
+                      <span class="value">${percent}%</span>
+                      ${
+                        job.status === "paused"
+                          ? html`<button
+                              class="secondary"
+                              onClick=${() =>
+                                diskAction(job.entryId, "resume", "Resumed")}
+                            >
+                              Resume
+                            </button>`
+                          : html`<button
+                              class="secondary"
+                              onClick=${() =>
+                                diskAction(job.entryId, "pause", "Paused")}
+                            >
+                              Pause
+                            </button>`
+                      }
                     </span>
                   </li>
                 `;
@@ -327,6 +370,30 @@ function Jobs({ entries }) {
       }
     </section>
   `;
+}
+
+async function deleteCopy(entry) {
+  if (
+    !confirm(
+      "Delete the copied files for “" +
+        entry.name +
+        "” from the drive? The title stays in your library and keeps " +
+        "streaming from its torrent. If the drive is offline, deletion runs " +
+        "when it returns.",
+    )
+  )
+    return;
+  try {
+    await api("library/" + encodeURIComponent(entry.id) + "/disk-copy", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false, deleteFiles: true }),
+    });
+    notify("Disk copy removed");
+    await Promise.all([load(), loadJobs()]);
+  } catch (error) {
+    notify(error.message);
+  }
 }
 
 export function StorageSection() {
@@ -395,6 +462,16 @@ export function StorageSection() {
                       <span class="value">
                         ${fmt(files.reduce((sum, file) => sum + file.length, 0))}
                       </span>
+                      <button
+                        class="danger"
+                        title="Delete the copied files from the drive"
+                        onClick=${(event) => {
+                          event.stopPropagation();
+                          deleteCopy(entry);
+                        }}
+                      >
+                        Delete files
+                      </button>
                     </span>
                   </li>
                 `;
