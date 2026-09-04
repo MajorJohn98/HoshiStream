@@ -160,9 +160,6 @@ h3 {
 .repeater-row {
   margin-bottom: var(--space-2);
 }
-.tablewrap .tablenote {
-  margin-bottom: 0;
-}
 /* Standalone progress bar (analysis run); the HUD keeps its 4px variant. */
 .progress {
   display: block;
@@ -568,7 +565,55 @@ h3 {
   text-overflow: ellipsis;
 }
 .tag-picker {
-  margin-top: 8px;
+  margin-top: 2px;
+}
+.tag-picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+}
+.tag-picker-row:focus-within {
+  border-color: rgba(232, 115, 74, 0.55);
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 8px;
+  background: var(--surface2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.tag-remove {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+}
+.tag-remove:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+input.tag-input {
+  flex: 1;
+  min-width: 140px;
+  background: transparent;
+  border: 0;
+  padding: 5px 6px;
+}
+input.tag-input:focus {
+  border: 0;
 }
 .tag-row {
   display: flex;
@@ -629,12 +674,6 @@ h3 {
   gap: 14px;
   flex-wrap: wrap;
   margin-bottom: 18px;
-}
-.section-chips {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin: 4px 0 10px;
 }
 .section-title {
   margin: 0 0 12px;
@@ -1064,13 +1103,6 @@ span.danger {
   font-size: var(--fs-small);
   color: var(--muted);
 }
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 14px;
-}
 .empty {
   border: 1px dashed var(--line);
   border-radius: var(--radius-lg);
@@ -1163,7 +1195,14 @@ input[type="date"] {
 /* ---------- tables ---------- */
 .tablewrap {
   overflow-x: auto;
-  padding: 0;
+}
+.tablewrap table.files th:first-child,
+.tablewrap table.files td:first-child {
+  padding-left: 0;
+}
+.tablewrap table.files th:last-child,
+.tablewrap table.files td:last-child {
+  padding-right: 0;
 }
 table.files {
   width: 100%;
@@ -1306,7 +1345,7 @@ table.files input[type="number"] {
     rgba(13, 15, 20, 0.85) 65%,
     var(--bg-raise) 100%
   );
-  padding: 54px 30px 22px;
+  padding: 48px 30px 22px;
 }
 .title-summary {
   display: flex;
@@ -1331,22 +1370,62 @@ table.files input[type="number"] {
   font-size: var(--fs-display);
   margin: 0 0 10px;
 }
-.sheet-chips {
+.sheet-tabs {
   position: sticky;
   top: 0;
   z-index: 4;
+  display: flex;
+  gap: 22px;
+  overflow-x: auto;
   background: rgba(13, 15, 20, 0.92);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   margin: 0;
-  padding: 12px 30px;
+  padding: 0 30px;
   border-bottom: 1px solid var(--line);
 }
+.sheet-tabs a {
+  flex: none;
+  padding: 13px 0 11px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: var(--fs-control);
+  font-weight: 600;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.sheet-tabs a:hover {
+  color: var(--text);
+  border-bottom-color: var(--line-strong);
+}
 .sheet-body {
-  padding: 8px 30px 34px;
+  padding: 4px 30px 34px;
 }
 .sheet-section {
-  margin-top: 28px;
-  scroll-margin-top: 64px;
+  margin-top: 30px;
+  scroll-margin-top: 58px;
+}
+.sheet-section .section-head .muted {
+  max-width: 62ch;
+}
+.rows.compact .rowitem {
+  padding: 9px 0;
+}
+.rows.compact .rowitem .main strong {
+  font-size: var(--fs-small);
+}
+.rowitem .lead input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  margin: 0;
+}
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  letter-spacing: 0;
 }
 
 /* ---------- player ---------- */
@@ -1747,10 +1826,13 @@ video {
     padding: 20px 16px;
   }
   .sheet-hero-scrim,
-  .sheet-chips,
+  .sheet-tabs,
   .sheet-body {
     padding-left: 16px;
     padding-right: 16px;
+  }
+  .sheet-tabs {
+    gap: 16px;
   }
   .form-grid .span2 {
     grid-column: span 1;

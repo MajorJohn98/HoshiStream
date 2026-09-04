@@ -64,29 +64,49 @@ function useInspect(state) {
   return [busy, run];
 }
 
-function InspectionPrompt({ state, title, description, technical }) {
-  const [busy, run] = useInspect(state);
+// One section of the sheet: small-caps title, optional note and status on the
+// left, the section's primary action on the right — same head the pages use.
+function Section({ id, title, note, aside, action, children }) {
   return html`
-    <div class="empty">
-      <h2>${title}</h2>
-      <p>${description}</p>
-      ${
-        state.inspectionError
-          ? html`<p class="danger">${state.inspectionError}</p>`
-          : null
-      }
-      <button class="primary" disabled=${busy} onClick=${() => run(technical)}>
-        ${
-          busy
-            ? technical
-              ? "Analyzing playback…"
-              : "Inspecting files…"
-            : technical
-              ? "Analyze playback"
-              : "Inspect source"
-        }
-      </button>
-    </div>
+    <section class="sheet-section" id=${"section-" + id}>
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">${title}</h2>
+          ${note ? html`<p class="muted">${note}</p>` : null}
+        </div>
+        <div class="row">${aside}${action}</div>
+      </div>
+      ${children}
+    </section>
+  `;
+}
+
+function InspectButton({ state, technical, primary = true }) {
+  const [busy, run] = useInspect(state);
+  const label = busy
+    ? technical
+      ? "Analyzing…"
+      : "Inspecting…"
+    : technical
+      ? "Analyze playback"
+      : "Inspect source";
+  return html`<button
+    class=${primary ? "primary" : "secondary"}
+    disabled=${busy}
+    onClick=${() => run(technical)}
+  >
+    ${label}
+  </button>`;
+}
+
+function NotYet({ state, children }) {
+  return html`
+    <p class="empty quiet">${children}</p>
+    ${
+      state.inspectionError
+        ? html`<p class="danger">${state.inspectionError}</p>`
+        : null
+    }
   `;
 }
 
@@ -114,52 +134,61 @@ function OverviewTab({ state }) {
   // activity poll, and preact re-syncs a `value` prop to the DOM each time,
   // which would wipe whatever the user is typing.
   return html`
-    <form class="panel form-grid" key=${entry.id} onSubmit=${onSubmit}>
-      <label> Title<input name="name" defaultValue=${entry.name} /> </label>
-      <label>
-        Type
-        <select name="type">
-          <option value="movie" selected=${entry.type === "movie"}>
-            Movie
-          </option>
-          <option value="series" selected=${entry.type === "series"}>
-            Series
-          </option>
-        </select>
-      </label>
-      <label class="span2">
-        Description
-        <textarea name="description">${entry.description || ""}</textarea>
-      </label>
-      <label>
-        Poster URL
-        <input name="poster" type="url" defaultValue=${entry.poster || ""} />
-      </label>
-      <label>
-        Background URL
-        <input
-          name="background"
-          type="url"
-          defaultValue=${entry.background || ""}
-        />
-      </label>
-      <div class="span2">
-        <span class="field-label">Tags</span>
-        <${TagPicker} value=${tags} onChange=${setTags} />
-      </div>
-      ${
-        entry.magnetUri
-          ? html`<label class="span2">
-              Magnet link
-              <textarea name="magnetUri" required>${entry.magnetUri}</textarea>
-            </label>`
-          : null
-      }
-      <div class="span2 row">
-        <span></span>
-        <button class="primary">Save changes</button>
-      </div>
-    </form>
+    <${Section}
+      id="overview"
+      title="Details"
+      note="Title, artwork, description, and tags as Stremio sees them."
+    >
+      <form class="form-grid" key=${entry.id} onSubmit=${onSubmit}>
+        <label> Title<input name="name" defaultValue=${entry.name} /> </label>
+        <label>
+          Type
+          <select name="type">
+            <option value="movie" selected=${entry.type === "movie"}>
+              Movie
+            </option>
+            <option value="series" selected=${entry.type === "series"}>
+              Series
+            </option>
+          </select>
+        </label>
+        <label class="span2">
+          Description
+          <textarea name="description">${entry.description || ""}</textarea>
+        </label>
+        <label>
+          Poster URL
+          <input name="poster" type="url" defaultValue=${entry.poster || ""} />
+        </label>
+        <label>
+          Background URL
+          <input
+            name="background"
+            type="url"
+            defaultValue=${entry.background || ""}
+          />
+        </label>
+        <div class="span2">
+          <span class="field-label">Tags</span>
+          <${TagPicker} value=${tags} onChange=${setTags} />
+        </div>
+        ${
+          entry.magnetUri
+            ? html`<label class="span2">
+                Magnet link
+                <textarea name="magnetUri" required>
+${entry.magnetUri}</textarea>
+              </label>`
+            : null
+        }
+        <div class="span2 row between">
+          <span class="inline-note"
+            >Changes apply to Stremio on its next catalog refresh.</span
+          >
+          <button class="primary">Save changes</button>
+        </div>
+      </form>
+    <//>
   `;
 }
 
@@ -200,32 +229,45 @@ function ExtraSourcesPanel({ state }) {
         names carry no SxxEyy numbering; on episode conflicts the newest source
         wins.
       </p>
-      ${extras.map(
-        (extra, index) => html`
-          <div class="picker-row repeater-row">
-            <span class="muted grow">
-              ${
-                extra.magnetUri
-                  ? shortMagnet(extra.magnetUri)
-                  : extra.torrentFilePath
-              }
-              ${
-                extra.seasonHint !== undefined
-                  ? " · season " + extra.seasonHint
-                  : ""
-              }
-            </span>
-            <button
-              class="secondary"
-              disabled=${saving}
-              onClick=${() => save(extras.filter((_, i) => i !== index))}
-            >
-              Remove
-            </button>
-          </div>
-        `,
-      )}
-      <div class="picker-row">
+      ${
+        extras.length
+          ? html`<ul class="rows compact">
+              ${extras.map(
+                (extra, index) => html`
+                  <li class="rowitem no-lead" key=${index}>
+                    <span class="main">
+                      <strong class="mono">
+                        ${
+                          extra.magnetUri
+                            ? shortMagnet(extra.magnetUri)
+                            : extra.torrentFilePath
+                        }
+                      </strong>
+                      <span class="meta">
+                        ${
+                          extra.seasonHint !== undefined
+                            ? "Season " + extra.seasonHint
+                            : "Season from file names"
+                        }
+                      </span>
+                    </span>
+                    <span class="trail">
+                      <button
+                        class="secondary"
+                        disabled=${saving}
+                        onClick=${() =>
+                          save(extras.filter((_, i) => i !== index))}
+                      >
+                        Remove
+                      </button>
+                    </span>
+                  </li>
+                `,
+              )}
+            </ul>`
+          : null
+      }
+      <div class="picker-row stacked-sm">
         <input
           class="grow"
           placeholder="magnet:?xt=urn:btih:…"
@@ -292,7 +334,27 @@ function SourceTab({ state }) {
         ? "Linked local file"
         : ".torrent file";
   return html`
-    <div>
+    <${Section}
+      id="source"
+      title="Source"
+      note="Where this title's media comes from."
+      action=${html`
+        <button class="secondary" disabled=${busy} onClick=${() => run(false)}>
+          ${busy ? "Inspecting…" : "Inspect again"}
+        </button>
+        ${
+          relinkable
+            ? html`<button
+                class="secondary"
+                disabled=${relinking}
+                onClick=${relink}
+              >
+                ${relinking ? "Waiting for Finder…" : "Relink in Finder"}
+              </button>`
+            : null
+        }
+      `}
+    >
       <dl class="kv">
         <div>
           <dt>Kind</dt>
@@ -320,22 +382,6 @@ function SourceTab({ state }) {
           ? html`<p class="danger">${state.inspectionError}</p>`
           : null
       }
-      <div class="actions">
-        <button class="primary" disabled=${busy} onClick=${() => run(false)}>
-          ${busy ? "Inspecting files…" : "Inspect again"}
-        </button>
-        ${
-          relinkable
-            ? html`<button
-                class="secondary"
-                disabled=${relinking}
-                onClick=${relink}
-              >
-                ${relinking ? "Waiting for Finder…" : "Relink in Finder"}
-              </button>`
-            : null
-        }
-      </div>
       <p class="inline-note stacked-sm">
         Complete magnet URIs are visible only on this tokenized page and are
         never written to logs.
@@ -348,66 +394,73 @@ function SourceTab({ state }) {
           ? html`<${ExtraSourcesPanel} state=${state} />`
           : null
       }
-    </div>
+    <//>
   `;
 }
 
 function CachedFilesTable({ state, cache }) {
   const [busy, run] = useInspect(state);
+  const n = cache.selectedFiles.length;
   return html`
-    <div class="toolbar">
-      <div>
-        <h2>Selected files</h2>
-        <span class="muted">
-          From the last inspection, ${agoLabel(cache.inspectedAt)}
-        </span>
+    <${Section}
+      id="files"
+      title="Files"
+      note=${
+        n +
+        " file" +
+        (n === 1 ? "" : "s") +
+        " selected from the last inspection, " +
+        agoLabel(cache.inspectedAt) +
+        ". Inspect again to change the selection or remap episodes."
+      }
+      action=${html`<button
+        class="secondary"
+        disabled=${busy}
+        onClick=${() => run(false)}
+      >
+        ${busy ? "Inspecting…" : "Inspect to edit"}
+      </button>`}
+    >
+      ${
+        state.inspectionError
+          ? html`<p class="danger">${state.inspectionError}</p>`
+          : null
+      }
+      <div class="tablewrap">
+        <table class="files">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Size</th>
+              <th>Season</th>
+              <th>Episode</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cache.selectedFiles.map(
+              (f) => html`
+                <tr key=${f.id}>
+                  <td class="filename">${f.path}</td>
+                  <td>${fmt(f.length)}</td>
+                  <td>${f.season ?? "—"}</td>
+                  <td>${f.episode ?? "—"}</td>
+                  <td>
+                    <button
+                      class="secondary"
+                      title="Play this file"
+                      onClick=${() => goWatch(state.selected.id, f.id)}
+                    >
+                      ▶
+                    </button>
+                  </td>
+                </tr>
+              `,
+            )}
+          </tbody>
+        </table>
       </div>
-      <button class="primary" disabled=${busy} onClick=${() => run(false)}>
-        ${busy ? "Inspecting files…" : "Inspect to edit"}
-      </button>
-    </div>
-    ${
-      state.inspectionError
-        ? html`<p class="danger">${state.inspectionError}</p>`
-        : null
-    }
-    <div class="panel tablewrap">
-      <table class="files">
-        <thead>
-          <tr>
-            <th>File</th>
-            <th>Size</th>
-            <th>Season</th>
-            <th>Episode</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${cache.selectedFiles.map(
-            (f) => html`
-              <tr key=${f.id}>
-                <td class="filename">${f.path}</td>
-                <td>${fmt(f.length)}</td>
-                <td>${f.season ?? "—"}</td>
-                <td>${f.episode ?? "—"}</td>
-                <td>
-                  <button
-                    class="secondary"
-                    title="Play this file"
-                    onClick=${() => goWatch(state.selected.id, f.id)}
-                  >
-                    ▶
-                  </button>
-                </td>
-              </tr>
-            `,
-          )}
-        </tbody>
-      </table>
-      <p class="muted tablenote">
-        Inspect again to change which files are used or remap episodes.
-      </p>
-    </div>
+    <//>
   `;
 }
 
@@ -441,69 +494,73 @@ function MappingTable({ state }) {
     await run(false);
   };
   return html`
-    <div class="toolbar">
-      <div>
-        <h2>Files & episode mapping</h2>
-        <span class="muted">${state.inspection.files.length} files found</span>
-      </div>
-      <button class="secondary" disabled=${busy} onClick=${automap}>
-        Restore automatic mapping
-      </button>
-    </div>
-    <div class="panel tablewrap">
-      <table class="files" ref=${tableRef}>
-        <thead>
-          <tr>
-            <th>Use</th>
-            <th>File</th>
-            <th>Size</th>
-            <th>Season</th>
-            <th>Episode</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${state.inspection.files.map((f, i) => {
-            const o = overrides.get(f.id);
-            const s = state.inspection.selectedFiles.find((x) => x.id === f.id);
-            return html`
-              <tr key=${f.id} data-file=${f.id}>
-                <td>
-                  <input
-                    class="include"
-                    type="checkbox"
-                    checked=${o?.included ?? Boolean(s)}
-                  />
-                </td>
-                <td class="filename">${f.path}</td>
-                <td>${fmt(f.length)}</td>
-                <td>
-                  <input
-                    class="season"
-                    type="number"
-                    min="1"
-                    defaultValue=${o?.season || s?.season || 1}
-                  />
-                </td>
-                <td>
-                  <input
-                    class="episode"
-                    type="number"
-                    min="1"
-                    defaultValue=${o?.episode || s?.episode || i + 1}
-                  />
-                </td>
-              </tr>
-            `;
-          })}
-        </tbody>
-      </table>
-      <div class="row stacked">
-        <span></span>
+    <${Section}
+      id="files"
+      title="Files"
+      note=${
+        state.inspection.files.length +
+        " files found. Choose which to use and map seasons and episodes."
+      }
+      action=${html`
+        <button class="secondary" disabled=${busy} onClick=${automap}>
+          Restore automatic mapping
+        </button>
         <button class="primary" disabled=${busy} onClick=${saveMap}>
           Save mapping
         </button>
+      `}
+    >
+      <div class="tablewrap">
+        <table class="files" ref=${tableRef}>
+          <thead>
+            <tr>
+              <th>Use</th>
+              <th>File</th>
+              <th>Size</th>
+              <th>Season</th>
+              <th>Episode</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.inspection.files.map((f, i) => {
+              const o = overrides.get(f.id);
+              const s = state.inspection.selectedFiles.find(
+                (x) => x.id === f.id,
+              );
+              return html`
+                <tr key=${f.id} data-file=${f.id}>
+                  <td>
+                    <input
+                      class="include"
+                      type="checkbox"
+                      checked=${o?.included ?? Boolean(s)}
+                    />
+                  </td>
+                  <td class="filename">${f.path}</td>
+                  <td>${fmt(f.length)}</td>
+                  <td>
+                    <input
+                      class="season"
+                      type="number"
+                      min="1"
+                      defaultValue=${o?.season || s?.season || 1}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      class="episode"
+                      type="number"
+                      min="1"
+                      defaultValue=${o?.episode || s?.episode || i + 1}
+                    />
+                  </td>
+                </tr>
+              `;
+            })}
+          </tbody>
+        </table>
       </div>
-    </div>
+    <//>
   `;
 }
 
@@ -511,12 +568,18 @@ function FilesTab({ state }) {
   if (state.inspection) return html`<${MappingTable} state=${state} />`;
   const cache = state.selected.inspectionCache;
   if (cache) return html`<${CachedFilesTable} state=${state} cache=${cache} />`;
-  return html`<${InspectionPrompt}
-    state=${state}
-    title="Inspect files first"
-    description="Load source metadata to choose files and map episodes."
-    technical=${false}
-  />`;
+  return html`
+    <${Section}
+      id="files"
+      title="Files"
+      note="Which files play, and how they map to seasons and episodes."
+      action=${html`<${InspectButton} state=${state} technical=${false} />`}
+    >
+      <${NotYet} state=${state}>
+        Not inspected yet — load the source's metadata to choose files.
+      <//>
+    <//>
+  `;
 }
 
 const DIRECT_PLAY_TEXT = {
@@ -573,16 +636,22 @@ async function testPlayback(state) {
 function PlaybackTab({ state }) {
   const [busy, run] = useInspect(state);
   if (!state.inspection?.technical)
-    return html`<${InspectionPrompt}
-      state=${state}
-      title=${state.inspection ? "Analyze playback" : "Inspect for playback"}
-      description=${
-        state.inspection
-          ? "File metadata is ready. Analyze the selected video for compatibility and speed guidance."
-          : "Inspect files and analyze the selected video."
-      }
-      technical
-    />`;
+    return html`
+      <${Section}
+        id="playback"
+        title="Playback check"
+        note="Codec, bitrate, and whether this title will direct-play."
+        action=${html`<${InspectButton} state=${state} technical />`}
+      >
+        <${NotYet} state=${state}>
+          ${
+            state.inspection
+              ? "File metadata is ready — analyze the selected video for compatibility and speed guidance."
+              : "Not analyzed yet — probe the selected video for compatibility and speed guidance."
+          }
+        <//>
+      <//>
+    `;
   const f = state.inspection.selectedFiles[0];
   const t = state.inspection.technical || {};
   const dp = state.inspection.directPlay;
@@ -618,22 +687,22 @@ function PlaybackTab({ state }) {
           ? "warn"
           : "idle";
   return html`
-    <div>
-      <div class="verdict">
-        <span class="status ${tone}">
-          <i class="dot ${tone}"></i>${verdictTitle(t, dp, ready, needed)}
-        </span>
-        ${verdictBody(t, dp, ready, needed)}
-        <p class="inline-note">
-          ${f?.path || "No selected file"} · HoshiStream →
-          ${
-            state.selected.localFilePath || state.selected.localFolderPath
-              ? "Local file"
-              : "TorrServer"
-          }
-          → Player
-        </p>
-      </div>
+    <${Section}
+      id="playback"
+      title="Playback check"
+      note=${f?.path || "No selected file"}
+      aside=${html`<span class="status ${tone}">
+        <i class="dot ${tone}"></i>${verdictTitle(t, dp, ready, needed)}
+      </span>`}
+      action=${html`<button
+        class="secondary"
+        disabled=${busy}
+        onClick=${() => run(true)}
+      >
+        ${busy ? "Analyzing…" : "Refresh analysis"}
+      </button>`}
+    >
+      <div class="verdict">${verdictBody(t, dp, ready, needed)}</div>
       ${t.error ? html`<p class="danger">${t.error}</p>` : null}
       <dl class="kv stacked-sm">
         ${metrics.map(
@@ -655,15 +724,18 @@ function PlaybackTab({ state }) {
         <button class="secondary" onClick=${() => testPlayback(state)}>
           Test playback
         </button>
-        <button class="secondary" disabled=${busy} onClick=${() => run(true)}>
-          ${busy ? "Analyzing playback…" : "Refresh analysis"}
-        </button>
       </div>
       <div class="stacked-sm">
         <p class="inline-note">
-          Direct play needs the player to support the listed codecs. When stream
-          repair is enabled, incompatible entries also get a "Compatible" stream
-          in Stremio.
+          Path: HoshiStream →
+          ${
+            state.selected.localFilePath || state.selected.localFolderPath
+              ? "Local file"
+              : "TorrServer"
+          }
+          → Player. Direct play needs the player to support the listed codecs;
+          with stream repair enabled, incompatible titles also get a
+          "Compatible" stream in Stremio.
         </p>
         ${
           state.status.transcode?.enabled
@@ -693,20 +765,13 @@ function PlaybackTab({ state }) {
             : null
         }
       </div>
-    </div>
+    <//>
   `;
 }
 
 // Disk copy: keep this entry's files on a registered storage volume.
 // Playback prefers the disk copy whenever the drive is connected and falls
 // back to the torrent otherwise — same stream URL either way.
-const FILE_STATE_ICONS = {
-  complete: "✓",
-  partial: "◔",
-  missing: "○",
-  invalid: "⚠",
-};
-
 function manifestSourceKey(cacheHash, file) {
   return (file.hash ?? cacheHash) + ":" + (file.id % 100000);
 }
@@ -795,19 +860,21 @@ function StorageTab({ state }) {
   );
 
   if (!diskCopy) {
-    return html`<div>
-      <p class="muted">
-        Copy this entry to a storage volume. When the drive is connected,
-        playback streams from disk; when it is not, the torrent takes over
-        automatically.
-      </p>
+    return html`<${Section}
+      id="storage"
+      title="Keep on disk"
+      note="Copy this title to a storage volume. Playback streams from the drive when it is connected and from the torrent when it is not."
+      aside=${html`<span class="status idle">
+        <i class="dot idle"></i>Not kept on disk
+      </span>`}
+    >
       ${
         volumes === null
-          ? html`<p class="muted">Loading volumes…</p>`
+          ? html`<p class="empty quiet">Loading volumes…</p>`
           : volumes.length === 0
-            ? html`<p class="muted">
-                No storage registered yet — add a drive or folder on the Storage
-                page first.
+            ? html`<p class="empty quiet">
+                No storage registered yet — add a drive or folder on the
+                <a href="#/storage">Storage page</a> first.
               </p>`
             : html`<div class="row tight">
                 <select
@@ -836,7 +903,7 @@ function StorageTab({ state }) {
                 </button>
               </div>`
       }
-    </div>`;
+    <//>`;
   }
 
   const files = diskCopy.files;
@@ -876,27 +943,60 @@ function StorageTab({ state }) {
   };
   const allDone = complete.length === included.length;
   const attention = troubled.some((file) => file.state === "invalid");
-  return html`<div>
-    <div class="row">
-      <span class="status ${attention ? "warn" : allDone ? "ok" : "idle"}">
-        <i class="dot ${attention ? "warn" : allDone ? "ok" : "idle"}"></i>
+  const storageTone = attention ? "warn" : allDone ? "ok" : "idle";
+  const fileTone = {
+    complete: "ok",
+    partial: "warn",
+    missing: "idle",
+    invalid: "bad",
+  };
+  const fileLabel = {
+    complete: "On disk",
+    partial: "Partial",
+    missing: "Missing",
+    invalid: "Invalid",
+  };
+  const FileRow = ({ file, pick }) => html`
+    <li class="rowitem" key=${file.sourceKey}>
+      <span class="lead">
         ${
-          attention
-            ? "Needs attention"
-            : allDone
-              ? "On disk"
-              : complete.length + " of " + included.length + " files on disk"
+          pick
+            ? html`<input
+                type="checkbox"
+                checked=${picked.has(file.sourceKey)}
+                onChange=${() => togglePicked(file.sourceKey)}
+              />`
+            : html`<i class="dot ${fileTone[file.state]}"></i>`
         }
       </span>
-      <span class="inline-note">
-        ${
-          volume
-            ? volume.label +
-              (volume.state === "online" ? "" : " · drive offline")
-            : "Volume " + diskCopy.volumeId.slice(0, 8)
-        }
+      <span class="main">
+        <strong>${episodeLabel(entry.inspectionCache, file)}</strong>
+        <span class="meta">${fileLabel[file.state]}</span>
       </span>
-    </div>
+      <span class="trail"><span class="value">${fmt(file.length)}</span></span>
+    </li>
+  `;
+  return html`<${Section}
+    id="storage"
+    title="Keep on disk"
+    note=${
+      volume
+        ? "On " +
+          volume.label +
+          (volume.state === "online" ? "" : " — drive offline")
+        : "Volume " + diskCopy.volumeId.slice(0, 8)
+    }
+    aside=${html`<span class="status ${storageTone}">
+      <i class="dot ${storageTone}"></i>
+      ${
+        attention
+          ? "Needs attention"
+          : allDone
+            ? "On disk"
+            : complete.length + " of " + included.length + " files on disk"
+      }
+    </span>`}
+  >
     ${
       entry.type === "series" && files.length > 1
         ? html`<div class="stacked-sm">
@@ -926,21 +1026,9 @@ function StorageTab({ state }) {
                           </div>`
                         : null
                     }
-                    <ul class="plain-list stacked-xs">
+                    <ul class="rows compact stacked-xs">
                       ${files.map(
-                        (file) =>
-                          html`<li>
-                            <label class="check">
-                              <input
-                                type="checkbox"
-                                checked=${picked.has(file.sourceKey)}
-                                onChange=${() => togglePicked(file.sourceKey)}
-                              />
-                              ${FILE_STATE_ICONS[file.state]}${" "}
-                              ${episodeLabel(entry.inspectionCache, file)}
-                              <span class="muted">${fmt(file.length)}</span>
-                            </label>
-                          </li>`,
+                        (file) => html`<${FileRow} file=${file} pick />`,
                       )}
                     </ul>
                     <button
@@ -979,15 +1067,8 @@ function StorageTab({ state }) {
                   : null
             }
           </div>`
-        : html`<ul class="plain-list stacked-sm">
-            ${included.map(
-              (file) =>
-                html`<li>
-                  ${FILE_STATE_ICONS[file.state]}${" "}
-                  ${episodeLabel(entry.inspectionCache, file)}
-                  <span class="muted">${fmt(file.length)}</span>
-                </li>`,
-            )}
+        : html`<ul class="rows compact">
+            ${included.map((file) => html`<${FileRow} file=${file} />`)}
           </ul>`
     }
     <div class="row tight stacked">
@@ -1028,7 +1109,7 @@ function StorageTab({ state }) {
         Stop and delete files
       </button>
     </div>
-  </div>`;
+  <//>`;
 }
 
 // The entry sheet: a full-screen overlay media page. The hero keeps Play as
@@ -1037,10 +1118,10 @@ function StorageTab({ state }) {
 // scroll. state.tab (set by HUD/System deep links) picks the initial section.
 const SECTIONS = [
   ["overview", "Details", OverviewTab],
-  ["storage", "Keep on disk", StorageTab],
   ["source", "Source", SourceTab],
   ["files", "Files", FilesTab],
   ["playback", "Playback check", PlaybackTab],
+  ["storage", "Keep on disk", StorageTab],
 ];
 
 const VERDICT_TONE = { direct: "ok", caution: "warn", risky: "bad" };
@@ -1185,21 +1266,16 @@ export function DetailSheet() {
             </div>
           </div>
         </header>
-        <nav class="section-chips sheet-chips">
+        <nav class="sheet-tabs" aria-label="Sections">
           ${SECTIONS.map(
             ([key, label]) => html`
-              <a class="chip" href="#" onClick=${jump(key)}>${label}</a>
+              <a href="#" onClick=${jump(key)}>${label}</a>
             `,
           )}
         </nav>
         <div class="sheet-body">
           ${SECTIONS.map(
-            ([key, label, Section]) => html`
-              <section class="sheet-section" id=${"section-" + key} key=${key}>
-                <h2 class="section-title">${label}</h2>
-                <${Section} state=${state} />
-              </section>
-            `,
+            ([key, , Tab]) => html`<${Tab} state=${state} key=${key} />`,
           )}
         </div>
       </section>

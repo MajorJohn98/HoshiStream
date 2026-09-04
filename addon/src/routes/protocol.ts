@@ -1,5 +1,5 @@
-import type { ServerResponse } from "node:http";
-import { readFile } from "node:fs/promises";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { readFile, stat } from "node:fs/promises";
 import { managementHtml } from "../management.ts";
 import { manifestWithGenres } from "../manifest.ts";
 import { ownPublicIp } from "../public-ip.ts";
@@ -34,25 +34,38 @@ export function manageAssetPath(pathname: string): string | undefined {
   return match?.[1];
 }
 
+// Assets revalidate on every load (ETag from mtime + size) instead of being
+// cached for minutes: after an upgrade a stale module mixed with fresh ones
+// breaks the page, and during development edits must show on refresh.
 async function serveManageAsset(
+  request: IncomingMessage,
   response: ServerResponse,
   asset: string,
 ): Promise<true> {
   const extension = asset.slice(asset.lastIndexOf("."));
-  let content: Buffer;
+  const url = new URL(`../../assets/manage/${asset}`, import.meta.url);
+  let etag: string;
   try {
-    content = await readFile(
-      new URL(`../../assets/manage/${asset}`, import.meta.url),
-    );
+    const info = await stat(url);
+    etag = `"${info.mtimeMs.toString(36)}-${info.size.toString(36)}"`;
   } catch {
     return reply(response, 404, { error: "Not found" });
   }
-  response.writeHead(200, {
-    "cache-control": "public, max-age=300",
-    "content-type": MANAGE_ASSET_TYPES[extension],
+  const headers = {
+    "cache-control": "no-cache",
+    etag,
     "x-content-type-options": "nosniff",
+  };
+  if (request.headers["if-none-match"] === etag) {
+    response.writeHead(304, headers);
+    response.end();
+    return true;
+  }
+  response.writeHead(200, {
+    ...headers,
+    "content-type": MANAGE_ASSET_TYPES[extension],
   });
-  response.end(content);
+  response.end(await readFile(url));
   return true;
 }
 
@@ -67,7 +80,7 @@ function protocolPath(pathname: string, token: string): string | undefined {
 // management page loads.
 export const handlePublic: RouteHandler = async (
   { library, torrServer, accessToken },
-  { response, url, method },
+  { request, response, url, method },
 ) => {
   if (url.pathname === "/health") return reply(response, 200, { status: "ok" });
   if (url.pathname === "/assets/hoshistream-logo.png" && method === "GET") {
@@ -87,7 +100,7 @@ export const handlePublic: RouteHandler = async (
   }
   const manageAsset = manageAssetPath(url.pathname);
   if (manageAsset && method === "GET") {
-    return serveManageAsset(response, manageAsset);
+    return serveManageAsset(request, response, manageAsset);
   }
   if (url.pathname === "/ready") {
     await Promise.all([library.list(), torrServer.health()]);

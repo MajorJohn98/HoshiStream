@@ -191,3 +191,17 @@ describe("createHandler dispatch", () => {
     );
   });
 });
+
+describe("management assets", () => {
+  it("revalidate with an ETag instead of caching for minutes", async () => {
+    const first = await fetch(`${baseUrl}/manage-assets/app.js`);
+    expect(first.status).toBe(200);
+    expect(first.headers.get("cache-control")).toBe("no-cache");
+    const etag = first.headers.get("etag");
+    expect(etag).toMatch(/^".+"$/);
+    const again = await fetch(`${baseUrl}/manage-assets/app.js`, {
+      headers: { "if-none-match": etag! },
+    });
+    expect(again.status).toBe(304);
+  });
+});

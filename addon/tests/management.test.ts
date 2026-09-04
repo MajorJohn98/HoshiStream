@@ -124,14 +124,14 @@ describe("management assets", () => {
   it("detail view keeps inspection, mapping, and playback flows", async () => {
     const detailJs = await asset("views/detail.js");
     expect(detailJs).toContain('method: "PATCH"');
-    expect(detailJs).toContain("Files & episode mapping");
+    expect(detailJs).toContain("Save mapping");
     expect(detailJs).toContain("Test playback");
     expect(detailJs).toContain("Refresh analysis");
     expect(detailJs).toContain('class="kv');
     expect(detailJs).toContain("Recommended speed");
     expect(detailJs).toContain("Likely to direct play");
-    expect(detailJs).toContain("Inspecting files…");
-    expect(detailJs).toContain("Analyzing playback…");
+    expect(detailJs).toContain("Inspecting…");
+    expect(detailJs).toContain("Analyzing…");
     expect(detailJs).toContain('technical ? "?probe=true" : ""');
     expect(detailJs).toContain('<textarea name="magnetUri" required>');
     expect(detailJs).toContain("visible only on this tokenized page");
@@ -148,7 +148,7 @@ describe("management assets", () => {
   it("detail files tab shows cached inspection results instantly", async () => {
     const detailJs = await asset("views/detail.js");
     expect(detailJs).toContain("state.selected.inspectionCache");
-    expect(detailJs).toContain("From the last inspection");
+    expect(detailJs).toContain("from the last inspection");
     expect(detailJs).toContain("Inspect to edit");
     expect(detailJs).toContain("Last inspected");
     expect(detailJs).toContain("function agoLabel");
@@ -198,7 +198,8 @@ describe("management assets", () => {
     expect(tagsJs).toContain("which will lose it");
     const pickerJs = await asset("components/tag-picker.js");
     expect(pickerJs).toContain("export function TagPicker");
-    expect(pickerJs).toContain("New tag…");
+    expect(pickerJs).toContain("Add tags…");
+    expect(pickerJs).toContain("<datalist");
     expect(await asset("views/detail.js")).toContain("<${TagPicker}");
     expect(await asset("views/add.js")).toContain("<${TagPicker}");
   });
