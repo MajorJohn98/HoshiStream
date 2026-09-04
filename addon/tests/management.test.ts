@@ -213,6 +213,9 @@ describe("management assets", () => {
     expect(storageJs).toContain("enabled: false, deleteFiles: true");
     const appJs = await asset("app.js");
     expect(appJs).toContain("job.progress?.totalBytes");
+    // The HUD lists real client streams only, not archiver or inspection work.
+    expect(appJs).toContain('session.activity === "streaming"');
+    expect(await asset("views/devices.js")).toContain("Copying to disk");
   });
 
   it("library page hosts playback analysis behind an Analyze button", async () => {

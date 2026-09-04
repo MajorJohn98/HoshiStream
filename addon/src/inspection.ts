@@ -1,3 +1,4 @@
+import { markInspectActivity } from "./activity.ts";
 import type { LibraryEntry, SeriesSource } from "./types.ts";
 import type { Library } from "./library.ts";
 import { inspectLocalEntry } from "./local-media.ts";
@@ -58,8 +59,10 @@ export async function inspectEntry(
   // Sequential on purpose: adds are rare and TorrServer handles them better
   // one at a time.
   for (const [index, source] of sources.entries()) {
+    markInspectActivity(entry.id);
     const registered = await registerSource(source, torrServer, entry.name);
     const status = await torrServer.waitForFiles(registered.hash);
+    markInspectActivity(entry.id);
     inspected.push({
       hash: status.hash,
       name: status.name ?? status.title,

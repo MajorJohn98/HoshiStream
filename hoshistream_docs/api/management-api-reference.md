@@ -33,7 +33,7 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `GET /api/player/status` | Current player state plus `available` |
 | `GET /api/clients` | Recent clients (in-memory): `{ip, device, hostname?, name?, firstSeen, lastSeen, requests, lastResource}` |
 | `POST /api/clients/name` | Assign a device name: `{ip, name}`; empty name clears it |
-| `GET /api/playback` | Live TorrServer sessions: speeds, peers/seeders, progress |
+| `GET /api/playback` | Live TorrServer sessions: speeds, peers/seeders, progress, plus `entryId` (when the hash maps to a library entry) and `activity` — `streaming` (a client requested this entry's stream in the last 5 min), `downloading` (the archiver is copying it), `inspecting` (metadata read in the last 2 min), or `idle`. A "working" torrent is not necessarily being watched |
 | `GET /api/pointer/status` | Local pointer state: manifest URL, last push, staleness |
 | `GET /api/pointer/remote` | Server-side pointer record health (reachable, registered, expiry) |
 | `POST /api/pointer/push` | Push the current LAN base URL + manifest to the pointer server |
@@ -105,7 +105,7 @@ Available only when `TRANSCODE_ENABLED=true`; the UI's "Stream Repair" view is b
 
 | Method & path | Description |
 |---|---|
-| `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps` (measured link speed when available, else the configured fallback), `speed {mbps, source, measuredAt}`, `nativePicker` (supervisor socket present, so Finder pickers work), `streamingActive` (recent stream activity or active TorrServer torrents), `uptimeSeconds`, `transcode {enabled, activeSessions, videoEncoder}` |
+| `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps` (measured link speed when available, else the configured fallback), `speed {mbps, source, measuredAt}`, `nativePicker` (supervisor socket present, so Finder pickers work), `streamingActive` (a client requested a stream in the last 5 min; archiver and inspection traffic do not count), `uptimeSeconds`, `transcode {enabled, activeSessions, videoEncoder}` |
 | `POST /api/speedtest` | Measure download speed against Cloudflare's open speed-test endpoint (~8 s) → `{mbps, measuredAt, source}`; also runs once at startup. The result replaces `HOME_SPEED_MBPS` in all direct-play guidance until the next run |
 | `GET\|POST\|DELETE /api/analysis` | Library-wide playback analysis. `POST {force?}` starts a sequential run over entries missing a verdict (`force` re-analyzes all; `409` when already running), `DELETE` cancels between entries, `GET` reports `{running, total, done, current, failed[], startedAt, finishedAt, cancelled}` |
 | `GET /api/resources` | Resource usage: per-group process stats (`addon`, `torrServer`, `ffmpeg` repair sessions — CPU %, RSS bytes, process count; `available:false` where `ps` is missing) plus disk usage of the torrent cache, stream-repair sessions, and managed uploads (15 s cache) |

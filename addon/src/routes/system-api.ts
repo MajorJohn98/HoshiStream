@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { recentStreamActivity } from "../activity.ts";
+import { recentEntryActivity, recentStreamActivity } from "../activity.ts";
 import { listClients } from "../clients.ts";
 import { manifestWithGenres } from "../manifest.ts";
 import { lookupHostname } from "../hostname.ts";
@@ -96,19 +96,42 @@ export const handleClients: RouteHandler = async (
   return false;
 };
 
+// Why a torrent is busy: a client streaming it, the archiver copying it to
+// disk, an inspection reading its metadata — or nothing we know of.
+export type SessionActivity =
+  "streaming" | "downloading" | "inspecting" | "idle";
+
 export const handlePlaybackSessions: RouteHandler = async (
-  { torrServer },
+  { torrServer, library, archiver },
   { response, url, method },
 ) => {
   if (url.pathname !== "/api/playback" || method !== "GET") return false;
   const torrents = await torrServer.list().catch(() => []);
+  // Torrent hash → library entry, via the primary and extra source hashes.
+  const owners = new Map<string, string>();
+  for (const entry of await library.list()) {
+    const cache = entry.inspectionCache;
+    if (!cache) continue;
+    owners.set(cache.hash.toLowerCase(), entry.id);
+    for (const file of cache.selectedFiles)
+      if (file.hash) owners.set(file.hash.toLowerCase(), entry.id);
+  }
+  const copying = archiver?.activeEntryId();
+  const classify = (hash: string): SessionActivity => {
+    const entryId = owners.get(hash.toLowerCase());
+    if (!entryId) return "idle";
+    if (copying === entryId) return "downloading";
+    return recentEntryActivity(entryId) ?? "idle";
+  };
   return reply(response, 200, {
     // stat 3 = TorrentWorking (MatriX state.go): actively serving.
     sessions: torrents.map((torrent) => ({
       hash: torrent.hash,
+      entryId: owners.get(torrent.hash.toLowerCase()),
       title: torrent.title || torrent.name || "Unknown torrent",
       statString: torrent.stat_string,
       active: torrent.stat === 3,
+      activity: classify(torrent.hash),
       downloadSpeedBps: torrent.download_speed ?? 0,
       uploadSpeedBps: torrent.upload_speed ?? 0,
       activePeers: torrent.active_peers ?? 0,
@@ -169,19 +192,14 @@ export const handleStatus: RouteHandler = async (
   { response, url, method },
 ) => {
   if (url.pathname !== "/api/status" || method !== "GET") return false;
-  const [entries, torrServerStatus, activeTorrents, pickerAvailable] =
-    await Promise.all([
-      library.list(),
-      torrServer
-        .health()
-        .then((version) => ({ online: true, version }))
-        .catch(() => ({ online: false })),
-      torrServer
-        .list()
-        .then((torrents) => torrents.length)
-        .catch(() => 0),
-      nativePicker.available(),
-    ]);
+  const [entries, torrServerStatus, pickerAvailable] = await Promise.all([
+    library.list(),
+    torrServer
+      .health()
+      .then((version) => ({ online: true, version }))
+      .catch(() => ({ online: false })),
+    nativePicker.available(),
+  ]);
   return reply(response, 200, {
     status: "online",
     torrServer: torrServerStatus,
@@ -189,7 +207,9 @@ export const handleStatus: RouteHandler = async (
     homeSpeedMbps: homeSpeedMbps(),
     speed: currentSpeed(),
     nativePicker: pickerAvailable,
-    streamingActive: recentStreamActivity() || activeTorrents > 0,
+    // Real client streams only; the archiver and inspections also keep
+    // TorrServer busy, and those are reported elsewhere.
+    streamingActive: recentStreamActivity(),
     uptimeSeconds: Math.floor(process.uptime()),
     transcode: {
       enabled: Boolean(transcode),

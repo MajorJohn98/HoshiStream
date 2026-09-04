@@ -76,7 +76,11 @@ function fmtBytes(n) {
 function Hud() {
   const { entries, status, activity } = useStore();
   const torrOnline = Boolean(status.torrServer?.online);
-  const playing = activity.playback.filter((session) => session.active);
+  // Only real client streams belong in the HUD; the archiver's own copies
+  // show as "Copying" rows and inspections are transient.
+  const playing = activity.playback.filter(
+    (session) => session.activity === "streaming",
+  );
   const repairing = activity.repair.filter(
     (session) => session.state === "running",
   );

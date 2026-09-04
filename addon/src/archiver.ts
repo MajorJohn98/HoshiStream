@@ -255,6 +255,11 @@ export class Archiver {
     return jobs;
   }
 
+  /** The entry whose file is being copied right now, if any. */
+  activeEntryId(): string | undefined {
+    return this.active?.entryId;
+  }
+
   /** Bytes and files done across the entry's included manifest. */
   async progress(entryId: string): Promise<DiskJobProgress> {
     const entry = await this.library.get(entryId);

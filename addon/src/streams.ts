@@ -106,7 +106,7 @@ export async function getStreams(
     const source = await resolveStreamSource(entry, torrServer, library);
     const file = requestedFile(source.selectedFiles, type, id).file;
     if (!file) return { streams: [] };
-    markStreamActivity();
+    markStreamActivity(Date.now(), entry.id);
     void library.markStreamed(entry.id).catch(() => undefined);
     return {
       streams: [
@@ -124,7 +124,7 @@ export async function getStreams(
   const source = await resolveStreamSource(entry, torrServer, library);
   const file = requestedFile(source.selectedFiles, type, id).file;
   if (!file) return { streams: [] };
-  markStreamActivity();
+  markStreamActivity(Date.now(), entry.id);
   void library.markStreamed(entry.id).catch(() => undefined);
 
   // Disk-copy entries get the stable /media URL: the router picks disk or

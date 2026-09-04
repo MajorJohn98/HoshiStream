@@ -143,21 +143,38 @@ function Clients() {
   `;
 }
 
+const ACTIVITY = {
+  streaming: ["live", "Streaming"],
+  downloading: ["ok", "Copying to disk"],
+  inspecting: ["idle", "Inspecting"],
+  idle: ["idle", "Idle"],
+};
+
 function Playback() {
   const { activity } = useStore();
   const sessions = activity.playback;
-  const active = sessions.filter((session) => session.active);
+  const streaming = sessions.filter(
+    (session) => session.activity === "streaming",
+  );
+  const busy = sessions.filter((session) => session.active);
   return html`
     <section class="page-section" id="activity-streaming">
       <div class="section-head">
-        <h2 class="section-title">Now streaming</h2>
+        <div>
+          <h2 class="section-title">Torrents</h2>
+          <p class="muted">
+            Everything TorrServer holds right now, and why it is busy.
+          </p>
+        </div>
         <span class="inline-note">
           ${
-            active.length
-              ? active.length + " active"
-              : sessions.length
-                ? sessions.length + " registered, none active"
-                : "Nothing registered"
+            streaming.length
+              ? streaming.length + " streaming"
+              : busy.length
+                ? busy.length + " working, none streaming"
+                : sessions.length
+                  ? sessions.length + " idle"
+                  : "Nothing registered"
           }
         </span>
       </div>
@@ -171,13 +188,24 @@ function Playback() {
                 (session) => html`
                   <li class="rowitem" key=${session.hash}>
                     <span class="lead">
-                      <i class="dot ${session.active ? "live" : "idle"}"></i>
+                      <i
+                        class="dot ${
+                          session.active
+                            ? (ACTIVITY[session.activity] ?? ACTIVITY.idle)[0]
+                            : "idle"
+                        }"
+                      ></i>
                     </span>
                     <span class="main">
                       <strong>${session.title}</strong>
                       <span class="meta">
-                        ${session.statString} · ${session.connectedSeeders}
-                        seeders · ${fmt(session.loadedSize)} of
+                        ${
+                          session.active
+                            ? (ACTIVITY[session.activity] ?? ACTIVITY.idle)[1]
+                            : session.statString
+                        }
+                        · ${session.connectedSeeders} seeders ·
+                        ${fmt(session.loadedSize)} of
                         ${fmt(session.torrentSize)}
                       </span>
                     </span>

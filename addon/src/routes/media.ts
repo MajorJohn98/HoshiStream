@@ -112,7 +112,7 @@ export const handleLocalMedia: RouteHandler = async (
     return false;
   const entry = await library.get(decodeURIComponent(localMatch[2]));
   if (!entry) return false;
-  markStreamActivity();
+  markStreamActivity(Date.now(), entry.id);
   void library.markStreamed(entry.id).catch(() => undefined);
   observeClient(request, "playback");
   await serveLocalMedia(
@@ -143,7 +143,7 @@ export const handleDiskMedia: RouteHandler = async (
     return false;
   const entry = await library.get(decodeURIComponent(mediaMatch[2]));
   if (!entry) return false;
-  markStreamActivity();
+  markStreamActivity(Date.now(), entry.id);
   void library.markStreamed(entry.id).catch(() => undefined);
   observeClient(request, "playback");
   await serveMediaSource(
