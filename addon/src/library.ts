@@ -159,6 +159,16 @@ export class Library {
     });
   }
 
+  clearPlayback(id: string): Promise<void> {
+    return this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return;
+      const candidate: Record<string, unknown> = { ...entries[index] };
+      delete candidate.playback;
+      entries[index] = libraryEntrySchema.parse(candidate);
+    });
+  }
+
   setDirectPlay(id: string, directPlay: DirectPlay): Promise<void> {
     return this.update(async (entries) => {
       const index = entries.findIndex((entry) => entry.id === id);

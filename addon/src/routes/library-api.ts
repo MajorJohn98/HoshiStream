@@ -83,6 +83,39 @@ export const handleLibraryCollection: RouteHandler = async (
   return reply(response, 201, entry);
 };
 
+const playbackBodySchema = z.object({
+  positionSeconds: z.number().nonnegative(),
+  fileId: z.number().int().nonnegative().optional(),
+});
+
+// Resume position written by the in-browser player (host mpv playback writes
+// it directly). PUT records where the viewer is; DELETE clears it when a
+// movie finishes; a series that finishes an episode PUTs the next one at 0.
+export const handlePlaybackPosition: RouteHandler = async (
+  { library },
+  { request, response, url, method },
+) => {
+  const match = /^\/api\/library\/([^/]+)\/playback$/.exec(url.pathname);
+  if (!match) return false;
+  const id = decodeURIComponent(match[1]);
+  const entry = await library.get(id);
+  if (!entry) return reply(response, 404, { error: "Not found" });
+  if (method === "PUT") {
+    const input = playbackBodySchema.parse(await body(request));
+    await library.setPlayback(id, {
+      positionSeconds: Math.floor(input.positionSeconds),
+      ...(input.fileId === undefined ? {} : { fileId: input.fileId }),
+      updatedAt: new Date().toISOString(),
+    });
+    return reply(response, 200, (await library.get(id))?.playback ?? null);
+  }
+  if (method === "DELETE") {
+    await library.clearPlayback(id);
+    return reply(response, 204, null);
+  }
+  return false;
+};
+
 export const handleLibraryItem: RouteHandler = async (
   { library, volumes, diskCleanup, archiver, tags },
   { request, response, url, method },

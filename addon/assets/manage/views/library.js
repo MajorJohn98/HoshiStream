@@ -187,6 +187,43 @@ const VERDICT_DOTS = {
   risky: ["May not play", "v risky"],
 };
 
+function clock(seconds) {
+  const s = Math.floor(seconds % 60);
+  const m = Math.floor((seconds / 60) % 60);
+  const h = Math.floor(seconds / 3600);
+  return (
+    (h ? h + ":" : "") +
+    (h ? String(m).padStart(2, "0") : m) +
+    ":" +
+    String(s).padStart(2, "0")
+  );
+}
+
+// "Resume 12:34", "Continue S1 E3", or "Continue S1 E3 · 12:34" — whatever
+// the saved playback state says. Empty when there is nothing to pick up.
+function resumeLabel(entry) {
+  const playback = entry.playback;
+  if (!playback) return "";
+  const position =
+    playback.positionSeconds > 15 ? clock(playback.positionSeconds) : "";
+  const episode =
+    entry.type === "series" && playback.fileId !== undefined
+      ? entry.inspectionCache?.selectedFiles?.find(
+          (file) => file.id === playback.fileId,
+        )
+      : undefined;
+  if (episode) {
+    return (
+      "Continue S" +
+      episode.season +
+      " E" +
+      episode.episode +
+      (position ? " · " + position : "")
+    );
+  }
+  return position ? "Resume " + position : "";
+}
+
 function watchNow(entry) {
   const fileId =
     entry.playback?.fileId ?? entry.inspectionCache?.selectedFiles?.[0]?.id;
@@ -218,7 +255,7 @@ function Hero({ entry }) {
   const verdict = entry.directPlay
     ? VERDICT_DOTS[entry.directPlay.compatibility]
     : undefined;
-  const resume = Boolean(entry.playback?.positionSeconds);
+  const resume = Boolean(resumeLabel(entry));
   return html`
     <section class="hero">
       <div class="hero-glow"></div>
@@ -268,7 +305,7 @@ function Hero({ entry }) {
           </div>
           <div class="hero-cta">
             <button class="primary" onClick=${() => watchNow(entry)}>
-              ${resume ? "▶ Resume" : "▶ Watch now"}
+              ${resume ? "▶ " + resumeLabel(entry) : "▶ Watch now"}
             </button>
             <button class="secondary" onClick=${() => openDetail(entry)}>
               Details

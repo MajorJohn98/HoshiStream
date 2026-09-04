@@ -205,3 +205,44 @@ describe("management assets", () => {
     expect(again.status).toBe(304);
   });
 });
+
+describe("playback position", () => {
+  it("stores, returns, and clears the resume point", async () => {
+    const created = await api("/api/library", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "series",
+        name: "Show",
+        magnetUri: "magnet:?xt=urn:btih:show",
+      }),
+    });
+    const { id } = await created.json();
+    const put = await api(`/api/library/${encodeURIComponent(id)}/playback`, {
+      method: "PUT",
+      body: JSON.stringify({ positionSeconds: 754.6, fileId: 3 }),
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toMatchObject({ positionSeconds: 754, fileId: 3 });
+    const entry = await (
+      await api(`/api/library/${encodeURIComponent(id)}`)
+    ).json();
+    expect(entry.playback).toMatchObject({ positionSeconds: 754, fileId: 3 });
+    const cleared = await api(
+      `/api/library/${encodeURIComponent(id)}/playback`,
+      { method: "DELETE" },
+    );
+    expect(cleared.status).toBe(204);
+    const after = await (
+      await api(`/api/library/${encodeURIComponent(id)}`)
+    ).json();
+    expect(after.playback).toBeUndefined();
+    expect(
+      (
+        await api(`/api/library/hoshi%3Anope/playback`, {
+          method: "PUT",
+          body: JSON.stringify({ positionSeconds: 1 }),
+        })
+      ).status,
+    ).toBe(404);
+  });
+});

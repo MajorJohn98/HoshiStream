@@ -26,6 +26,8 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `GET /api/library/{id}` | Fetch one entry (404 if missing) |
 | `PATCH /api/library/{id}` | Partial update → `200` with the entry |
 | `DELETE /api/library/{id}` | Remove entry (also deletes managed-upload media) → `204` |
+| `PUT /api/library/{id}/playback` | Record the resume point from the in-browser player: `{positionSeconds, fileId?}` → `200` playback state. Host mpv playback writes the same field directly |
+| `DELETE /api/library/{id}/playback` | Clear the resume point (a finished movie) → `204` |
 | `POST /api/library/{id}/inspect` | Register with TorrServer, poll metadata, return files and selection |
 | `POST /api/library/{id}/relink` | Native Finder re-pick for a local entry (native app only) |
 | `POST /api/player/play` | Start host playback of an entry → `{mode, title, resumedAt?}` |

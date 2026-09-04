@@ -254,6 +254,16 @@ describe("management assets", () => {
     expect(playerJs).toContain("application/vnd.apple.mpegurl");
     expect(playerJs).toContain("/stream/");
     expect(playerJs).toContain("localStorage");
+    // Resume position is server-side; finishing an episode advances it.
+    expect(playerJs).toContain('"/playback"');
+    expect(playerJs).toContain("positionSeconds: 0, fileId: next.id");
+    expect(playerJs).toContain("Resumed from");
+    expect(playerJs).toContain("Up next");
+    expect(playerJs).toContain("requestPictureInPicture");
+    expect(playerJs).toContain("playbackRate");
+    expect(playerJs).not.toMatch(/[🔇🔊⏸]/u);
+    const libraryJs = await asset("views/library.js");
+    expect(libraryJs).toContain("function resumeLabel");
     const appJs = await asset("app.js");
     expect(appJs).toContain('import { PlayerView } from "./views/player.js"');
     expect(appJs).toContain("play: PlayerView");

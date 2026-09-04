@@ -32,6 +32,7 @@ import {
 import {
   handleInspect,
   handleLibraryCollection,
+  handlePlaybackPosition,
   handleLibraryItem,
   handleMediaFiles,
   handleRelink,
@@ -101,6 +102,7 @@ const API_ROUTES: RouteHandler[] = [
   handleAnalysis,
   handleDiskSchedule,
   handleLibraryCollection,
+  handlePlaybackPosition,
   handleTags,
   handleStremioRefresh,
   handlePlayer,
