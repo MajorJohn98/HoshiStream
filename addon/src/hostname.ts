@@ -132,7 +132,12 @@ function isLookupCandidate(ip: string): boolean {
 export async function lookupHostname(ip: string): Promise<string | undefined> {
   if (!isLookupCandidate(ip)) return undefined;
   const cached = cache.get(ip);
-  if (cached && cached.expiresAt > Date.now()) return cached.hostname;
+  if (cached && cached.expiresAt > Date.now()) {
+    // Re-insert so Map iteration order doubles as LRU order for eviction.
+    cache.delete(ip);
+    cache.set(ip, cached);
+    return cached.hostname;
+  }
   const pending = inflight.get(ip);
   if (pending) return pending;
   const lookup = (async () => {
@@ -142,6 +147,7 @@ export async function lookupHostname(ip: string): Promise<string | undefined> {
       const oldest = cache.keys().next().value;
       if (oldest !== undefined) cache.delete(oldest);
     }
+    cache.delete(ip);
     cache.set(ip, {
       hostname,
       expiresAt: Date.now() + (hostname ? CACHE_TTL_MS : NEGATIVE_TTL_MS),

@@ -164,7 +164,29 @@ describe("Library", () => {
 
     const entries = await library.list();
     entries[0].name = "Tampered";
+    const single = await library.get(entries[0].id);
+    single!.name = "Tampered too";
 
     expect((await library.list())[0].name).toBe("Original");
+    expect((await library.get(entries[0].id))?.name).toBe("Original");
+  });
+
+  it("throttles lastStreamedAt writes to one per window", async () => {
+    const { path, library } = await temporaryLibrary();
+    const entry = await library.create({
+      type: "movie",
+      name: "Streamed",
+      magnetUri: "magnet:?xt=urn:btih:streamed",
+    });
+
+    await library.markStreamed(entry.id);
+    const first = (await library.get(entry.id))?.lastStreamedAt;
+    expect(first).toBeDefined();
+    const written = await readFile(path, "utf8");
+
+    await library.markStreamed(entry.id);
+    await library.markStreamed("hoshi:unknown");
+    expect((await library.get(entry.id))?.lastStreamedAt).toBe(first);
+    expect(await readFile(path, "utf8")).toBe(written);
   });
 });

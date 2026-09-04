@@ -78,33 +78,36 @@ export async function startHoshiStream(settings = config) {
     );
   }
   const server = createServer(
-    createHandler(
+    createHandler({
       library,
       addon,
       torrServer,
-      settings.ACCESS_TOKEN,
-      settings.HOME_SPEED_MBPS,
+      accessToken: settings.ACCESS_TOKEN,
+      homeSpeedMbps: settings.HOME_SPEED_MBPS,
       nativePicker,
-      {
+      publicUrls: {
         addonUrl: settings.PUBLIC_ADDON_URL,
         torrServerUrl: settings.PUBLIC_TORRSERVER_URL,
       },
-      settings.LAN_REDIRECT,
-      new Playback(library, torrServer, settings.PLAYER),
+      lanRedirect: settings.LAN_REDIRECT,
+      playback: new Playback(library, torrServer, settings.PLAYER),
       transcode,
-      {
+      resourceDirs: {
         torrentCache: settings.TORRSERVER_CACHE_DIR,
         transcode: settings.TRANSCODE_DIR,
         uploads: settings.UPLOAD_ROOT,
       },
       pointer,
-      new DeviceNames(settings.DEVICE_NAMES_PATH),
+      deviceNames: new DeviceNames(settings.DEVICE_NAMES_PATH),
       volumes,
-      new DiskCleanup(settings.DISK_CLEANUP_PATH),
+      diskCleanup: new DiskCleanup(settings.DISK_CLEANUP_PATH),
       archiver,
       archiveSchedule,
-      new LibraryAnalysis(library, defaultAnalyzer(library, torrServer)),
-    ),
+      analysis: new LibraryAnalysis(
+        library,
+        defaultAnalyzer(library, torrServer),
+      ),
+    }),
   );
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

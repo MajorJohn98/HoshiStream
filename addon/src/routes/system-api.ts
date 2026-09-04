@@ -1,0 +1,262 @@
+import { z } from "zod";
+import { recentStreamActivity } from "../activity.js";
+import { listClients } from "../clients.js";
+import { lookupHostname } from "../hostname.js";
+import { resourceReport } from "../resources.js";
+import { currentSpeed, homeSpeedMbps, runSpeedTest } from "../speedtest.js";
+import { body, logInfo, reply, type RouteHandler } from "./context.js";
+
+const clientNameSchema = z.object({
+  ip: z.string().min(1).max(64),
+  name: z.string().max(60),
+});
+const playRequestSchema = z.object({
+  entryId: z.string().min(1),
+  fileId: z.number().int().nonnegative().optional(),
+});
+const playerControlSchema = z.object({
+  action: z.enum(["pause", "resume", "stop", "seek"]),
+  value: z.number().nonnegative().optional(),
+});
+const analysisRequestSchema = z.object({ force: z.boolean().optional() });
+
+export const handleAnalysis: RouteHandler = async (
+  { analysis },
+  { request, response, url, method },
+) => {
+  if (url.pathname !== "/api/analysis") return false;
+  if (!analysis) return reply(response, 409, { error: "Analysis unavailable" });
+  if (method === "POST") {
+    const input = analysisRequestSchema.parse(
+      (await body(request).catch(() => ({}))) ?? {},
+    );
+    const started = await analysis.start(Boolean(input.force));
+    if (!started)
+      return reply(response, 409, { error: "Analysis already running" });
+    logInfo("library_analysis_started", { force: Boolean(input.force) });
+  } else if (method === "DELETE") {
+    analysis.cancel();
+  } else if (method !== "GET") {
+    return reply(response, 405, { error: "Method not allowed" });
+  }
+  return reply(response, 200, analysis.status());
+};
+
+export const handlePlayer: RouteHandler = async (
+  { playback },
+  { request, response, url, method },
+) => {
+  if (url.pathname === "/api/player/play" && method === "POST") {
+    const input = playRequestSchema.parse(await body(request));
+    const result = await playback.play(input.entryId, input.fileId);
+    logInfo("player_started", { entryId: input.entryId, mode: result.mode });
+    return reply(response, 200, result);
+  }
+  if (url.pathname === "/api/player/control" && method === "POST") {
+    const input = playerControlSchema.parse(await body(request));
+    await playback.control(input.action, input.value);
+    return reply(response, 200, { ok: true });
+  }
+  if (url.pathname === "/api/player/status" && method === "GET") {
+    return reply(response, 200, {
+      ...(await playback.status()),
+      available: await playback.available(),
+      preference: playback.preference,
+    });
+  }
+  return false;
+};
+
+export const handleClients: RouteHandler = async (
+  { deviceNames },
+  { request, response, url, method },
+) => {
+  if (url.pathname === "/api/clients" && method === "GET") {
+    const tracked = listClients();
+    const names = (await deviceNames?.all()) ?? {};
+    // Hostname lookups are cached with a short negative TTL, so this stays
+    // fast after the first poll.
+    const clients = await Promise.all(
+      tracked.map(async (client) => ({
+        ...client,
+        name: names[client.ip],
+        hostname: await lookupHostname(client.ip),
+      })),
+    );
+    return reply(response, 200, { clients });
+  }
+  if (url.pathname === "/api/clients/name" && method === "POST") {
+    if (!deviceNames)
+      return reply(response, 409, { error: "Naming unavailable" });
+    const input = clientNameSchema.parse(await body(request));
+    await deviceNames.set(input.ip, input.name);
+    return reply(response, 200, { ok: true });
+  }
+  return false;
+};
+
+export const handlePlaybackSessions: RouteHandler = async (
+  { torrServer },
+  { response, url, method },
+) => {
+  if (url.pathname !== "/api/playback" || method !== "GET") return false;
+  const torrents = await torrServer.list().catch(() => []);
+  return reply(response, 200, {
+    // stat 3 = TorrentWorking (MatriX state.go): actively serving.
+    sessions: torrents.map((torrent) => ({
+      hash: torrent.hash,
+      title: torrent.title || torrent.name || "Unknown torrent",
+      statString: torrent.stat_string,
+      active: torrent.stat === 3,
+      downloadSpeedBps: torrent.download_speed ?? 0,
+      uploadSpeedBps: torrent.upload_speed ?? 0,
+      activePeers: torrent.active_peers ?? 0,
+      connectedSeeders: torrent.connected_seeders ?? 0,
+      loadedSize: torrent.loaded_size ?? 0,
+      torrentSize: torrent.torrent_size ?? 0,
+    })),
+  });
+};
+
+export const handlePointer: RouteHandler = async (
+  { pointer, addon },
+  { response, url, method },
+) => {
+  if (url.pathname === "/api/pointer/status" && method === "GET") {
+    return reply(
+      response,
+      200,
+      pointer ? await pointer.status() : { configured: false },
+    );
+  }
+  const action = /^\/api\/pointer\/(push|remote|remove)$/.exec(
+    url.pathname,
+  )?.[1];
+  if (!action || (action === "remote" ? method !== "GET" : method !== "POST"))
+    return false;
+  if (!pointer)
+    return reply(response, 409, { error: "Pointer not configured" });
+  if (action === "remote") {
+    return reply(response, 200, await pointer.remoteStatus());
+  }
+  try {
+    if (action === "push") {
+      return reply(response, 200, await pointer.push(addon.manifest));
+    }
+    await pointer.remove();
+    return reply(response, 200, { ok: true });
+  } catch (error) {
+    return reply(response, 502, {
+      error:
+        error instanceof Error
+          ? error.message
+          : action === "push"
+            ? "Pointer push failed"
+            : "Pointer removal failed",
+    });
+  }
+};
+
+export const handleStatus: RouteHandler = async (
+  { library, torrServer, nativePicker, transcode, pointer },
+  { response, url, method },
+) => {
+  if (url.pathname !== "/api/status" || method !== "GET") return false;
+  const [entries, torrServerStatus, activeTorrents, pickerAvailable] =
+    await Promise.all([
+      library.list(),
+      torrServer
+        .health()
+        .then((version) => ({ online: true, version }))
+        .catch(() => ({ online: false })),
+      torrServer
+        .list()
+        .then((torrents) => torrents.length)
+        .catch(() => 0),
+      nativePicker.available(),
+    ]);
+  return reply(response, 200, {
+    status: "online",
+    torrServer: torrServerStatus,
+    libraryCount: entries.length,
+    homeSpeedMbps: homeSpeedMbps(),
+    speed: currentSpeed(),
+    nativePicker: pickerAvailable,
+    streamingActive: recentStreamActivity() || activeTorrents > 0,
+    uptimeSeconds: Math.floor(process.uptime()),
+    transcode: {
+      enabled: Boolean(transcode),
+      activeSessions: transcode?.list().length ?? 0,
+      videoEncoder: transcode?.videoEncoder ?? null,
+    },
+    pointer: pointer
+      ? { configured: true, stale: (await pointer.status()).stale ?? true }
+      : { configured: false },
+  });
+};
+
+export const handleResources: RouteHandler = async (
+  { resourceDirs },
+  { response, url, method },
+) => {
+  if (url.pathname !== "/api/resources" || method !== "GET") return false;
+  return reply(
+    response,
+    200,
+    await resourceReport(
+      resourceDirs ?? { torrentCache: "", transcode: "", uploads: "" },
+    ),
+  );
+};
+
+export const handleSpeedTest: RouteHandler = async (
+  _context,
+  { response, url, method },
+) => {
+  if (url.pathname !== "/api/speedtest" || method !== "POST") return false;
+  try {
+    const result = await runSpeedTest();
+    return reply(response, 200, { ...result, source: "measured" });
+  } catch (error) {
+    return reply(response, 502, {
+      error: error instanceof Error ? error.message : "Speed test failed",
+    });
+  }
+};
+
+export const handleTranscodeSessions: RouteHandler = async (
+  { transcode },
+  { response, url, method },
+) => {
+  if (url.pathname === "/api/transcode/sessions" && method === "GET") {
+    return reply(
+      response,
+      200,
+      (transcode?.list() ?? []).map((session) => ({
+        entryId: session.entryId,
+        fileId: session.fileId,
+        variant: session.variant,
+        tier: session.tier,
+        startedAt: new Date(session.startedAt).toISOString(),
+        lastAccess: new Date(session.lastAccess).toISOString(),
+        state: session.failed
+          ? "failed"
+          : session.exited
+            ? "finished"
+            : "running",
+      })),
+    );
+  }
+  const sessionMatch = /^\/api\/transcode\/sessions\/([^/]+)\/(\d+)$/.exec(
+    url.pathname,
+  );
+  if (sessionMatch && method === "DELETE") {
+    const removed = await transcode?.removeAll(
+      decodeURIComponent(sessionMatch[1]),
+      Number(sessionMatch[2]),
+    );
+    if (!removed) return reply(response, 404, { error: "No session" });
+    return reply(response, 204, null);
+  }
+  return false;
+};

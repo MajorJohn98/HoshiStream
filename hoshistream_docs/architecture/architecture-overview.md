@@ -30,7 +30,13 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 |---|---|
 | `index.ts` | Process entry point; wires config, library, TorrServer client, HTTP server |
 | `config.ts`, `config-schema.ts` | Zod-validated environment configuration |
-| `routes.ts` | Single HTTP handler: health, addon protocol, management API, local media |
+| `routes.ts` | HTTP dispatcher: builds the handler context from `HandlerOptions`, walks the open and `/api/*` route lists, maps errors via `routes/errors.ts` |
+| `routes/context.ts` | `HandlerContext`, `RouteHandler` contract, and JSON/HTML reply helpers shared by route modules |
+| `routes/protocol.ts` | Health, readiness, static assets, management page, tokenized Stremio manifest/catalog/meta/stream |
+| `routes/media.ts` | `/hls`, `/local`, and `/media` playback routes |
+| `routes/library-api.ts` | `/api/library*` CRUD, inspect, relink, uploads, native picker grants, Stremio refresh |
+| `routes/disk-api.ts` | `/api/volumes`, disk-copy enable/retry, disk jobs, disk schedule |
+| `routes/system-api.ts` | Status, resources, speed test, player, clients, pointer, analysis, transcode sessions |
 | `manifest.ts` | Stremio manifest (`com.john.private-torrent-streamer`, catalogs, `hoshi:` prefix) |
 | `addon.ts`, `catalog.ts`, `metadata.ts`, `streams.ts` | Stremio catalog/meta/stream resources |
 | `library.ts` | Atomic JSON library CRUD (`library.json`) |

@@ -141,6 +141,9 @@ export class TorrServerClient {
           signal: AbortSignal.timeout(this.timeoutMs),
         });
         if (response.ok) return response;
+        // Release the connection: an unread body keeps the socket pinned
+        // until GC, which starves the pool during retry storms.
+        await response.body?.cancel().catch(() => undefined);
         if (response.status < 500) {
           throw new TorrServerError(
             `TorrServer ${response.status} ${response.statusText}`,

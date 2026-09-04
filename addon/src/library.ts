@@ -22,6 +22,7 @@ import {
 } from "./types.js";
 
 const librarySchema = z.array(libraryEntrySchema);
+const STREAMED_THROTTLE_MS = 180_000;
 const CACHE_INVALIDATING_FIELDS = [
   "type",
   "magnetUri",
@@ -38,16 +39,23 @@ export class LibraryError extends Error {}
 export class Library {
   private queue: Promise<void> = Promise.resolve();
   private cache?: { mtimeMs: number; size: number; entries: LibraryEntry[] };
+  // Last write of lastStreamedAt per entry; keeps the throttle check off the
+  // disk-backed read path that every range request would otherwise hit.
+  private readonly streamedAt = new Map<string, number>();
 
   constructor(private readonly path: string) {}
 
   async list(): Promise<LibraryEntry[]> {
     await this.queue;
-    return this.read();
+    return structuredClone(await this.read());
   }
 
+  // Clones only the matched entry: playback range requests call this on
+  // every chunk, so copying the whole library each time adds up.
   async get(id: string): Promise<LibraryEntry | undefined> {
-    return (await this.list()).find((entry) => entry.id === id);
+    await this.queue;
+    const entry = (await this.read()).find((entry) => entry.id === id);
+    return entry && structuredClone(entry);
   }
 
   create(input: CreateEntry): Promise<LibraryEntry> {
@@ -150,18 +158,21 @@ export class Library {
   // lists and range requests repeat constantly, and one timestamp per few
   // minutes is plenty for "recently streamed".
   async markStreamed(id: string): Promise<void> {
-    const current = await this.get(id);
-    if (!current) return;
-    const last = current.lastStreamedAt
-      ? Date.parse(current.lastStreamedAt)
-      : 0;
-    if (Date.now() - last < 180_000) return;
+    const now = Date.now();
+    const last = this.streamedAt.get(id);
+    if (last !== undefined && now - last < STREAMED_THROTTLE_MS) return;
+    this.streamedAt.set(id, now);
     await this.update(async (entries) => {
       const index = entries.findIndex((entry) => entry.id === id);
-      if (index === -1) return;
+      if (index === -1) {
+        this.streamedAt.delete(id);
+        return;
+      }
+      const stored = entries[index].lastStreamedAt;
+      if (stored && now - Date.parse(stored) < STREAMED_THROTTLE_MS) return;
       entries[index] = libraryEntrySchema.parse({
         ...entries[index],
-        lastStreamedAt: new Date().toISOString(),
+        lastStreamedAt: new Date(now).toISOString(),
       });
     });
   }
@@ -174,11 +185,11 @@ export class Library {
         this.cache.mtimeMs === info.mtimeMs &&
         this.cache.size === info.size
       ) {
-        return structuredClone(this.cache.entries);
+        return this.cache.entries;
       }
       const entries = await this.parse(this.path);
       this.cache = { mtimeMs: info.mtimeMs, size: info.size, entries };
-      return structuredClone(entries);
+      return entries;
     } catch (error) {
       this.cache = undefined;
       return this.recover(error);
@@ -230,7 +241,9 @@ export class Library {
     change: (entries: LibraryEntry[]) => Promise<T>,
   ): Promise<T> {
     const operation = this.queue.then(async () => {
-      const entries = await this.read();
+      // Mutations work on a copy so the cached array stays pristine until
+      // the write lands.
+      const entries = structuredClone(await this.read());
       const result = await change(entries);
       await this.write(entries);
       return result;
