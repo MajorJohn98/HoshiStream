@@ -398,9 +398,57 @@ function SourceTab({ state }) {
   `;
 }
 
+// Group files by season for the season tabs. Files without a season (movies,
+// unparsed names) show in one list with no tabs.
+function seasonsOf(files, seasonOf) {
+  const set = new Set();
+  for (const file of files) {
+    const season = seasonOf(file);
+    if (season !== undefined && season !== null) set.add(season);
+  }
+  return [...set].sort((a, b) => a - b);
+}
+
+function useSeasonTabs(files, seasonOf) {
+  const seasons = seasonsOf(files, seasonOf);
+  const [season, setSeason] = useState(seasons[0]);
+  const current = seasons.includes(season) ? season : seasons[0];
+  const visible = (file) => seasons.length < 2 || seasonOf(file) === current;
+  return { seasons, season: current, setSeason, visible };
+}
+
+function SeasonTabs({ seasons, season, onChange, counts }) {
+  if (seasons.length < 2) return null;
+  return html`
+    <div class="subtabs" role="tablist" aria-label="Seasons">
+      ${seasons.map(
+        (candidate) => html`
+          <button
+            type="button"
+            role="tab"
+            aria-selected=${candidate === season}
+            class=${candidate === season ? "on" : ""}
+            onClick=${() => onChange(candidate)}
+            key=${candidate}
+          >
+            Season ${candidate}
+            ${counts ? html`<em>· ${counts(candidate)}</em>` : null}
+          </button>
+        `,
+      )}
+    </div>
+  `;
+}
+
+function baseName(path) {
+  return path.split("/").pop();
+}
+
 function CachedFilesTable({ state, cache }) {
   const [busy, run] = useInspect(state);
   const n = cache.selectedFiles.length;
+  const tabs = useSeasonTabs(cache.selectedFiles, (f) => f.season);
+  const shown = cache.selectedFiles.filter(tabs.visible);
   return html`
     <${Section}
       id="files"
@@ -426,25 +474,36 @@ function CachedFilesTable({ state, cache }) {
           ? html`<p class="danger">${state.inspectionError}</p>`
           : null
       }
-      <div class="tablewrap">
+      <${SeasonTabs}
+        seasons=${tabs.seasons}
+        season=${tabs.season}
+        onChange=${tabs.setSeason}
+        counts=${(season) =>
+          cache.selectedFiles.filter((f) => f.season === season).length}
+      />
+      <div class="tablewrap scroll-table">
         <table class="files">
           <thead>
             <tr>
               <th>File</th>
               <th>Size</th>
-              <th>Season</th>
+              ${tabs.seasons.length < 2 ? html`<th>Season</th>` : null}
               <th>Episode</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            ${cache.selectedFiles.map(
+            ${shown.map(
               (f) => html`
                 <tr key=${f.id}>
-                  <td class="filename">${f.path}</td>
-                  <td>${fmt(f.length)}</td>
-                  <td>${f.season ?? "—"}</td>
-                  <td>${f.episode ?? "—"}</td>
+                  <td class="filename" title=${f.path}>${baseName(f.path)}</td>
+                  <td class="num">${fmt(f.length)}</td>
+                  ${
+                    tabs.seasons.length < 2
+                      ? html`<td class="num">${f.season ?? "—"}</td>`
+                      : null
+                  }
+                  <td class="num">${f.episode ?? "—"}</td>
                   <td>
                     <button
                       class="secondary"
@@ -493,6 +552,12 @@ function MappingTable({ state }) {
     notify("Mapping saved");
     await run(false);
   };
+  const seasonOfFile = (f) => {
+    const o = overrides.get(f.id);
+    const sel = state.inspection.selectedFiles.find((x) => x.id === f.id);
+    return o?.season ?? sel?.season;
+  };
+  const tabs = useSeasonTabs(state.inspection.files, seasonOfFile);
   return html`
     <${Section}
       id="files"
@@ -510,7 +575,15 @@ function MappingTable({ state }) {
         </button>
       `}
     >
-      <div class="tablewrap">
+      <${SeasonTabs}
+        seasons=${tabs.seasons}
+        season=${tabs.season}
+        onChange=${tabs.setSeason}
+        counts=${(season) =>
+          state.inspection.files.filter((f) => seasonOfFile(f) === season)
+            .length}
+      />
+      <div class="tablewrap scroll-table">
         <table class="files" ref=${tableRef}>
           <thead>
             <tr>
@@ -528,7 +601,7 @@ function MappingTable({ state }) {
                 (x) => x.id === f.id,
               );
               return html`
-                <tr key=${f.id} data-file=${f.id}>
+                <tr key=${f.id} data-file=${f.id} hidden=${!tabs.visible(f)}>
                   <td>
                     <input
                       class="include"
@@ -536,8 +609,8 @@ function MappingTable({ state }) {
                       checked=${o?.included ?? Boolean(s)}
                     />
                   </td>
-                  <td class="filename">${f.path}</td>
-                  <td>${fmt(f.length)}</td>
+                  <td class="filename" title=${f.path}>${baseName(f.path)}</td>
+                  <td class="num">${fmt(f.length)}</td>
                   <td>
                     <input
                       class="season"
@@ -926,9 +999,10 @@ function StorageTab({ state }) {
     );
     return selected?.season;
   };
-  const seasons = [
-    ...new Set(files.map(seasonOf).filter((season) => season !== undefined)),
-  ].sort((a, b) => a - b);
+  const tabs = useSeasonTabs(files, seasonOf);
+  const seasons = tabs.seasons;
+  const shownFiles = files.filter(tabs.visible);
+  const shownIncluded = included.filter(tabs.visible);
   const toggleSeason = (season) => {
     const keys = files
       .filter((file) => seasonOf(file) === season)
@@ -1011,23 +1085,29 @@ function StorageTab({ state }) {
             ${
               picking
                 ? html`
-                    ${
-                      seasons.length > 1
-                        ? html`<div class="row tight stacked-xs">
-                            ${seasons.map(
-                              (season) =>
-                                html`<button
-                                  class="secondary"
-                                  onClick=${() => toggleSeason(season)}
-                                >
-                                  Season ${season}
-                                </button>`,
-                            )}
-                          </div>`
-                        : null
-                    }
-                    <ul class="rows compact stacked-xs">
-                      ${files.map(
+                    <div class="row between stacked-xs">
+                      <${SeasonTabs}
+                        seasons=${seasons}
+                        season=${tabs.season}
+                        onChange=${tabs.setSeason}
+                        counts=${(season) =>
+                          files.filter((file) => seasonOf(file) === season)
+                            .length}
+                      />
+                      ${
+                        seasons.length > 1
+                          ? html`<button
+                              type="button"
+                              class="secondary"
+                              onClick=${() => toggleSeason(tabs.season)}
+                            >
+                              Toggle season ${tabs.season}
+                            </button>`
+                          : null
+                      }
+                    </div>
+                    <ul class="rows compact scroll-list stacked-xs">
+                      ${shownFiles.map(
                         (file) => html`<${FileRow} file=${file} pick />`,
                       )}
                     </ul>
@@ -1067,9 +1147,18 @@ function StorageTab({ state }) {
                   : null
             }
           </div>`
-        : html`<ul class="rows compact">
-            ${included.map((file) => html`<${FileRow} file=${file} />`)}
-          </ul>`
+        : html`
+            <${SeasonTabs}
+              seasons=${seasons}
+              season=${tabs.season}
+              onChange=${tabs.setSeason}
+              counts=${(season) =>
+                included.filter((file) => seasonOf(file) === season).length}
+            />
+            <ul class="rows compact scroll-list">
+              ${shownIncluded.map((file) => html`<${FileRow} file=${file} />`)}
+            </ul>
+          `
     }
     <div class="row tight stacked">
       ${
@@ -1113,9 +1202,8 @@ function StorageTab({ state }) {
 }
 
 // The entry sheet: a full-screen overlay media page. The hero keeps Play as
-// the unmistakable primary action; admin work lives in stacked sections with
-// sticky chips instead of tabs, so everything about one title is a single
-// scroll. state.tab (set by HUD/System deep links) picks the initial section.
+// the unmistakable primary action; admin work lives behind tabs so the sheet
+// stays short. state.tab (also set by Storage deep links) picks the tab.
 const SECTIONS = [
   ["overview", "Details", OverviewTab],
   ["source", "Source", SourceTab],
@@ -1151,22 +1239,28 @@ export function DetailSheet() {
   useEffect(() => {
     if (!entry) return;
     closeButton.current?.focus({ preventScroll: true });
-    if (state.tab && state.tab !== "overview") {
-      document
-        .querySelector("#section-" + state.tab)
-        ?.scrollIntoView({ block: "start" });
-    }
   }, [entry?.id]);
   if (!entry) return null;
   const resume =
     entry.playback?.fileId !== undefined || entry.playback?.positionSeconds;
   const verdict = entry.directPlay && VERDICTS[entry.directPlay.compatibility];
   const disk = diskBadge(entry);
-  const jump = (key) => (event) => {
+  const active = SECTIONS.find(([key]) => key === state.tab) ?? SECTIONS[0];
+  const [, , Tab] = active;
+  // Arrow keys move between tabs, as the tablist pattern expects.
+  const onTabKey = (event) => {
+    const keys = SECTIONS.map(([key]) => key);
+    const index = keys.indexOf(active[0]);
+    const next =
+      event.key === "ArrowRight"
+        ? keys[(index + 1) % keys.length]
+        : event.key === "ArrowLeft"
+          ? keys[(index - 1 + keys.length) % keys.length]
+          : null;
+    if (!next) return;
     event.preventDefault();
-    document
-      .querySelector("#section-" + key)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setState({ tab: next });
+    event.currentTarget.querySelector(`[data-tab="${next}"]`)?.focus();
   };
   return html`
     <div
@@ -1266,17 +1360,30 @@ export function DetailSheet() {
             </div>
           </div>
         </header>
-        <nav class="sheet-tabs" aria-label="Sections">
+        <div
+          class="sheet-tabs"
+          role="tablist"
+          aria-label="Sections"
+          onKeyDown=${onTabKey}
+        >
           ${SECTIONS.map(
             ([key, label]) => html`
-              <a href="#" onClick=${jump(key)}>${label}</a>
+              <button
+                type="button"
+                role="tab"
+                data-tab=${key}
+                aria-selected=${key === active[0]}
+                tabindex=${key === active[0] ? 0 : -1}
+                class=${key === active[0] ? "on" : ""}
+                onClick=${() => setState({ tab: key })}
+              >
+                ${label}
+              </button>
             `,
           )}
-        </nav>
-        <div class="sheet-body">
-          ${SECTIONS.map(
-            ([key, , Tab]) => html`<${Tab} state=${state} key=${key} />`,
-          )}
+        </div>
+        <div class="sheet-body" role="tabpanel">
+          <${Tab} state=${state} key=${active[0]} />
         </div>
       </section>
     </div>

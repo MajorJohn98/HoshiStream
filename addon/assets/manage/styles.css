@@ -1384,24 +1384,96 @@ table.files input[type="number"] {
   padding: 0 30px;
   border-bottom: 1px solid var(--line);
 }
-.sheet-tabs a {
+.sheet-tabs button {
   flex: none;
   padding: 13px 0 11px;
+  border: 0;
   border-bottom: 2px solid transparent;
+  background: transparent;
   color: var(--muted);
-  text-decoration: none;
   font-size: var(--fs-control);
   font-weight: 600;
+  border-radius: 0;
   transition:
     color 0.15s,
     border-color 0.15s;
 }
-.sheet-tabs a:hover {
+.sheet-tabs button:hover {
+  color: var(--text);
+}
+.sheet-tabs button.on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.sheet-tabs button:focus-visible {
+  box-shadow: none;
   color: var(--text);
   border-bottom-color: var(--line-strong);
 }
 .sheet-body {
   padding: 4px 30px 34px;
+  min-height: 260px;
+}
+/* Season sub-tabs inside a section. */
+.subtabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: 12px 0 4px;
+}
+.subtabs button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 9px;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.subtabs button:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.subtabs button.on {
+  color: var(--text);
+  background: var(--surface2);
+}
+.subtabs button em {
+  font-style: normal;
+  opacity: 0.6;
+  margin-left: 3px;
+  font-size: 11px;
+}
+/* About ten rows visible, then scroll; the header stays put. */
+.scroll-table {
+  max-height: 548px;
+  overflow-y: auto;
+}
+.scroll-table table.files td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.scroll-table table.files .secondary,
+.scroll-table table.files .primary {
+  padding: 5px 11px;
+  font-size: 12.5px;
+}
+.scroll-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-raise);
+  z-index: 1;
+}
+.scroll-list {
+  max-height: 440px;
+  overflow-y: auto;
+}
+table.files td.num {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .sheet-section {
   margin-top: 30px;
