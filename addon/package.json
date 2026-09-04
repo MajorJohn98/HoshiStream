@@ -1,15 +1,15 @@
 {
   "name": "hoshistream-addon",
-  "version": "0.12.1",
+  "version": "0.14.0",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "scripts": {
     "build": "tsc",
-    "dev": "node --watch --env-file=.env dist/index.js",
-    "dev:tsc": "tsc --watch --preserveWatchOutput",
+    "dev": "node --watch --env-file=.env src/index.ts",
+    "dev:native": "node --watch --watch-path=src --watch-path=../scripts ../scripts/native-server.mjs --dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

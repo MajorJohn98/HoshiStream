@@ -8,9 +8,3 @@ export const Shell = ({ title, actions, children }) => html`
   </div>
   ${children}
 `;
-
-export const Pill = ({ online, warn, children }) => html`
-  <span class="pill ${online ? "online" : warn ? "warn" : ""}"
-    >${children}</span
-  >
-`;

@@ -1,36 +1,55 @@
 // HoshiStream management UI entry point: preact root, cinema-shelf layout
 // with a left sidebar whose bottom half is a live activity HUD (health,
 // playback, archive queue, drive warnings). Views render on the right; the
-// entry sheet overlays everything when state.selected is set.
+// entry sheet overlays everything when state.selected is set, and the Add
+// Media modal when state.adding is set.
 import { html, render, useEffect, useState } from "./vendor/preact-htm.js";
 import { setState, useStore, load, startActivityPolling } from "./store.js";
 import { LibraryView } from "./views/library.js";
-import { AddView } from "./views/add.js";
-import { SystemView } from "./views/system.js";
+import { AddSheet, openAdd } from "./views/add.js";
+import { StatusView } from "./views/status.js";
+import { ActivityView } from "./views/activity.js";
+import { StorageView } from "./views/storage.js";
+import { TagsView } from "./views/tags.js";
 import { PlayerView } from "./views/player.js";
 import { DetailSheet } from "./views/detail.js";
 
 const VIEWS = {
   library: LibraryView,
-  add: AddView,
-  system: SystemView,
+  status: StatusView,
+  activity: ActivityView,
+  storage: StorageView,
+  tags: TagsView,
   play: PlayerView,
 };
 
-// Old bookmarks from the four merged pages land on their System section.
+// Bookmarks and HUD links from the merged System page (0.12.0–0.12.2), and
+// the pre-0.12 Devices/Sessions pages, land on their new home.
 const LEGACY_ROUTES = {
-  status: "system/health",
-  devices: "system/devices",
-  sessions: "system/repair",
-  storage: "system/storage",
+  system: "status",
+  "system/health": "status",
+  "system/analysis": "library/analysis",
+  "system/storage": "storage",
+  "system/devices": "activity",
+  "system/repair": "activity/repair",
+  devices: "activity",
+  sessions: "activity/repair",
 };
 
 function currentRoute() {
-  const match = /^#\/([a-z]+)/.exec(location.hash);
+  const match = /^#\/([a-z]+)(\/[a-z]+)?/.exec(location.hash);
   const name = match?.[1];
-  if (LEGACY_ROUTES[name]) {
-    location.replace("#/" + LEGACY_ROUTES[name]);
-    return "system";
+  // Add Media is a modal over the Library; old #/add bookmarks open it.
+  if (name === "add") {
+    openAdd();
+    location.replace("#/library");
+    return "library";
+  }
+  const legacy =
+    LEGACY_ROUTES[name + (match?.[2] ?? "")] ?? LEGACY_ROUTES[name];
+  if (legacy) {
+    location.replace("#/" + legacy);
+    return legacy.split("/")[0];
   }
   return name && VIEWS[name] ? name : "library";
 }
@@ -41,16 +60,19 @@ export function go(next) {
 
 const NAV = [
   ["library", "▦", "Library"],
-  ["add", "＋", "Add Media"],
-  ["system", "◎", "System"],
+  ["status", "◎", "Status"],
+  ["activity", "◔", "Activity"],
+  ["storage", "▤", "Storage"],
+  ["tags", "⌗", "Tags"],
 ];
 
 function fmtBytes(n) {
   return n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.round(n / 1e6) + " MB";
 }
 
-// The live HUD: every row is a glanceable fact and a link to the System
-// section where it can be acted on.
+// The live HUD: every row is a glanceable fact and a link to the page where
+// it can be acted on — health to Status, anything moving to Activity, drives
+// and copies to Storage.
 function Hud() {
   const { entries, status, activity } = useStore();
   const torrOnline = Boolean(status.torrServer?.online);
@@ -70,7 +92,7 @@ function Hud() {
     entries.find((entry) => entry.id === entryId)?.name ?? "…";
   return html`
     <div class="hud">
-      <a class="hud-item" href="#/system/health">
+      <a class="hud-item" href="#/status">
         <span class="dot ${torrOnline ? "ok" : "bad"}"></span>
         <span class="hud-text">
           ${torrOnline ? "All systems go" : "TorrServer offline"}
@@ -78,7 +100,7 @@ function Hud() {
       </a>
       ${playing.map(
         (session) => html`
-          <a class="hud-item" href="#/system/devices" key=${session.hash}>
+          <a class="hud-item" href="#/activity" key=${session.hash}>
             <span class="dot live"></span>
             <span class="hud-text">
               <strong>Streaming</strong> ${session.title}
@@ -95,7 +117,7 @@ function Hud() {
             )
           : 0;
         return html`
-          <a class="hud-item" href="#/system/storage" key=${job.entryId}>
+          <a class="hud-item" href="#/storage" key=${job.entryId}>
             <span class="dot ${job.status === "copying" ? "live" : "idle"}">
             </span>
             <span class="hud-text">
@@ -112,7 +134,9 @@ function Hud() {
               ${
                 job.status === "copying"
                   ? html`<span class="hud-bar">
-                      <span style=${"width:" + percent + "%"}></span>
+                      <span
+                        style=${"transform:scaleX(" + percent / 100 + ")"}
+                      ></span>
                     </span>`
                   : null
               }
@@ -122,7 +146,7 @@ function Hud() {
       })}
       ${troubledDrives.map(
         (volume) => html`
-          <a class="hud-item warn" href="#/system/storage" key=${volume.id}>
+          <a class="hud-item warn" href="#/storage" key=${volume.id}>
             <span class="dot bad"></span>
             <span class="hud-text">
               <strong>
@@ -135,7 +159,7 @@ function Hud() {
       )}
       ${
         repairing.length
-          ? html`<a class="hud-item" href="#/system/repair">
+          ? html`<a class="hud-item" href="#/activity/repair">
               <span class="dot live"></span>
               <span class="hud-text">
                 <strong>Repairing</strong> ${repairing.length}
@@ -185,7 +209,8 @@ function App() {
   useEffect(() => {
     const onHash = () => {
       // Drop DOM-level modals (import review, Stremio) and the entry sheet.
-      document.querySelector(".modal-backdrop")?.remove();
+      // The Add Media modal is preact-managed and closes through state.
+      document.querySelector(".modal-backdrop:not(.add-backdrop)")?.remove();
       setState({ selected: null });
       setRoute(currentRoute());
     };
@@ -214,6 +239,7 @@ function App() {
       </main>
     </div>
     <${DetailSheet} />
+    <${AddSheet} />
   `;
 }
 

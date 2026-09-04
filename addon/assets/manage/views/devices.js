@@ -1,9 +1,8 @@
-// Devices section for the System page: recent clients observed by this
-// server, live TorrServer playback, and remote-pointer health. All client
+// Devices section of the Activity page: live TorrServer playback, recent
+// clients observed by this server, and remote-pointer health. All client
 // data is local and ephemeral — nothing is logged in the cloud.
 import { html, useEffect, useState } from "../vendor/preact-htm.js";
 import { api, fmt, notify } from "../api.js";
-import { Pill } from "../components/shell.js";
 import { useStore } from "../store.js";
 
 function agoLabel(iso) {
@@ -16,6 +15,11 @@ function agoLabel(iso) {
 
 function daysUntil(iso) {
   return Math.round((Date.parse(iso) - Date.now()) / 864e5);
+}
+
+// Seen within the last five minutes reads as "here now".
+function recent(iso) {
+  return Date.now() - Date.parse(iso) < 5 * 60_000;
 }
 
 const RESOURCE_LABELS = {
@@ -72,44 +76,70 @@ function Clients() {
     }
   };
   return html`
-    <div class="panel" style="margin-top:18px">
-      <h2>Connected clients</h2>
-      <p class="muted">
-        Devices that talked to this server since it started. Kept in memory only
-        — never uploaded anywhere. Click a device to name it.
-      </p>
+    <section class="page-section" id="activity-clients">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Connected clients</h2>
+          <p class="muted">
+            Devices that reached this server since it started. Kept in memory
+            only — never uploaded anywhere.
+          </p>
+        </div>
+        <span class="inline-note">
+          ${clients.length} device${clients.length === 1 ? "" : "s"}
+        </span>
+      </div>
       ${
         clients.length === 0
-          ? html`<p class="muted">No client activity yet.</p>`
-          : html`<div class="metrics">
+          ? html`<p class="empty quiet">No client activity yet.</p>`
+          : html`<ul class="rows">
               ${clients.map(
                 (client) => html`
-                  <div
-                    class="metric"
-                    style="cursor:pointer"
-                    title="Click to rename"
+                  <li
+                    class="rowitem clickable"
+                    role="button"
+                    tabindex="0"
+                    title="Rename this device"
+                    key=${client.ip}
                     onClick=${() => renameDevice(client)}
-                  >
-                    <span class="muted">
-                      ${client.ip}${
-                        client.hostname ? " · " + client.hostname : ""
+                    onKeyDown=${(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        renameDevice(client);
                       }
+                    }}
+                  >
+                    <span class="lead">
+                      <i
+                        class="dot ${recent(client.lastSeen) ? "ok" : "idle"}"
+                      ></i>
                     </span>
-                    <strong>
-                      ${client.name || client.hostname || client.device}
-                      ${client.name ? "" : " ✎"}
-                    </strong>
-                    <span class="muted">
-                      ${client.name ? client.device + " · " : ""}
-                      ${RESOURCE_LABELS[client.lastResource] || "Request"} ·
-                      ${agoLabel(client.lastSeen)} · ${client.requests} requests
+                    <span class="main">
+                      <strong>
+                        ${client.name || client.hostname || client.device}
+                      </strong>
+                      <span class="meta">
+                        ${client.ip}${
+                          client.hostname && client.hostname !== client.ip
+                            ? " · " + client.hostname
+                            : ""
+                        }${client.name ? " · " + client.device : ""}
+                      </span>
                     </span>
-                  </div>
+                    <span class="trail">
+                      <span class="value">
+                        ${RESOURCE_LABELS[client.lastResource] || "Request"}
+                      </span>
+                      <span class="muted">
+                        ${agoLabel(client.lastSeen)} · ${client.requests} req
+                      </span>
+                    </span>
+                  </li>
                 `,
               )}
-            </div>`
+            </ul>`
       }
-    </div>
+    </section>
   `;
 }
 
@@ -118,36 +148,53 @@ function Playback() {
   const sessions = activity.playback;
   const active = sessions.filter((session) => session.active);
   return html`
-    <div class="panel" style="margin-top:18px">
-      <h2>Now streaming</h2>
+    <section class="page-section" id="activity-streaming">
+      <div class="section-head">
+        <h2 class="section-title">Now streaming</h2>
+        <span class="inline-note">
+          ${
+            active.length
+              ? active.length + " active"
+              : sessions.length
+                ? sessions.length + " registered, none active"
+                : "Nothing registered"
+          }
+        </span>
+      </div>
       ${
         sessions.length === 0
-          ? html`<p class="muted">No torrents registered right now.</p>`
-          : html`<div class="metrics">
+          ? html`<p class="empty quiet">
+              No torrents registered with TorrServer right now.
+            </p>`
+          : html`<ul class="rows">
               ${sessions.map(
                 (session) => html`
-                  <div class="metric">
-                    <span class=${session.active ? "online" : "muted"}>
-                      ${session.active ? "● " : "○ "}${session.statString}
+                  <li class="rowitem" key=${session.hash}>
+                    <span class="lead">
+                      <i class="dot ${session.active ? "live" : "idle"}"></i>
                     </span>
-                    <strong>${session.title}</strong>
-                    <span class="muted">
-                      ↓ ${fmt(session.downloadSpeedBps)}/s · ↑
-                      ${fmt(session.uploadSpeedBps)}/s ·
-                      ${session.connectedSeeders} seeders ·
-                      ${fmt(session.loadedSize)} of ${fmt(session.torrentSize)}
+                    <span class="main">
+                      <strong>${session.title}</strong>
+                      <span class="meta">
+                        ${session.statString} · ${session.connectedSeeders}
+                        seeders · ${fmt(session.loadedSize)} of
+                        ${fmt(session.torrentSize)}
+                      </span>
                     </span>
-                  </div>
+                    <span class="trail">
+                      <span class="value">
+                        ↓ ${fmt(session.downloadSpeedBps)}/s
+                      </span>
+                      <span class="muted"
+                        >↑ ${fmt(session.uploadSpeedBps)}/s</span
+                      >
+                    </span>
+                  </li>
                 `,
               )}
-            </div>`
+            </ul>`
       }
-      ${
-        active.length > 0
-          ? html`<p class="muted">${active.length} active session(s)</p>`
-          : null
-      }
-    </div>
+    </section>
   `;
 }
 
@@ -179,84 +226,120 @@ function PointerCard() {
       setBusy(false);
     }
   };
-  if (!local || !local.configured) {
-    return html`
-      <div class="panel" style="margin-top:18px">
-        <h2>Remote pointer</h2>
-        <p class="muted">
-          Not configured. Set POINTER_URL and POINTER_PUSH_SECRET to get a
-          permanent add-on URL that survives IP changes.
-        </p>
-      </div>
-    `;
-  }
+  const configured = Boolean(local?.configured);
   const expiringDays = remote?.expiresAt ? daysUntil(remote.expiresAt) : null;
+  const pointerTone = !configured ? "idle" : local.stale ? "warn" : "ok";
+  const remoteTone = !remote
+    ? "idle"
+    : !remote.reachable
+      ? "bad"
+      : remote.registered
+        ? "ok"
+        : "idle";
   return html`
-    <div class="panel" style="margin-top:18px">
-      <h2>Remote pointer</h2>
-      <div class="statusbar">
-        <${Pill} online=${!local.stale} warn=${local.stale}>
-          ${local.stale ? "! Pointer stale — IP changed" : "● Pointer fresh"}
-        <//>
+    <section class="page-section" id="activity-pointer">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Remote pointer</h2>
+          <p class="muted">
+            A permanent add-on URL that follows this server across IP changes.
+          </p>
+        </div>
         ${
-          remote
-            ? html`<${Pill}
-                online=${remote.registered}
-                warn=${!remote.reachable}
-              >
-                ${
-                  !remote.reachable
-                    ? "! Server unreachable"
-                    : remote.registered
-                      ? "● Registered"
-                      : "○ Not registered yet"
-                }
-              <//>`
-            : null
-        }
-        ${
-          expiringDays !== null
-            ? html`<${Pill}
-                online=${expiringDays > 14}
-                warn=${expiringDays <= 14}
-              >
-                Expires in ${expiringDays} days
-              <//>`
+          configured
+            ? html`<div class="row">
+                <button
+                  class="primary"
+                  disabled=${busy}
+                  onClick=${() => act("pointer/push", "Remote pointer updated")}
+                >
+                  ${busy ? "Working…" : "Update pointer"}
+                </button>
+                <button
+                  class="secondary"
+                  disabled=${busy}
+                  onClick=${() =>
+                    act("pointer/remove", "Remote pointer removed")}
+                >
+                  Remove
+                </button>
+              </div>`
             : null
         }
       </div>
-      <p class="muted">Permanent add-on URL: ${local.manifestUrl}</p>
       ${
-        remote?.updatedAt
-          ? html`<p class="muted">
-              Last push ${agoLabel(remote.updatedAt)} →
-              ${remote.baseUrl || "unknown"}
+        !configured
+          ? html`<p class="empty quiet">
+              Not configured. Set POINTER_URL and POINTER_PUSH_SECRET in .env to
+              enable it.
             </p>`
-          : null
+          : html`<ul class="rows">
+              <li class="rowitem">
+                <span class="lead"><i class="dot ${pointerTone}"></i></span>
+                <span class="main">
+                  <strong>Pointer</strong>
+                  <span class="meta wrap">${local.manifestUrl}</span>
+                </span>
+                <span class="trail">
+                  <span class="value ${local.stale ? "warn" : "online"}">
+                    ${local.stale ? "Stale — IP changed" : "Fresh"}
+                  </span>
+                </span>
+              </li>
+              <li class="rowitem">
+                <span class="lead"><i class="dot ${remoteTone}"></i></span>
+                <span class="main">
+                  <strong>Pointer server</strong>
+                  <span class="meta">
+                    ${
+                      remote?.updatedAt
+                        ? "Last push " +
+                          agoLabel(remote.updatedAt) +
+                          " → " +
+                          (remote.baseUrl || "unknown")
+                        : "No push recorded yet"
+                    }
+                  </span>
+                </span>
+                <span class="trail">
+                  <span
+                    class="value ${
+                      remoteTone === "ok"
+                        ? "online"
+                        : remoteTone === "bad"
+                          ? "warn"
+                          : "muted"
+                    }"
+                  >
+                    ${
+                      !remote
+                        ? "Checking…"
+                        : !remote.reachable
+                          ? "Unreachable"
+                          : remote.registered
+                            ? "Registered"
+                            : "Not registered yet"
+                    }
+                  </span>
+                  ${
+                    expiringDays !== null
+                      ? html`<span class="muted">
+                          expires in ${expiringDays} d
+                        </span>`
+                      : null
+                  }
+                </span>
+              </li>
+            </ul>`
       }
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button
-          disabled=${busy}
-          onClick=${() => act("pointer/push", "Remote pointer updated")}
-        >
-          ${busy ? "Working…" : "Update remote pointer"}
-        </button>
-        <button
-          class="secondary"
-          disabled=${busy}
-          onClick=${() => act("pointer/remove", "Remote pointer removed")}
-        >
-          Remove
-        </button>
-      </div>
-    </div>
+    </section>
   `;
 }
 
 export function DevicesSection() {
   return html`
-    <${PointerCard} />
     <${Playback} />
     <${Clients} />
+    <${PointerCard} />
   `;
 }

@@ -1,21 +1,18 @@
-// System page: one scrollable control center merging health, analysis,
-// storage, devices, and stream repair. Section chips stay sticky at the top
-// and the hash (#/system/<section>) deep-links from the sidebar HUD.
+// Library-wide playback analysis panel: kicks off the sequential server-side
+// run and polls its progress while it is active. Rendered by the Library view
+// behind its "Analyze" toolbar button.
 import { html, useEffect, useState } from "../vendor/preact-htm.js";
 import { api, notify } from "../api.js";
-import { Shell, Pill } from "../components/shell.js";
 import { useStore, load } from "../store.js";
-import { HealthSection } from "./status.js";
-import { StorageSection } from "./storage.js";
-import { DevicesSection } from "./devices.js";
-import { RepairSection } from "./sessions.js";
 
-// Library-wide playback analysis: kicks off the sequential server-side run
-// and polls its progress while it is active.
-function AnalysisSection() {
+export function unanalyzedCount(entries) {
+  return entries.filter((entry) => !entry.directPlay).length;
+}
+
+export function AnalysisPanel() {
   const { entries } = useStore();
   const [status, setStatus] = useState(null);
-  const analyzed = entries.filter((entry) => entry.directPlay).length;
+  const analyzed = entries.length - unanalyzedCount(entries);
   const verdicts = { direct: 0, caution: 0, risky: 0 };
   for (const entry of entries) {
     if (entry.directPlay) verdicts[entry.directPlay.compatibility] += 1;
@@ -69,43 +66,52 @@ function AnalysisSection() {
     ? Math.round((status.done / status.total) * 100)
     : 0;
   return html`
-    <p class="muted">
-      Inspect and probe every title so playback verdicts and Compatible streams
-      are ready before you press play. Runs one title at a time.
-    </p>
-    <div class="statusbar">
-      <${Pill}>${analyzed} of ${entries.length} analyzed<//>
-      <${Pill} online=${verdicts.direct > 0}>
-        ● ${verdicts.direct} direct play
-      <//>
-      ${
-        verdicts.caution
-          ? html`<${Pill} warn>● ${verdicts.caution} check device<//>`
-          : null
-      }
-      ${
-        verdicts.risky
-          ? html`<${Pill} warn>● ${verdicts.risky} may not play<//>`
-          : null
-      }
-    </div>
-    <div class="panel" style="margin-top:14px">
+    <section class="panel analysis-panel" id="library-analysis">
+      <div class="row between">
+        <div>
+          <h2>Playback analysis</h2>
+          <p class="muted">
+            Inspect and probe every title so verdicts and Compatible streams are
+            ready before you press play. Runs one title at a time.
+          </p>
+        </div>
+        <span class="inline-note"
+          >${analyzed} of ${entries.length} analyzed</span
+        >
+      </div>
+      <div class="row stacked-sm">
+        <span class="status ok">
+          <i class="dot ok"></i>${verdicts.direct} direct play
+        </span>
+        ${
+          verdicts.caution
+            ? html`<span class="status warn">
+                <i class="dot warn"></i>${verdicts.caution} check device
+              </span>`
+            : null
+        }
+        ${
+          verdicts.risky
+            ? html`<span class="status bad">
+                <i class="dot bad"></i>${verdicts.risky} may not play
+              </span>`
+            : null
+        }
+      </div>
       ${
         running
           ? html`
-              <div class="row" style="justify-content:space-between">
+              <div class="row between">
                 <div>
                   <strong>
                     Analyzing ${status.done + 1} of ${status.total}
                   </strong>
-                  <p class="muted" style="margin:4px 0 0">
-                    ${status.current?.name ?? "…"}
-                  </p>
+                  <p class="muted stacked-xs">${status.current?.name ?? "…"}</p>
                 </div>
                 <button class="secondary" onClick=${cancel}>Cancel</button>
               </div>
-              <div class="hud-bar" style="margin-top:12px;height:6px">
-                <span style=${"width:" + percent + "%"}></span>
+              <div class="progress stacked-sm">
+                <span style=${"transform:scaleX(" + percent / 100 + ")"}></span>
               </div>
             `
           : html`
@@ -123,7 +129,7 @@ function AnalysisSection() {
               </div>
               ${
                 status?.finishedAt
-                  ? html`<p class="muted" style="margin-top:10px">
+                  ? html`<p class="muted stacked-sm">
                       Last run ${status.cancelled ? "cancelled" : "finished"}:
                       ${status.done}
                       analyzed${
@@ -138,7 +144,7 @@ function AnalysisSection() {
       }
       ${
         status?.failed?.length
-          ? html`<ul class="plain-list" style="margin-top:10px">
+          ? html`<ul class="plain-list stacked-sm">
               ${status.failed
                 .slice(0, 8)
                 .map(
@@ -150,56 +156,6 @@ function AnalysisSection() {
             </ul>`
           : null
       }
-    </div>
-  `;
-}
-
-const SECTIONS = [
-  ["health", "Health", HealthSection],
-  ["analysis", "Analysis", AnalysisSection],
-  ["storage", "Storage", StorageSection],
-  ["devices", "Devices", DevicesSection],
-  ["repair", "Stream repair", RepairSection],
-];
-
-function requestedSection() {
-  return /^#\/system\/([a-z]+)/.exec(location.hash)?.[1];
-}
-
-export function SystemView() {
-  useEffect(() => {
-    const scrollToSection = () => {
-      const section = requestedSection();
-      if (!section) return;
-      document
-        .querySelector("#system-" + section)
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
-    scrollToSection();
-    addEventListener("hashchange", scrollToSection);
-    return () => removeEventListener("hashchange", scrollToSection);
-  }, []);
-  return html`
-    <${Shell} title="System">
-      <p class="muted">
-        Everything running behind your library — services, storage, devices, and
-        repair sessions.
-      </p>
-      <nav class="section-chips">
-        ${SECTIONS.map(
-          ([key, label]) => html`
-            <a class="chip" href=${"#/system/" + key}>${label}</a>
-          `,
-        )}
-      </nav>
-      ${SECTIONS.map(
-        ([key, label, Section]) => html`
-          <section class="system-section" id=${"system-" + key} key=${key}>
-            <h2 class="section-title">${label}</h2>
-            <${Section} />
-          </section>
-        `,
-      )}
-    <//>
+    </section>
   `;
 }

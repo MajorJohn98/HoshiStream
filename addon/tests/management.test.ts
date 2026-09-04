@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore plain browser ES module shared with the management UI
 import { classifyLibraryImports } from "../assets/manage/classify-imports.js";
-import { managementHtml } from "../src/management.js";
+import { managementHtml } from "../src/management.ts";
 
 const asset = (name: string) =>
   readFile(new URL(`../assets/manage/${name}`, import.meta.url), "utf8");
@@ -32,13 +32,31 @@ describe("management assets", () => {
     const appJs = await asset("app.js");
     expect(appJs).toContain('from "./vendor/preact-htm.js"');
     expect(appJs).toContain('import { LibraryView } from "./views/library.js"');
-    expect(appJs).toContain('import { AddView } from "./views/add.js"');
-    expect(appJs).toContain('import { SystemView } from "./views/system.js"');
+    expect(appJs).toContain(
+      'import { AddSheet, openAdd } from "./views/add.js"',
+    );
+    // Add Media is a modal, not a sidebar destination.
+    expect(appJs).not.toContain('"Add Media"');
+    expect(appJs).toContain('if (name === "add")');
+    expect(appJs).toContain('import { StatusView } from "./views/status.js"');
+    expect(appJs).toContain(
+      'import { ActivityView } from "./views/activity.js"',
+    );
+    expect(appJs).toContain('import { StorageView } from "./views/storage.js"');
+    expect(appJs).toContain('import { TagsView } from "./views/tags.js"');
+    expect(appJs).toContain('["tags", "⌗", "Tags"]');
+    expect(appJs).not.toContain("views/system.js");
     expect(appJs).toContain('import { DetailSheet } from "./views/detail.js"');
     expect(appJs).toContain("startActivityPolling");
-    // Old bookmarks land on their merged System section.
-    expect(appJs).toContain('status: "system/health"');
-    expect(appJs).toContain('storage: "system/storage"');
+    // Bookmarks and HUD links from the merged System page land on the split
+    // pages; analysis now lives on the Library page.
+    expect(appJs).toContain('"system/health": "status"');
+    expect(appJs).toContain('"system/devices": "activity"');
+    expect(appJs).toContain('"system/repair": "activity/repair"');
+    expect(appJs).toContain('"system/storage": "storage"');
+    expect(appJs).toContain('"system/analysis": "library/analysis"');
+    expect(appJs).not.toContain('"#/system');
+    expect(appJs).toContain('href="#/activity/repair"');
     expect(appJs).toContain("hashchange");
     expect(appJs).not.toContain("ACCESS_TOKEN");
   });
@@ -85,14 +103,17 @@ describe("management assets", () => {
     );
   });
 
-  it("add view uploads torrents and media through the API", async () => {
+  it("add modal uploads torrents and media through the API", async () => {
     const addJs = await asset("views/add.js");
+    expect(addJs).toContain("export function AddSheet");
+    expect(addJs).toContain('class="modal-backdrop add-backdrop"');
+    expect(addJs).toContain('if (e.key === "Escape") closeAdd()');
     expect(addJs).toContain("/api/torrent-upload");
     expect(addJs).toContain("/api/upload?batch=");
     expect(addJs).toContain("webkitdirectory");
   });
 
-  it("add view offers Finder linking only when the picker is available", async () => {
+  it("add modal offers Finder linking only when the picker is available", async () => {
     const addJs = await asset("views/add.js");
     expect(addJs).toContain("status.nativePicker");
     expect(addJs).toContain("Choose with Finder");
@@ -105,14 +126,15 @@ describe("management assets", () => {
     expect(detailJs).toContain('method: "PATCH"');
     expect(detailJs).toContain("Files & episode mapping");
     expect(detailJs).toContain("Test playback");
-    expect(detailJs).toContain("Playback analysis");
+    expect(detailJs).toContain("Refresh analysis");
+    expect(detailJs).toContain('class="kv');
     expect(detailJs).toContain("Recommended speed");
     expect(detailJs).toContain("Likely to direct play");
     expect(detailJs).toContain("Inspecting files…");
     expect(detailJs).toContain("Analyzing playback…");
     expect(detailJs).toContain('technical ? "?probe=true" : ""');
     expect(detailJs).toContain('<textarea name="magnetUri" required>');
-    expect(detailJs).toContain("visible only on the tokenized management page");
+    expect(detailJs).toContain("visible only on this tokenized page");
     expect(detailJs).toContain('role="dialog"');
   });
 
@@ -142,19 +164,63 @@ describe("management assets", () => {
     expect(statusJs).toContain("Kept awake automatically during playback");
     expect(statusJs).toContain("Run caffeinate or keep the Mac awake");
     expect(statusJs).not.toContain('"diagnostics"');
-    const systemJs = await asset("views/system.js");
-    expect(systemJs).toContain("HealthSection");
-    expect(systemJs).toContain("StorageSection");
-    expect(systemJs).toContain("DevicesSection");
-    expect(systemJs).toContain("RepairSection");
-    expect(systemJs).toContain("#/system/");
+    expect(statusJs).toContain("export function StatusView");
+  });
+
+  it("activity page combines devices and stream repair", async () => {
+    const activityJs = await asset("views/activity.js");
+    expect(activityJs).toContain("export function ActivityView");
+    expect(activityJs).toContain("DevicesSection");
+    expect(activityJs).toContain("RepairSection");
+    expect(activityJs).toContain("#activity-repair");
+    expect(await asset("views/sessions.js")).toContain('id="activity-repair"');
+    const storageJs = await asset("views/storage.js");
+    expect(storageJs).toContain("export function StorageView");
+    expect(storageJs).toContain("StorageSection");
+  });
+
+  it("library filters by tags and cards show them", async () => {
+    const libraryJs = await asset("views/library.js");
+    expect(libraryJs).toContain("hasTags(e, tagFilter)");
+    expect(libraryJs).toContain("tag-filter");
+    expect(libraryJs).toContain("card-tags");
+    expect(libraryJs).toContain("#\\/library\\/tag\\/");
+    const storeJs = await asset("store.js");
+    expect(storeJs).toContain('api("tags")');
+    expect(storeJs).toContain("tagFilter: []");
+  });
+
+  it("tags page manages the registry and entry forms use the picker", async () => {
+    const tagsJs = await asset("views/tags.js");
+    expect(tagsJs).toContain("export function TagsView");
+    expect(tagsJs).toContain('method: "PATCH"');
+    expect(tagsJs).toContain('method: "DELETE"');
+    expect(tagsJs).toContain("which will lose it");
+    const pickerJs = await asset("components/tag-picker.js");
+    expect(pickerJs).toContain("export function TagPicker");
+    expect(pickerJs).toContain("New tag…");
+    expect(await asset("views/detail.js")).toContain("<${TagPicker}");
+    expect(await asset("views/add.js")).toContain("<${TagPicker}");
+  });
+
+  it("library page hosts playback analysis behind an Analyze button", async () => {
+    const libraryJs = await asset("views/library.js");
+    expect(libraryJs).toContain('from "./analysis.js"');
+    expect(libraryJs).toContain("◌ Analyze");
+    expect(libraryJs).toContain("#\\/library\\/analysis");
+    const analysisJs = await asset("views/analysis.js");
+    expect(analysisJs).toContain("export function AnalysisPanel");
+    expect(analysisJs).toContain('api("analysis")');
+    expect(analysisJs).toContain('method: "DELETE"');
+    expect(analysisJs).toContain("Re-analyze everything");
   });
 
   it("status view measures speed and polls resource usage", async () => {
     const statusJs = await asset("views/status.js");
     expect(statusJs).toContain('api("speedtest", { method: "POST" })');
     expect(statusJs).toContain('api("resources")');
-    expect(statusJs).toContain("Resource usage");
+    expect(statusJs).toContain('id="status-resources"');
+    expect(statusJs).toContain('class="rows"');
     expect(statusJs).toContain("setInterval(poll, 5000)");
     expect(statusJs).toContain("Torrent cache on disk");
   });

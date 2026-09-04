@@ -10,11 +10,17 @@ export const state = {
   status: {},
   selected: null,
   tab: "overview",
+  // True while the Add Media modal is open.
+  adding: false,
   inspection: null,
   inspectionError: "",
   source: "torrent",
   query: "",
   filter: "all",
+  // Library tag filter: entries must carry every selected tag.
+  tagFilter: [],
+  // Registry from GET /api/tags: [{ name, count }].
+  tags: [],
   loaded: false,
   loadError: "",
   // Live activity, refreshed by startActivityPolling().
@@ -45,8 +51,17 @@ export function useStore() {
 }
 
 export async function load() {
-  const [entries, status] = await Promise.all([api("library"), api("status")]);
-  setState({ entries, status, loaded: true, loadError: "" });
+  const [entries, status, tags] = await Promise.all([
+    api("library"),
+    api("status"),
+    api("tags").catch(() => ({ tags: state.tags })),
+  ]);
+  setState({ entries, status, tags: tags.tags, loaded: true, loadError: "" });
+}
+
+export async function loadTags() {
+  const { tags } = await api("tags");
+  setState({ tags });
 }
 
 function poller(intervalMs, tick) {

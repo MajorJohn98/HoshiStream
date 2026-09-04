@@ -3,6 +3,7 @@
 import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { api, fmt, notify, token } from "../api.js";
 import { setState, useStore, load } from "../store.js";
+import { TagPicker } from "../components/tag-picker.js";
 
 function agoLabel(iso) {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
@@ -91,22 +92,30 @@ function InspectionPrompt({ state, title, description, technical }) {
 
 function OverviewTab({ state }) {
   const entry = state.selected;
+  const [tags, setTags] = useState(entry.tags ?? []);
+  useEffect(() => setTags(entry.tags ?? []), [entry.id]);
   const onSubmit = async (e) => {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(e.target));
     ["poster", "background", "description"].forEach((k) => {
       if (!d[k]) d[k] = null;
     });
+    d.tags = tags.length ? tags : null;
     try {
       setState({ selected: await patch(state, d) });
       notify("Changes saved");
+      // Tags may have been created inline; refresh the grid and registry.
+      void load();
     } catch (error) {
       notify(error.message);
     }
   };
+  // Uncontrolled fields use defaultValue: the sheet re-renders on every
+  // activity poll, and preact re-syncs a `value` prop to the DOM each time,
+  // which would wipe whatever the user is typing.
   return html`
     <form class="panel form-grid" key=${entry.id} onSubmit=${onSubmit}>
-      <label>Title<input name="name" value=${entry.name} /></label>
+      <label> Title<input name="name" defaultValue=${entry.name} /> </label>
       <label>
         Type
         <select name="type">
@@ -123,12 +132,21 @@ function OverviewTab({ state }) {
         <textarea name="description">${entry.description || ""}</textarea>
       </label>
       <label>
-        Poster URL<input name="poster" type="url" value=${entry.poster || ""} />
+        Poster URL
+        <input name="poster" type="url" defaultValue=${entry.poster || ""} />
       </label>
       <label>
         Background URL
-        <input name="background" type="url" value=${entry.background || ""} />
+        <input
+          name="background"
+          type="url"
+          defaultValue=${entry.background || ""}
+        />
       </label>
+      <div class="span2">
+        <span class="field-label">Tags</span>
+        <${TagPicker} value=${tags} onChange=${setTags} />
+      </div>
       ${
         entry.magnetUri
           ? html`<label class="span2">
@@ -175,8 +193,8 @@ function ExtraSourcesPanel({ state }) {
     }
   };
   return html`
-    <div style="margin-top:16px">
-      <h3>Additional torrents</h3>
+    <div class="stacked">
+      <span class="field-label">Additional torrents</span>
       <p class="muted">
         Merged into this series' episode list. Season applies to files whose
         names carry no SxxEyy numbering; on episode conflicts the newest source
@@ -184,8 +202,8 @@ function ExtraSourcesPanel({ state }) {
       </p>
       ${extras.map(
         (extra, index) => html`
-          <div class="picker-row" style="margin-bottom:8px">
-            <span class="muted" style="flex:1">
+          <div class="picker-row repeater-row">
+            <span class="muted grow">
               ${
                 extra.magnetUri
                   ? shortMagnet(extra.magnetUri)
@@ -209,13 +227,13 @@ function ExtraSourcesPanel({ state }) {
       )}
       <div class="picker-row">
         <input
-          style="flex:1"
+          class="grow"
           placeholder="magnet:?xt=urn:btih:…"
           value=${magnet}
           onInput=${(e) => setMagnet(e.target.value)}
         />
         <input
-          style="width:90px"
+          class="input-narrow"
           type="number"
           min="0"
           placeholder="Season"
@@ -266,76 +284,70 @@ function SourceTab({ state }) {
       setRelinking(false);
     }
   };
+  const kind = entry.magnetUri
+    ? "Authorized magnet link"
+    : entry.localFolderPath
+      ? "Linked series folder"
+      : entry.localFilePath
+        ? "Linked local file"
+        : ".torrent file";
   return html`
-    <div class="layout">
-      <div class="panel">
-        <h2>Source</h2>
-        <p class="muted">
-          ${
-            entry.magnetUri
-              ? "Authorized magnet link"
-              : entry.localFolderPath
-                ? "Linked series folder"
-                : entry.localFilePath
-                  ? "Linked local file"
-                  : ".torrent file"
-          }
-        </p>
-        <div class="metric">
-          <span class="muted">Location</span>
-          <strong style="font-size:14px">
-            ${path || "Editable on the Overview tab"}
-          </strong>
+    <div>
+      <dl class="kv">
+        <div>
+          <dt>Kind</dt>
+          <dd>${kind}</dd>
+        </div>
+        <div>
+          <dt>Location</dt>
+          <dd>${path || "Editable in Details"}</dd>
         </div>
         ${
           cache
-            ? html`<div class="metric" style="margin-top:12px">
-                <span class="muted">Last inspected</span>
-                <strong style="font-size:14px">
+            ? html`<div>
+                <dt>Last inspected</dt>
+                <dd>
                   ${agoLabel(cache.inspectedAt)} · ${cache.selectedFiles.length}
                   ${" file" + (cache.selectedFiles.length === 1 ? "" : "s")}
                   ${" selected"}
-                </strong>
+                </dd>
               </div>`
             : null
         }
+      </dl>
+      ${
+        state.inspectionError
+          ? html`<p class="danger">${state.inspectionError}</p>`
+          : null
+      }
+      <div class="actions">
+        <button class="primary" disabled=${busy} onClick=${() => run(false)}>
+          ${busy ? "Inspecting files…" : "Inspect again"}
+        </button>
         ${
-          state.inspectionError
-            ? html`<p class="danger">${state.inspectionError}</p>`
-            : null
-        }
-        <div class="actions">
-          <button class="primary" disabled=${busy} onClick=${() => run(false)}>
-            ${busy ? "Inspecting files…" : "Inspect again"}
-          </button>
-          ${
-            relinkable
-              ? html`<button
-                  class="secondary"
-                  disabled=${relinking}
-                  onClick=${relink}
-                >
-                  ${relinking ? "Waiting for Finder…" : "Relink in Finder"}
-                </button>`
-              : null
-          }
-        </div>
-        ${
-          entry.type === "series" &&
-          (entry.magnetUri || entry.torrentFilePath) &&
-          !entry.localFilePath &&
-          !entry.localFolderPath
-            ? html`<${ExtraSourcesPanel} state=${state} />`
+          relinkable
+            ? html`<button
+                class="secondary"
+                disabled=${relinking}
+                onClick=${relink}
+              >
+                ${relinking ? "Waiting for Finder…" : "Relink in Finder"}
+              </button>`
             : null
         }
       </div>
-      <aside class="panel">
-        <h3>Privacy</h3>
-        <p class="muted">
-          Complete magnet URIs are visible only on the tokenized management page
-          and are never written to logs.
-        </p>
-      </aside>
+      <p class="inline-note stacked-sm">
+        Complete magnet URIs are visible only on this tokenized page and are
+        never written to logs.
+      </p>
+      ${
+        entry.type === "series" &&
+        (entry.magnetUri || entry.torrentFilePath) &&
+        !entry.localFilePath &&
+        !entry.localFolderPath
+          ? html`<${ExtraSourcesPanel} state=${state} />`
+          : null
+      }
     </div>
   `;
 }
@@ -392,7 +404,7 @@ function CachedFilesTable({ state, cache }) {
           )}
         </tbody>
       </table>
-      <p class="muted" style="margin-bottom:0">
+      <p class="muted tablenote">
         Inspect again to change which files are used or remap episodes.
       </p>
     </div>
@@ -469,7 +481,7 @@ function MappingTable({ state }) {
                     class="season"
                     type="number"
                     min="1"
-                    value=${o?.season || s?.season || 1}
+                    defaultValue=${o?.season || s?.season || 1}
                   />
                 </td>
                 <td>
@@ -477,7 +489,7 @@ function MappingTable({ state }) {
                     class="episode"
                     type="number"
                     min="1"
-                    value=${o?.episode || s?.episode || i + 1}
+                    defaultValue=${o?.episode || s?.episode || i + 1}
                   />
                 </td>
               </tr>
@@ -485,7 +497,7 @@ function MappingTable({ state }) {
           })}
         </tbody>
       </table>
-      <div class="row" style="margin-top:18px">
+      <div class="row stacked">
         <span></span>
         <button class="primary" disabled=${busy} onClick=${saveMap}>
           Save mapping
@@ -596,67 +608,66 @@ function PlaybackTab({ state }) {
     ],
     ["Selected files", state.inspection.selectedFiles.length],
   ];
+  const tone = t.error
+    ? "warn"
+    : dp?.compatibility
+      ? VERDICT_TONE[dp.compatibility]
+      : ready
+        ? "ok"
+        : needed
+          ? "warn"
+          : "idle";
   return html`
-    <div class="layout">
-      <div>
-        <div class="panel">
-          <div class="head">
-            <div>
-              <h2>Playback analysis</h2>
-              <p class="muted">${f?.path || "No selected file"}</p>
-            </div>
-            <button
-              class="secondary"
-              disabled=${busy}
-              onClick=${() => run(true)}
-            >
-              ${busy ? "Analyzing playback…" : "Refresh analysis"}
-            </button>
-          </div>
-          ${t.error ? html`<p class="danger">${t.error}</p>` : null}
-          <div class="metrics">
-            ${metrics.map(
-              ([label, value]) => html`
-                <div class="metric">
-                  <span class="muted">${label}</span>
-                  <strong>${value}</strong>
-                </div>
-              `,
-            )}
-          </div>
-          <div class="actions">
-            <button
-              class="primary"
-              onClick=${() => goWatch(state.selected.id, f?.id)}
-            >
-              ▶ Play this file
-            </button>
-            <button class="secondary" onClick=${() => testPlayback(state)}>
-              Test playback
-            </button>
-          </div>
-        </div>
-        <div class="panel route" style="margin-top:18px">
-          <span>HoshiStream</span>→<span>
-            ${
-              state.selected.localFilePath || state.selected.localFolderPath
-                ? "Local file"
-                : "TorrServer"
-            } </span
-          >→<span>Player</span>
-        </div>
-      </div>
-      <aside class="panel">
-        <h3>${verdictTitle(t, dp, ready, needed)}</h3>
+    <div>
+      <div class="verdict">
+        <span class="status ${tone}">
+          <i class="dot ${tone}"></i>${verdictTitle(t, dp, ready, needed)}
+        </span>
         ${verdictBody(t, dp, ready, needed)}
-        <p class="muted">
+        <p class="inline-note">
+          ${f?.path || "No selected file"} · HoshiStream →
+          ${
+            state.selected.localFilePath || state.selected.localFolderPath
+              ? "Local file"
+              : "TorrServer"
+          }
+          → Player
+        </p>
+      </div>
+      ${t.error ? html`<p class="danger">${t.error}</p>` : null}
+      <dl class="kv stacked-sm">
+        ${metrics.map(
+          ([label, value]) => html`
+            <div key=${label}>
+              <dt>${label}</dt>
+              <dd>${value}</dd>
+            </div>
+          `,
+        )}
+      </dl>
+      <div class="actions">
+        <button
+          class="primary"
+          onClick=${() => goWatch(state.selected.id, f?.id)}
+        >
+          ▶ Play this file
+        </button>
+        <button class="secondary" onClick=${() => testPlayback(state)}>
+          Test playback
+        </button>
+        <button class="secondary" disabled=${busy} onClick=${() => run(true)}>
+          ${busy ? "Analyzing playback…" : "Refresh analysis"}
+        </button>
+      </div>
+      <div class="stacked-sm">
+        <p class="inline-note">
           Direct play needs the player to support the listed codecs. When stream
           repair is enabled, incompatible entries also get a "Compatible" stream
           in Stremio.
         </p>
         ${
           state.status.transcode?.enabled
-            ? html`<label class="picker-row" style="margin-top:8px">
+            ? html`<label class="check stacked-xs">
                 <input
                   type="checkbox"
                   checked=${Boolean(state.selected.forceTranscode)}
@@ -681,7 +692,7 @@ function PlaybackTab({ state }) {
               </label>`
             : null
         }
-      </aside>
+      </div>
     </div>
   `;
 }
@@ -784,8 +795,7 @@ function StorageTab({ state }) {
   );
 
   if (!diskCopy) {
-    return html`<div class="panel">
-      <h2>Keep on disk</h2>
+    return html`<div>
       <p class="muted">
         Copy this entry to a storage volume. When the drive is connected,
         playback streams from disk; when it is not, the torrent takes over
@@ -799,7 +809,7 @@ function StorageTab({ state }) {
                 No storage registered yet — add a drive or folder on the Storage
                 page first.
               </p>`
-            : html`<div class="row" style="gap:8px;align-items:center">
+            : html`<div class="row tight">
                 <select
                   value=${volumeId}
                   onChange=${(event) => setVolumeId(event.target.value)}
@@ -864,10 +874,21 @@ function StorageTab({ state }) {
     }
     setPicked(next);
   };
-  return html`<div class="panel">
-    <h2>Keep on disk</h2>
-    <div class="statusbar">
-      <span class="badge">
+  const allDone = complete.length === included.length;
+  const attention = troubled.some((file) => file.state === "invalid");
+  return html`<div>
+    <div class="row">
+      <span class="status ${attention ? "warn" : allDone ? "ok" : "idle"}">
+        <i class="dot ${attention ? "warn" : allDone ? "ok" : "idle"}"></i>
+        ${
+          attention
+            ? "Needs attention"
+            : allDone
+              ? "On disk"
+              : complete.length + " of " + included.length + " files on disk"
+        }
+      </span>
+      <span class="inline-note">
         ${
           volume
             ? volume.label +
@@ -875,23 +896,11 @@ function StorageTab({ state }) {
             : "Volume " + diskCopy.volumeId.slice(0, 8)
         }
       </span>
-      <span class="badge">
-        ${
-          complete.length === included.length
-            ? "On disk ✓"
-            : complete.length + " of " + included.length + " files on disk"
-        }
-      </span>
-      ${
-        troubled.some((file) => file.state === "invalid")
-          ? html`<span class="badge">Needs attention</span>`
-          : null
-      }
     </div>
     ${
       entry.type === "series" && files.length > 1
-        ? html`<div style="margin-top:12px">
-            <label style="display:flex;gap:6px;align-items:center">
+        ? html`<div class="stacked-sm">
+            <label class="check">
               <input
                 type="checkbox"
                 checked=${picking}
@@ -904,7 +913,7 @@ function StorageTab({ state }) {
                 ? html`
                     ${
                       seasons.length > 1
-                        ? html`<div class="row" style="gap:6px;margin-top:8px">
+                        ? html`<div class="row tight stacked-xs">
                             ${seasons.map(
                               (season) =>
                                 html`<button
@@ -917,13 +926,11 @@ function StorageTab({ state }) {
                           </div>`
                         : null
                     }
-                    <ul class="plain-list" style="margin-top:8px">
+                    <ul class="plain-list stacked-xs">
                       ${files.map(
                         (file) =>
                           html`<li>
-                            <label
-                              style="display:flex;gap:6px;align-items:center"
-                            >
+                            <label class="check">
                               <input
                                 type="checkbox"
                                 checked=${picked.has(file.sourceKey)}
@@ -972,7 +979,7 @@ function StorageTab({ state }) {
                   : null
             }
           </div>`
-        : html`<ul class="plain-list" style="margin-top:12px">
+        : html`<ul class="plain-list stacked-sm">
             ${included.map(
               (file) =>
                 html`<li>
@@ -983,7 +990,7 @@ function StorageTab({ state }) {
             )}
           </ul>`
     }
-    <div class="row" style="gap:8px;margin-top:14px">
+    <div class="row tight stacked">
       ${
         troubled.length
           ? html`<button class="secondary" disabled=${busy} onClick=${retry}>
@@ -1036,6 +1043,7 @@ const SECTIONS = [
   ["playback", "Playback check", PlaybackTab],
 ];
 
+const VERDICT_TONE = { direct: "ok", caution: "warn", risky: "bad" };
 const VERDICTS = {
   direct: ["Direct play", "direct"],
   caution: ["Check device", "caution"],
@@ -1101,7 +1109,15 @@ export function DetailSheet() {
           ref=${closeButton}
           onClick=${closeDetail}
         >
-          ×
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path
+              d="M3.5 3.5l9 9M12.5 3.5l-9 9"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+          </svg>
         </button>
         <header
           class="sheet-hero"
@@ -1122,11 +1138,9 @@ export function DetailSheet() {
               }
               <div>
                 <h1>${entry.name}</h1>
-                <div class="hero-meta">
-                  <span class="badge">
-                    ${entry.type === "series" ? "Series" : "Movie"}
-                  </span>
-                  <span class="badge">
+                <div class="meta-line">
+                  <span>${entry.type === "series" ? "Series" : "Movie"}</span>
+                  <span>
                     ${
                       entry.localFilePath || entry.localFolderPath
                         ? "Local"
@@ -1134,13 +1148,25 @@ export function DetailSheet() {
                     }
                   </span>
                   ${
+                    entry.tags?.length
+                      ? html`<span>${entry.tags.slice(0, 3).join(", ")}</span>`
+                      : null
+                  }
+                  ${
                     verdict
-                      ? html`<span class="badge ${verdict[1]}">
-                          ● ${verdict[0]}
+                      ? html`<span class="status ${VERDICT_TONE[verdict[1]]}">
+                          <i class="dot ${VERDICT_TONE[verdict[1]]}"></i>
+                          ${verdict[0]}
                         </span>`
                       : null
                   }
-                  ${disk ? html`<span class="badge disk">${disk}</span>` : null}
+                  ${
+                    disk
+                      ? html`<span class="status ok">
+                          <i class="dot ok"></i>${disk}
+                        </span>`
+                      : null
+                  }
                 </div>
                 <div class="hero-cta">
                   <button

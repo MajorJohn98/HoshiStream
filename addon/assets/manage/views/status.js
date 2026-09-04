@@ -1,9 +1,16 @@
-// Health section for the System page: service health, library stats,
-// resource usage, and troubleshooting.
+// Status page: service health, library stats, connection speed, resource
+// usage, and troubleshooting.
 import { html, useEffect, useState } from "../vendor/preact-htm.js";
 import { api, fmt, notify } from "../api.js";
 import { useStore, load } from "../store.js";
-import { Pill } from "../components/shell.js";
+import { Shell } from "../components/shell.js";
+
+function uptimeLabel(seconds) {
+  if (!seconds) return "—";
+  if (seconds < 3600) return Math.round(seconds / 60) + " min";
+  if (seconds < 86400) return (seconds / 3600).toFixed(1) + " h";
+  return Math.round(seconds / 86400) + " d";
+}
 
 function agoLabel(iso) {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
@@ -12,19 +19,16 @@ function agoLabel(iso) {
   return Math.round(minutes / 60) + " h ago";
 }
 
-function ResourceCell({ label, stats }) {
-  return html`
-    <div class="metric">
-      <span class="muted">${label}</span>
-      <strong>
-        ${
-          stats && stats.processes > 0
-            ? stats.cpuPercent + "% CPU · " + fmt(stats.rssBytes) + " RAM"
-            : "Not running"
-        }
-      </strong>
-    </div>
-  `;
+function Status({ tone, children }) {
+  return html`<span class="status ${tone}"
+    ><i class="dot ${tone}"></i>${children}</span
+  >`;
+}
+
+function procLabel(stats) {
+  return stats && stats.processes > 0
+    ? stats.cpuPercent + "% CPU · " + fmt(stats.rssBytes)
+    : "Not running";
 }
 
 function Resources() {
@@ -47,58 +51,64 @@ function Resources() {
       clearInterval(timer);
     };
   }, []);
-  if (!report)
-    return html`
-      <div class="panel" style="margin-top:18px">
-        <h2>Resource usage</h2>
-        <p class="muted">Measuring…</p>
-      </div>
-    `;
-  const disk = report.disk;
-  const totalDisk =
-    disk.torrentCacheBytes + disk.transcodeBytes + disk.uploadsBytes;
+  const disk = report?.disk;
+  const totalDisk = disk
+    ? disk.torrentCacheBytes + disk.transcodeBytes + disk.uploadsBytes
+    : 0;
   return html`
-    <div class="panel" style="margin-top:18px">
-      <h2>Resource usage</h2>
+    <section class="page-section" id="status-resources">
+      <div class="section-head">
+        <h2 class="section-title">Resources</h2>
+        <span class="inline-note">
+          ${report ? "Sampled every 5 s" : "Measuring…"}
+        </span>
+      </div>
       ${
-        report.processes.available
-          ? html`<div class="metrics">
-              <${ResourceCell}
-                label="Add-on server"
-                stats=${report.processes.addon}
-              />
-              <${ResourceCell}
-                label="TorrServer"
-                stats=${report.processes.torrServer}
-              />
-              <${ResourceCell}
-                label="ffmpeg repair sessions"
-                stats=${report.processes.ffmpeg}
-              />
-            </div>`
-          : html`<p class="muted">
+        report && !report.processes.available
+          ? html`<p class="muted section-note">
               Process statistics are not available on this platform.
             </p>`
+          : null
       }
-      <div class="metrics">
-        <div class="metric">
-          <span class="muted">Torrent cache on disk</span>
-          <strong>${fmt(disk.torrentCacheBytes)}</strong>
+      <div class="stats">
+        <div class="stat">
+          <span class="label">Add-on server</span>
+          <span class="value">
+            ${report ? procLabel(report.processes.addon) : "—"}
+          </span>
         </div>
-        <div class="metric">
-          <span class="muted">Stream-repair sessions</span>
-          <strong>${fmt(disk.transcodeBytes)}</strong>
+        <div class="stat">
+          <span class="label">TorrServer</span>
+          <span class="value">
+            ${report ? procLabel(report.processes.torrServer) : "—"}
+          </span>
         </div>
-        <div class="metric">
-          <span class="muted">Managed uploads</span>
-          <strong>${fmt(disk.uploadsBytes)}</strong>
-        </div>
-        <div class="metric">
-          <span class="muted">Total cache</span>
-          <strong>${fmt(totalDisk)}</strong>
+        <div class="stat">
+          <span class="label">ffmpeg repair</span>
+          <span class="value">
+            ${report ? procLabel(report.processes.ffmpeg) : "—"}
+          </span>
         </div>
       </div>
-    </div>
+      <dl class="kv stacked-sm">
+        <div>
+          <dt>Torrent cache on disk</dt>
+          <dd>${disk ? fmt(disk.torrentCacheBytes) : "—"}</dd>
+        </div>
+        <div>
+          <dt>Stream-repair sessions</dt>
+          <dd>${disk ? fmt(disk.transcodeBytes) : "—"}</dd>
+        </div>
+        <div>
+          <dt>Managed uploads</dt>
+          <dd>${disk ? fmt(disk.uploadsBytes) : "—"}</dd>
+        </div>
+        <div>
+          <dt>Total cache</dt>
+          <dd>${disk ? fmt(totalDisk) : "—"}</dd>
+        </div>
+      </dl>
+    </section>
   `;
 }
 
@@ -108,6 +118,7 @@ export function HealthSection() {
   const ts = status.torrServer?.online;
   const native = Boolean(status.nativePicker);
   const streaming = Boolean(status.streamingActive);
+  const repair = status.transcode;
   const runSpeedTest = async () => {
     setTesting(true);
     try {
@@ -120,103 +131,146 @@ export function HealthSection() {
       setTesting(false);
     }
   };
+  const checks = [
+    ["ok", "Port availability", "HoshiStream is reachable"],
+    [
+      ts ? "ok" : "warn",
+      "TorrServer API",
+      ts ? "Connected" : "Unavailable — check that TorrServer is running",
+    ],
+    ["ok", "Library data", "Readable"],
+    native
+      ? ["ok", "Mac sleep", "Kept awake automatically during playback"]
+      : [
+          "warn",
+          "Mac sleep",
+          "Run caffeinate or keep the Mac awake during playback",
+        ],
+  ];
   return html`
-    <div class="statusbar">
-      <${Pill} online=${streaming}>
-        ${streaming ? "● Streaming now" : "○ Idle"}
-      <//>
-      <${Pill}>${native ? "Native macOS app" : "Headless mode"}<//>
-      <${Pill} online=${status.transcode?.enabled}>
-        Stream repair
-        ${
-          status.transcode?.enabled
-            ? "on · " + status.transcode.activeSessions + " active"
-            : "off"
-        }
-      <//>
-      ${
-        status.transcode?.enabled
-          ? html`<${Pill}
-              online=${Boolean(status.transcode.videoEncoder)}
-              warn=${!status.transcode.videoEncoder}
+    <section class="page-section" id="status-services">
+      <div class="section-head">
+        <h2 class="section-title">Services</h2>
+        <${Status} tone=${streaming ? "live" : "idle"}>
+          ${streaming ? "Streaming now" : "Idle"}
+        <//>
+      </div>
+      <ul class="rows">
+        <li class="rowitem">
+          <span class="lead"><i class="dot ok"></i></span>
+          <span class="main">
+            <strong>HoshiStream</strong>
+            <span class="meta">
+              ${native ? "Native macOS app" : "Headless mode"} · up
+              ${uptimeLabel(status.uptimeSeconds)}
+            </span>
+          </span>
+          <span class="trail"><span class="value online">Online</span></span>
+        </li>
+        <li class="rowitem">
+          <span class="lead"><i class="dot ${ts ? "ok" : "bad"}"></i></span>
+          <span class="main">
+            <strong>TorrServer</strong>
+            <span class="meta"
+              >${status.torrServer?.version || "Unavailable"}</span
             >
+          </span>
+          <span class="trail">
+            <span class="value ${ts ? "online" : "warn"}">
+              ${ts ? "Online" : "Offline"}
+            </span>
+          </span>
+        </li>
+        <li class="rowitem">
+          <span class="lead">
+            <i class="dot ${repair?.enabled ? "ok" : "idle"}"></i>
+          </span>
+          <span class="main">
+            <strong>Stream repair</strong>
+            <span class="meta">
               ${
-                status.transcode.videoEncoder
-                  ? "HW video encoder"
-                  : "No HW video encoder"
+                repair?.enabled
+                  ? repair.videoEncoder
+                    ? "Hardware video encoder available"
+                    : "No hardware video encoder — audio and remux only"
+                  : "Set TRANSCODE_ENABLED=true to offer Compatible streams"
               }
-            <//>`
-          : null
-      }
-    </div>
-    <div class="metrics">
-      <div class="panel">
-        <h3>HoshiStream</h3>
-        <${Pill} online>● Online<//>
-        <p class="muted">Uptime ${status.uptimeSeconds} seconds</p>
-      </div>
-      <div class="panel">
-        <h3>TorrServer</h3>
-        <${Pill} online=${ts} warn=${!ts}>● ${ts ? "Online" : "Offline"}<//>
-        <p class="muted">${status.torrServer?.version || "Unavailable"}</p>
-      </div>
-      <div class="panel">
-        <h3>Library</h3>
-        <strong>${status.libraryCount} titles</strong>
-        <p class="muted">Atomic JSON storage</p>
-      </div>
-      <div class="panel">
-        <h3>Connection speed</h3>
-        <strong>${status.homeSpeedMbps} Mbps</strong>
-        <p class="muted">
-          ${
-            status.speed?.source === "measured"
-              ? "Measured " + agoLabel(status.speed.measuredAt)
-              : "Configured fallback — not yet measured"
-          }
-        </p>
-        <button
-          class="secondary"
-          style="margin-top:8px"
-          disabled=${testing}
-          onClick=${runSpeedTest}
-        >
+            </span>
+          </span>
+          <span class="trail">
+            <span class="value ${repair?.enabled ? "online" : "muted"}">
+              ${repair?.enabled ? repair.activeSessions + " active" : "Off"}
+            </span>
+          </span>
+        </li>
+      </ul>
+    </section>
+    <section class="page-section" id="status-overview">
+      <div class="section-head">
+        <h2 class="section-title">Overview</h2>
+        <button class="secondary" disabled=${testing} onClick=${runSpeedTest}>
           ${testing ? "Measuring…" : "Run speed test"}
         </button>
       </div>
-    </div>
-    <${Resources} />
-    <div class="panel" style="margin-top:18px">
-      <h2>Troubleshooting</h2>
-      <div class="metrics">
-        <div class="metric">
-          <span class="online">✓ Port availability</span>
-          <strong>HoshiStream is reachable</strong>
+      <div class="stats">
+        <div class="stat">
+          <span class="label">Library</span>
+          <span class="value">${status.libraryCount} titles</span>
+          <span class="sub">Atomic JSON storage</span>
         </div>
-        <div class="metric">
-          <span class=${ts ? "online" : "warn"}>
-            ${ts ? "✓" : "!"} TorrServer API
+        <div class="stat">
+          <span class="label">Connection speed</span>
+          <span class="value">${status.homeSpeedMbps} Mbps</span>
+          <span class="sub">
+            ${
+              status.speed?.source === "measured"
+                ? "Measured " + agoLabel(status.speed.measuredAt)
+                : "Configured fallback — not yet measured"
+            }
           </span>
-          <strong>${ts ? "Connected" : "Unavailable"}</strong>
         </div>
-        <div class="metric">
-          <span class="online">✓ Library data</span>
-          <strong>Readable</strong>
+        <div class="stat">
+          <span class="label">Uptime</span>
+          <span class="value">${uptimeLabel(status.uptimeSeconds)}</span>
+          <span class="sub">Since the server last started</span>
         </div>
-        ${
-          native
-            ? html`<div class="metric">
-                <span class="online">✓ Mac sleep</span>
-                <strong>Kept awake automatically during playback</strong>
-              </div>`
-            : html`<div class="metric">
-                <span class="warn">! Mac sleep</span>
-                <strong>
-                  Run caffeinate or keep the Mac awake during playback
-                </strong>
-              </div>`
-        }
       </div>
-    </div>
+    </section>
+    <${Resources} />
+    <section class="page-section" id="status-checks">
+      <div class="section-head">
+        <h2 class="section-title">Checks</h2>
+        <span class="inline-note">
+          ${checks.filter(([tone]) => tone === "ok").length} of ${checks.length}
+          passing
+        </span>
+      </div>
+      <ul class="rows">
+        ${checks.map(
+          ([tone, label, detail]) => html`
+            <li class="rowitem" key=${label}>
+              <span class="lead"><i class="dot ${tone}"></i></span>
+              <span class="main">
+                <strong>${label}</strong>
+                <span class="meta wrap">${detail}</span>
+              </span>
+              <span class="trail">
+                <span class="value ${tone === "ok" ? "online" : "warn"}">
+                  ${tone === "ok" ? "OK" : "Check"}
+                </span>
+              </span>
+            </li>
+          `,
+        )}
+      </ul>
+    </section>
+  `;
+}
+
+export function StatusView() {
+  return html`
+    <${Shell} title="Status">
+      <${HealthSection} />
+    <//>
   `;
 }

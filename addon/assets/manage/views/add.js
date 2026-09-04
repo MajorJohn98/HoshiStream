@@ -1,10 +1,19 @@
-// Add Media view: magnet, .torrent, local file, and series folder sources.
-// When the native app is running, local sources can be linked in place with
-// a Finder picker instead of uploading a copy.
-import { html, useState } from "../vendor/preact-htm.js";
+// Add Media modal: magnet, .torrent, local file, and series folder sources.
+// Rendered by App over the current page while state.adding is set. When the
+// native app is running, local sources can be linked in place with a Finder
+// picker instead of uploading a copy.
+import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { api, headers, notify } from "../api.js";
 import { setState, useStore, load } from "../store.js";
-import { Shell } from "../components/shell.js";
+import { TagPicker } from "../components/tag-picker.js";
+
+export function openAdd() {
+  setState({ adding: true });
+}
+
+export function closeAdd() {
+  setState({ adding: false });
+}
 
 async function upload(file, batch, path) {
   const r = await fetch(
@@ -14,8 +23,9 @@ async function upload(file, batch, path) {
   if (!r.ok) throw Error("Upload failed");
 }
 
-async function submit(form, source, picked, extras = []) {
+async function submit(form, source, picked, extras = [], tags = []) {
   const d = Object.fromEntries(new FormData(form));
+  if (tags.length) d.tags = tags;
   if (picked && (source === "local" || source === "folder")) {
     d.nativePathGrant = picked.grant;
     if (source === "folder") d.type = "series";
@@ -81,6 +91,12 @@ const SOURCES = [
   ["local", "▣", "Local file"],
   ["folder", "▱", "Series folder"],
 ];
+const SOURCE_HELP = {
+  torrent: "Paste a magnet link you are authorized to use.",
+  torrentFile: "Upload a .torrent file; metadata is inspected locally.",
+  local: "Link a video on this Mac in place, or upload a copy.",
+  folder: "Link a folder of episodes in place, or upload a copy.",
+};
 
 function SourceField({ source, picked, picking, onPick, pickerReady }) {
   const pickerRow = (label) => html`
@@ -149,7 +165,7 @@ function ExtraTorrents({ extras, setExtras }) {
     );
   return html`
     <div class="span2">
-      <b>Additional torrents</b>
+      <span class="field-label">Additional torrents</span>
       <p class="muted">
         Series only — merge more torrents (season packs or single episodes) into
         one entry. Season applies to files whose names carry no SxxEyy
@@ -157,15 +173,15 @@ function ExtraTorrents({ extras, setExtras }) {
       </p>
       ${extras.map(
         (extra, index) => html`
-          <div class="picker-row" style="margin-bottom:8px">
+          <div class="picker-row repeater-row">
             <input
-              style="flex:1"
+              class="grow"
               placeholder="magnet:?xt=urn:btih:…"
               value=${extra.magnetUri}
               onInput=${(e) => update(index, "magnetUri", e.target.value)}
             />
             <input
-              style="width:90px"
+              class="input-narrow"
               type="number"
               min="0"
               placeholder="Season"
@@ -193,11 +209,22 @@ function ExtraTorrents({ extras, setExtras }) {
   `;
 }
 
-export function AddView() {
-  const { status, source } = useStore();
+export function AddSheet() {
+  const { adding, status, source } = useStore();
   const [picked, setPicked] = useState(null);
   const [picking, setPicking] = useState(false);
   const [extras, setExtras] = useState([]);
+  const [tags, setTags] = useState([]);
+  const closeButton = useRef(null);
+  useEffect(() => {
+    if (!adding) return;
+    closeButton.current?.focus({ preventScroll: true });
+    // Reset transient form state each time the modal opens.
+    setPicked(null);
+    setExtras([]);
+    setTags([]);
+  }, [adding]);
+  if (!adding) return null;
   const pick = async () => {
     setPicking(true);
     try {
@@ -222,81 +249,114 @@ export function AddView() {
         source,
         picked,
         source === "torrent" ? extras : [],
+        tags,
       );
       notify("Added to library");
       await load();
-      location.hash = "#/library";
+      closeAdd();
     } catch (error) {
       notify(error.message);
     }
   };
   return html`
-    <${Shell}
-      title="Add Media"
-      actions=${html`<button
-        class="secondary"
-        onClick=${() => (location.hash = "#/library")}
-      >
-        Back to library
-      </button>`}
+    <div
+      class="modal-backdrop add-backdrop"
+      onClick=${(e) => {
+        if (e.target === e.currentTarget) closeAdd();
+      }}
+      onKeyDown=${(e) => {
+        if (e.key === "Escape") closeAdd();
+      }}
     >
-      <p class="muted">Choose a source you are authorized to use.</p>
-      <div class="source-cards">
-        ${SOURCES.map(
-          ([id, icon, name]) => html`
-            <button
-              class="source-card ${source === id ? "active" : ""}"
-              onClick=${() => {
-                setPicked(null);
-                setState({ source: id });
-              }}
-            >
-              <span>${icon}</span><b>${name}</b>
-              <span class="muted">Keep media private and local</span>
-            </button>
-          `,
-        )}
-      </div>
-      <form
-        class="panel"
-        style="margin-top:18px"
-        key=${source}
-        onSubmit=${onSubmit}
+      <section
+        class="modal add-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add media"
       >
-        <div class="form-grid">
-          <label>Name<input name="name" required /></label>
-          <label>
-            Type
-            <select name="type">
-              <option value="movie">Movie</option>
-              <option value="series" selected=${source === "folder"}>
-                Series
-              </option>
-            </select>
-          </label>
-          <label class="span2"
-            >Poster URL<input name="poster" type="url"
-          /></label>
-          <div class="span2">
-            <${SourceField}
-              source=${source}
-              picked=${picked}
-              picking=${picking}
-              onPick=${pick}
-              pickerReady=${Boolean(status.nativePicker)}
+        <button
+          class="modal-close"
+          aria-label="Close"
+          ref=${closeButton}
+          onClick=${closeAdd}
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path
+              d="M3.5 3.5l9 9M12.5 3.5l-9 9"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
             />
-          </div>
-          ${
-            source === "torrent"
-              ? html`<${ExtraTorrents}
-                  extras=${extras}
-                  setExtras=${setExtras}
-                />`
-              : null
-          }
+          </svg>
+        </button>
+        <div class="head">
+          <div><h1>Add Media</h1></div>
         </div>
-        <button class="primary" style="margin-top:18px">Inspect and add</button>
-      </form>
-    <//>
+        <div class="segmented" role="tablist" aria-label="Source">
+          ${SOURCES.map(
+            ([id, icon, name]) => html`
+              <button
+                type="button"
+                role="tab"
+                aria-selected=${source === id}
+                class=${source === id ? "on" : ""}
+                onClick=${() => {
+                  setPicked(null);
+                  setState({ source: id });
+                }}
+              >
+                <span class="glyph">${icon}</span>${name}
+              </button>
+            `,
+          )}
+        </div>
+        <p class="muted source-help">${SOURCE_HELP[source]}</p>
+        <form class="panel stacked" key=${source} onSubmit=${onSubmit}>
+          <div class="form-grid">
+            <label>Name<input name="name" required /></label>
+            <label>
+              Type
+              <select name="type">
+                <option value="movie">Movie</option>
+                <option value="series" selected=${source === "folder"}>
+                  Series
+                </option>
+              </select>
+            </label>
+            <label class="span2"
+              >Poster URL<input name="poster" type="url"
+            /></label>
+            <div class="span2">
+              <span class="field-label">Tags</span>
+              <${TagPicker} value=${tags} onChange=${setTags} />
+            </div>
+            <div class="span2">
+              <${SourceField}
+                source=${source}
+                picked=${picked}
+                picking=${picking}
+                onPick=${pick}
+                pickerReady=${Boolean(status.nativePicker)}
+              />
+            </div>
+            ${
+              source === "torrent"
+                ? html`<${ExtraTorrents}
+                    extras=${extras}
+                    setExtras=${setExtras}
+                  />`
+                : null
+            }
+          </div>
+          <div class="row stacked">
+            <button class="primary">Inspect and add</button>
+            <button type="button" class="secondary" onClick=${closeAdd}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
   `;
 }

@@ -20,13 +20,15 @@
 - [decisions/0011-mdns-lan-discovery.md](decisions/0011-mdns-lan-discovery.md) — LAN discovery via a dependency-free mDNS responder in the add-on; external rendezvous rejected.
 - [decisions/0012-vercel-pointer-server.md](decisions/0012-vercel-pointer-server.md) — Permanent manifest URL via a self-controlled Vercel pointer server with strictly manual pushes.
 - [decisions/0013-multi-tenant-pointer-server.md](decisions/0013-multi-tenant-pointer-server.md) — Multi-tenant pointer server keyed by token hash with claim-on-first-push auth, Upstash/Blob storage, and open-redirect hardening.
+- [decisions/0014-run-typescript-source-directly.md](decisions/0014-run-typescript-source-directly.md) — Run `addon/src` directly via Node type stripping: `.ts` import specifiers, erasable-only syntax, `--dev` launcher flag; `tsx` rejected.
+- [decisions/0015-keep-json-stores-sqlite-deferred.md](decisions/0015-keep-json-stores-sqlite-deferred.md) — Keep atomic JSON stores; SQLite (`node:sqlite`) deferred with explicit revisit criteria and the inspection-cache split as the first remedy.
 
 ## Guides
 
 - [guides/setup-native-macos.md](guides/setup-native-macos.md) — Build and install the native app, configure `.env`, tune TorrServer, and forward the peer port.
 - [guides/distributing-macos-app.md](guides/distributing-macos-app.md) — Build a `.dmg`, the Gatekeeper quarantine workaround, first-run behavior, and signing limitations.
 - [guides/adding-media.md](guides/adding-media.md) — Add magnets, `.torrent` files, and local media; inspection and viability.
-- [guides/development.md](guides/development.md) — Dev commands, working agreement, and code conventions.
+- [guides/development.md](guides/development.md) — Dev commands, the no-build source-run loop (`npm run dev`, `start-native.sh --dev`), working agreement, and code conventions.
 - [guides/troubleshooting.md](guides/troubleshooting.md) — AirPlay port conflict, LAN reachability, stalls, corrupt library.
 - [guides/remote-access-cloudflare-tunnel.md](guides/remote-access-cloudflare-tunnel.md) — Cloudflare Tunnel setup and LAN-aware stream URLs.
 - [guides/pointer-server-vercel.md](guides/pointer-server-vercel.md) — Deploy the Vercel pointer server for a permanent add-on URL and the manual "Update Remote Pointer" flow.
@@ -54,6 +56,7 @@
 - [plans/2026-09-02-multi-tenant-pointer-and-dashboard-plan.md](plans/2026-09-02-multi-tenant-pointer-and-dashboard-plan.md) — Multi-tenant pointer server (token-keyed, claim-on-first-push), public-release hardening, and the local connected-clients dashboard.
 - [plans/2026-09-02-disk-library-plan.md](plans/2026-09-02-disk-library-plan.md) — Save-to-disk toggle: volume registry for external drives, background archiver, disk-first playback with torrent fallback.
 - [plans/2026-09-03-ui-redesign-plan.md](plans/2026-09-03-ui-redesign-plan.md) — Cinema shelf + live sidebar UI redesign: HUD, merged System page, entry sheet.
+- [plans/2026-09-04-entry-tags-plan.md](plans/2026-09-04-entry-tags-plan.md) — Entry tags: default genre set, tag registry + API, Library filter, Tags page, Stremio genre extra.
 
 ## Changelog
 
@@ -63,6 +66,10 @@
 - [changelog/0.11.0-disk-library.md](changelog/0.11.0-disk-library.md) — Disk library: marker-identified storage volumes, per-episode disk copies, resumable archiver, stable `/media` playback URL with torrent fallback, Storage UI.
 - [changelog/0.12.0-ui-redesign.md](changelog/0.12.0-ui-redesign.md) — Cinema shelf UI: sidebar with live activity HUD, merged System control center, full-screen entry sheet.
 - [changelog/0.12.1-router-split.md](changelog/0.12.1-router-split.md) — Router split into `routes/` modules with an options object; per-range-request library cloning and throttle reads trimmed; TorrServer client releases failed response bodies.
+- [changelog/0.12.2-dev-mode-without-build.md](changelog/0.12.2-dev-mode-without-build.md) — Add-on runs from source under Node type stripping; `--dev` launcher flag, `.ts` specifiers, erasable-only syntax, no `tsc` in the dev loop.
+- [changelog/0.14.0-instrument-ui.md](changelog/0.14.0-instrument-ui.md) — Instrument-panel UI: sections and hairline rows replace nested cards, status dots replace pills and badges, segmented source picker, flattened entry sheet.
+- [changelog/0.13.0-entry-tags.md](changelog/0.13.0-entry-tags.md) — Genre-style entry tags with a dynamic registry: Library tag filter, TagPicker in entry forms, Tags page, Stremio `genre` catalog extra.
+- [changelog/0.12.3-system-page-split.md](changelog/0.12.3-system-page-split.md) — System page split into Status, Activity (devices + stream repair), and Storage; playback analysis moves to a Library toolbar button; Add Media becomes a modal; all old routes redirect.
 - [changelog/0.5.0-tunnel-lan-detection.md](changelog/0.5.0-tunnel-lan-detection.md) — Cloudflare Tunnel support with LAN-aware stream URLs for at-home clients.
 - [changelog/0.7.0-native-only.md](changelog/0.7.0-native-only.md) — Docker removed; native app is the only deployment mode, config retargeted to real paths, TorrServer defaults shipped with the app.
 - [changelog/0.6.0-performance.md](changelog/0.6.0-performance.md) — TorrServer throughput tuning, hot-path caching, larger read buffers, stream prewarming, direct-play detection, a built-in mpv player, and Windows vendoring groundwork.

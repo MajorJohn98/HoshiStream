@@ -1,11 +1,32 @@
 // Library view: grid of titles, search/filter, JSON import/export, and the
 // Stremio catalog refresh flow. The import-review and Stremio modals stay as
 // body-level DOM (outside the preact root), same as the detail modal.
-import { html, useState } from "../vendor/preact-htm.js";
+import { html, useEffect, useState } from "../vendor/preact-htm.js";
 import { api, esc, notify, token } from "../api.js";
 import { state, setState, useStore, load } from "../store.js";
-import { Shell, Pill } from "../components/shell.js";
+import { Shell } from "../components/shell.js";
 import { classifyLibraryImports } from "../classify-imports.js";
+import { AnalysisPanel, unanalyzedCount } from "./analysis.js";
+import { openAdd } from "./add.js";
+
+// #/library/analysis (and the old #/system/analysis bookmark) opens the panel.
+function analysisRequested() {
+  return /^#\/library\/analysis/.test(location.hash);
+}
+
+// #/library/tag/<name> (from the Tags page) selects that tag as the filter.
+function requestedTag() {
+  const match = /^#\/library\/tag\/([^/]+)/.exec(location.hash);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+const tagKey = (name) => name.trim().toLocaleLowerCase();
+
+function hasTags(entry, wanted) {
+  if (!wanted.length) return true;
+  const own = new Set((entry.tags ?? []).map(tagKey));
+  return wanted.every((tag) => own.has(tagKey(tag)));
+}
 
 function exportLibrary() {
   const library = state.entries.map(
@@ -43,7 +64,7 @@ async function reviewImport(file) {
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML =
-    '<section class="modal" role="dialog" aria-modal="true" aria-label="Import library"><button class="modal-close" aria-label="Close">×</button><div class="head"><div><h1>Import library</h1><p class="muted">Choose titles to add. Conflicts are unchecked by default.</p></div><button class="primary" id="confirmImport">Import selected</button></div><div class="panel tablewrap"><table class="files"><thead><tr><th>Import</th><th>Title</th><th>Type</th><th>Conflicts</th></tr></thead><tbody>' +
+    '<section class="modal" role="dialog" aria-modal="true" aria-label="Import library"><button class="modal-close" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button><div class="head"><div><h1>Import library</h1><p class="muted">Choose titles to add. Conflicts are unchecked by default.</p></div><button class="primary" id="confirmImport">Import selected</button></div><div class="panel tablewrap"><table class="files"><thead><tr><th>Import</th><th>Title</th><th>Type</th><th>Conflicts</th></tr></thead><tbody>' +
     candidates
       .map(
         (candidate, index) =>
@@ -113,11 +134,11 @@ function showStremioModal(result) {
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML =
-    '<section class="modal" role="dialog" aria-modal="true" aria-label="Stremio catalog refresh" style="width:min(520px,100%)"><button class="modal-close" aria-label="Close">×</button><h2>Catalog ready for Stremio</h2><div class="metrics"><div class="metric"><span class="muted">Movies</span><strong>' +
+    '<section class="modal narrow" role="dialog" aria-modal="true" aria-label="Stremio catalog refresh"><button class="modal-close" aria-label="Close"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button><h2>Catalog ready for Stremio</h2><div class="stats"><div class="stat"><span class="label">Movies</span><span class="value">' +
     result.movies +
-    '</strong></div><div class="metric"><span class="muted">Series</span><strong>' +
+    '</span></div><div class="stat"><span class="label">Series</span><span class="value">' +
     result.series +
-    '</strong></div></div><p class="muted">Validated just now. Stremio has been opened so it can request the current catalog.</p><div class="row"><button class="secondary" id="copyAddon">Copy add-on URL</button><button class="primary" id="openStremio">Open Stremio</button></div></section>';
+    '</span></div></div><p class="muted stacked-sm">Validated just now. Stremio has been opened so it can request the current catalog.</p><div class="row"><button class="secondary" id="copyAddon">Copy add-on URL</button><button class="primary" id="openStremio">Open Stremio</button></div></section>';
   document.body.append(backdrop);
   const close = () => backdrop.remove();
   const open = () => {
@@ -159,6 +180,7 @@ function openDetail(entry) {
   });
 }
 
+const VERDICT_TONE = { direct: "ok", caution: "warn", risky: "bad" };
 const VERDICT_DOTS = {
   direct: ["Direct play", "v direct"],
   caution: ["Check device", "v caution"],
@@ -217,24 +239,32 @@ function Hero({ entry }) {
             }
           </div>
           <h1>${entry.name}</h1>
-          <div class="hero-meta">
-            ${
-              verdict
-                ? html`<span class="badge ${entry.directPlay.compatibility}">
-                    ● ${verdict[0]}
-                  </span>`
-                : null
-            }
-            <span class="badge">
+          <div class="meta-line">
+            <span>${entry.type === "series" ? "Series" : "Movie"}</span>
+            <span>
               ${
                 entry.localFilePath || entry.localFolderPath
                   ? "Local"
                   : "Torrent"
               }
             </span>
-            <span class="muted">
-              ${entry.type === "series" ? "Series" : "Movie"}
-            </span>
+            ${
+              entry.tags?.length
+                ? html`<span>${entry.tags.slice(0, 3).join(", ")}</span>`
+                : null
+            }
+            ${
+              verdict
+                ? html`<span
+                    class="status ${VERDICT_TONE[entry.directPlay.compatibility]}"
+                  >
+                    <i
+                      class="dot ${VERDICT_TONE[entry.directPlay.compatibility]}"
+                    ></i>
+                    ${verdict[0]}
+                  </span>`
+                : null
+            }
           </div>
           <div class="hero-cta">
             <button class="primary" onClick=${() => watchNow(entry)}>
@@ -289,17 +319,47 @@ const Card = ({ entry }) => html`
       ${entry.type === "series" ? "Series" : "Movie"} ·${" "}
       ${entry.localFilePath || entry.localFolderPath ? "Local" : "Torrent"}
     </p>
+    ${
+      entry.tags?.length
+        ? html`<p class="card-tags muted" title=${entry.tags.join(", ")}>
+            ${entry.tags.slice(0, 2).join(" · ")}${
+              entry.tags.length > 2 ? " +" + (entry.tags.length - 2) : ""
+            }
+          </p>`
+        : null
+    }
   </article>
 `;
 
 const FILTERS = { all: "All", movie: "Movies", series: "Series" };
 
 export function LibraryView() {
-  const { entries, status, query, filter } = useStore();
+  const { entries, status, query, filter, tagFilter, tags } = useStore();
   const [refreshing, setRefreshing] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(analysisRequested());
+  useEffect(() => {
+    const onHash = () => {
+      if (analysisRequested()) setShowAnalysis(true);
+      const tag = requestedTag();
+      if (tag) setState({ tagFilter: [tag] });
+    };
+    onHash();
+    addEventListener("hashchange", onHash);
+    return () => removeEventListener("hashchange", onHash);
+  }, []);
+  const toggleTag = (name) =>
+    setState({
+      tagFilter: tagFilter.some((tag) => tagKey(tag) === tagKey(name))
+        ? tagFilter.filter((tag) => tagKey(tag) !== tagKey(name))
+        : [...tagFilter, name],
+    });
+  // Only tags that are actually on some title are worth a filter chip.
+  const usedTags = tags.filter((tag) => tag.count > 0);
+  const unanalyzed = unanalyzedCount(entries);
   const visible = entries.filter(
     (e) =>
       (filter === "all" || e.type === filter) &&
+      hasTags(e, tagFilter) &&
       e.name.toLowerCase().includes(query.toLowerCase()),
   );
   const refreshStremio = async () => {
@@ -344,21 +404,30 @@ export function LibraryView() {
           >
             ${refreshing ? "Validating…" : "↻ Refresh Stremio"}
           </button>
-          <button class="primary" onClick=${() => (location.hash = "#/add")}>
-            ＋ Add Media
+          <button
+            class=${showAnalysis ? "secondary active" : "secondary"}
+            aria-expanded=${showAnalysis}
+            onClick=${() => setShowAnalysis(!showAnalysis)}
+          >
+            ◌ Analyze${unanalyzed ? " · " + unanalyzed : ""}
           </button>
+          <button class="primary" onClick=${openAdd}>＋ Add Media</button>
         </div>
       `}
     >
       <div class="controls">
-        <div class="statusbar">
-          <${Pill}
-            online=${status.torrServer?.online}
-            warn=${!status.torrServer?.online}
-          >
+        <div class="row">
+          <span class="status ${status.torrServer?.online ? "ok" : "bad"}">
+            <i class="dot ${status.torrServer?.online ? "ok" : "bad"}"></i>
             TorrServer ${status.torrServer?.online ? "online" : "offline"}
-          <//>
-          <${Pill}>${entries.length} titles<//>
+          </span>
+          <span class="inline-note">
+            ${
+              visible.length === entries.length
+                ? entries.length + " titles"
+                : visible.length + " of " + entries.length + " titles"
+            }
+          </span>
         </div>
         <div class="chips">
           ${Object.entries(FILTERS).map(
@@ -373,13 +442,50 @@ export function LibraryView() {
           )}
         </div>
       </div>
+      ${
+        usedTags.length
+          ? html`<div class="chips wrap tag-filter">
+              ${
+                tagFilter.length
+                  ? html`<button
+                      class="chip clear"
+                      onClick=${() => setState({ tagFilter: [] })}
+                    >
+                      ✕ Clear
+                    </button>`
+                  : null
+              }
+              ${usedTags.map(
+                (tag) => html`
+                  <button
+                    class="chip ${
+                      tagFilter.some((t) => tagKey(t) === tagKey(tag.name))
+                        ? "active"
+                        : ""
+                    }"
+                    onClick=${() => toggleTag(tag.name)}
+                    key=${tag.name}
+                  >
+                    ${tag.name} <em>${tag.count}</em>
+                  </button>
+                `,
+              )}
+            </div>`
+          : null
+      }
+      ${showAnalysis ? html`<${AnalysisPanel} />` : null}
       <section class="grid">
         ${
           visible.length
             ? visible.map(
                 (entry) => html`<${Card} key=${entry.id} entry=${entry} />`,
               )
-            : html`<div class="empty">No matching titles.</div>`
+            : html`<div class="empty">
+                No matching
+                titles${
+                  tagFilter.length ? " with " + tagFilter.join(" + ") : ""
+                }.
+              </div>`
         }
       </section>
     <//>
