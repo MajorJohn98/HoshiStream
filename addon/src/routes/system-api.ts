@@ -1,10 +1,11 @@
 import { z } from "zod";
-import { recentStreamActivity } from "../activity.js";
-import { listClients } from "../clients.js";
-import { lookupHostname } from "../hostname.js";
-import { resourceReport } from "../resources.js";
-import { currentSpeed, homeSpeedMbps, runSpeedTest } from "../speedtest.js";
-import { body, logInfo, reply, type RouteHandler } from "./context.js";
+import { recentStreamActivity } from "../activity.ts";
+import { listClients } from "../clients.ts";
+import { manifestWithGenres } from "../manifest.ts";
+import { lookupHostname } from "../hostname.ts";
+import { resourceReport } from "../resources.ts";
+import { currentSpeed, homeSpeedMbps, runSpeedTest } from "../speedtest.ts";
+import { body, logInfo, reply, type RouteHandler } from "./context.ts";
 
 const clientNameSchema = z.object({
   ip: z.string().min(1).max(64),
@@ -119,7 +120,7 @@ export const handlePlaybackSessions: RouteHandler = async (
 };
 
 export const handlePointer: RouteHandler = async (
-  { pointer, addon },
+  { pointer, addon, tags },
   { response, url, method },
 ) => {
   if (url.pathname === "/api/pointer/status" && method === "GET") {
@@ -141,7 +142,13 @@ export const handlePointer: RouteHandler = async (
   }
   try {
     if (action === "push") {
-      return reply(response, 200, await pointer.push(addon.manifest));
+      return reply(
+        response,
+        200,
+        await pointer.push(
+          manifestWithGenres(addon.manifest, (await tags?.list()) ?? []),
+        ),
+      );
     }
     await pointer.remove();
     return reply(response, 200, { ok: true });

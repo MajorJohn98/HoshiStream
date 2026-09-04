@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCatalog } from "../src/catalog.js";
+import { getCatalog } from "../src/catalog.ts";
 
 describe("catalog", () => {
   it("shows recently updated poster-shaped entries first", async () => {
@@ -50,5 +50,29 @@ describe("catalog", () => {
     expect(
       (await getCatalog(library as never, "movie", {})).metas,
     ).toHaveLength(2);
+  });
+
+  it("filters by the genre extra and exposes tags as genres", async () => {
+    const entries = [["Comedy", "Crime"], ["Drama"], undefined].map(
+      (tags, index) => ({
+        id: `hoshi:${index}`,
+        type: "movie" as const,
+        name: `Movie ${index}`,
+        magnetUri: `magnet:?xt=urn:btih:${index}`,
+        ...(tags ? { tags } : {}),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+    const library = { list: async () => entries } as never;
+    const crime = await getCatalog(library, "movie", { genre: "crime" });
+    expect(crime.metas.map((meta) => meta.id)).toEqual(["hoshi:0"]);
+    expect(crime.metas[0].genres).toEqual(["Comedy", "Crime"]);
+    const all = await getCatalog(library, "movie", {});
+    expect(all.metas).toHaveLength(3);
+    expect(all.metas[2]).not.toHaveProperty("genres");
+    expect(
+      (await getCatalog(library, "movie", { genre: "Horror" })).metas,
+    ).toEqual([]);
   });
 });

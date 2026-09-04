@@ -39,7 +39,8 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 | `routes/system-api.ts` | Status, resources, speed test, player, clients, pointer, analysis, transcode sessions |
 | `manifest.ts` | Stremio manifest (`com.john.private-torrent-streamer`, catalogs, `hoshi:` prefix) |
 | `addon.ts`, `catalog.ts`, `metadata.ts`, `streams.ts` | Stremio catalog/meta/stream resources |
-| `library.ts` | Atomic JSON library CRUD (`library.json`) |
+| `library.ts` | Atomic JSON library CRUD (`library.json`), tag rename/removal cascade |
+| `tags.ts`, `routes/tags-api.ts` | Tag registry (`tags.json`, seeded with TMDB/IMDb genres) and `/api/tags` |
 | `types.ts` | Zod schemas for library entries (create/patch) |
 | `torrserver-client.ts` | Verified TorrServer API subset with timeouts and Zod parsing |
 | `inspection.ts` | Torrent registration + metadata polling + file selection |
@@ -81,6 +82,7 @@ Two processes are always supervised together:
 | Location | Contents |
 |---|---|
 | `<state dir>/library.json` | The library, a JSON array written atomically |
+| `<state dir>/tags.json` | Tag registry behind the Tags page and Stremio genre options |
 | `<state dir>/media/` | Browser-uploaded managed media (`UPLOAD_ROOT`) |
 | `<state dir>/torrserver/config/settings.json` | Cache size, connection, and cleanup settings |
 | `<state dir>/torrserver/torrents/` | TorrServer disk cache |

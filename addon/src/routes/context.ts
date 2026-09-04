@@ -1,20 +1,21 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { recordClient } from "../clients.js";
-import type { Archiver } from "../archiver.js";
-import type { ArchiveSchedule } from "../archive-schedule.js";
-import type { DeviceNames } from "../device-names.js";
-import type { DiskCleanup } from "../disk-copy.js";
-import type { Library } from "../library.js";
-import type { LibraryAnalysis } from "../library-analysis.js";
-import type { NativePicker } from "../native-picker.js";
-import type { Playback } from "../playback.js";
-import type { PointerClient } from "../pointer.js";
-import type { ResourceDirs } from "../resources.js";
-import type { AddonInterface } from "../server-types.js";
-import type { PublicUrls } from "../streams.js";
-import type { TorrServerClient } from "../torrserver-client.js";
-import type { TranscodeManager } from "../transcode.js";
-import type { VolumeRegistry } from "../volumes.js";
+import { recordClient } from "../clients.ts";
+import type { Archiver } from "../archiver.ts";
+import type { ArchiveSchedule } from "../archive-schedule.ts";
+import type { DeviceNames } from "../device-names.ts";
+import type { DiskCleanup } from "../disk-copy.ts";
+import type { Library } from "../library.ts";
+import type { LibraryAnalysis } from "../library-analysis.ts";
+import type { NativePicker } from "../native-picker.ts";
+import type { Playback } from "../playback.ts";
+import type { PointerClient } from "../pointer.ts";
+import type { ResourceDirs } from "../resources.ts";
+import type { AddonInterface } from "../server-types.ts";
+import type { PublicUrls } from "../streams.ts";
+import type { Tags } from "../tags.ts";
+import type { TorrServerClient } from "../torrserver-client.ts";
+import type { TranscodeManager } from "../transcode.ts";
+import type { VolumeRegistry } from "../volumes.ts";
 
 // Everything a route module may need. Optional members are features the
 // supervisor can leave unconfigured; routes answer 409 when they are missing.
@@ -36,6 +37,7 @@ export interface HandlerContext {
   archiver?: Archiver;
   archiveSchedule?: ArchiveSchedule;
   analysis?: LibraryAnalysis;
+  tags?: Tags;
 }
 
 export interface RouteRequest {

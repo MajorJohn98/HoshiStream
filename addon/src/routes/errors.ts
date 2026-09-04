@@ -1,11 +1,12 @@
 import { ZodError } from "zod";
-import { DiskCopyError } from "../disk-copy.js";
+import { DiskCopyError } from "../disk-copy.ts";
 import {
   PickerCancelledError,
   PickerUnavailableError,
-} from "../native-picker.js";
-import { PlayerError } from "../player.js";
-import { VolumeError } from "../volumes.js";
+} from "../native-picker.ts";
+import { PlayerError } from "../player.ts";
+import { TagError } from "../tags.ts";
+import { VolumeError } from "../volumes.ts";
 
 // Domain errors whose message is safe and useful to show the caller.
 const DESCRIPTIVE_CLIENT_ERRORS = [
@@ -13,6 +14,7 @@ const DESCRIPTIVE_CLIENT_ERRORS = [
   PlayerError,
   VolumeError,
   DiskCopyError,
+  TagError,
 ];
 
 export function classifyError(error: unknown): {

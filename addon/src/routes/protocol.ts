@@ -1,20 +1,21 @@
 import type { ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
-import { managementHtml } from "../management.js";
-import { ownPublicIp } from "../public-ip.js";
-import { validToken } from "../security.js";
+import { managementHtml } from "../management.ts";
+import { manifestWithGenres } from "../manifest.ts";
+import { ownPublicIp } from "../public-ip.ts";
+import { validToken } from "../security.ts";
 import {
   getStreams,
   resolveClientAwareUrls,
   resolvePublicUrls,
-} from "../streams.js";
+} from "../streams.ts";
 import {
   html,
   noStoreReply,
   observeClient,
   reply,
   type RouteHandler,
-} from "./context.js";
+} from "./context.ts";
 
 const MANAGE_ASSET_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
@@ -117,6 +118,7 @@ export const handleProtocol: RouteHandler = async (
     publicUrls,
     lanRedirect,
     transcode,
+    tags,
   },
   { request, response, url, method },
 ) => {
@@ -124,7 +126,11 @@ export const handleProtocol: RouteHandler = async (
   if (addonPath === undefined) return false;
   if (addonPath === "/manifest.json" && method === "GET") {
     observeClient(request, "manifest");
-    return noStoreReply(response, 200, addon.manifest);
+    return noStoreReply(
+      response,
+      200,
+      manifestWithGenres(addon.manifest, (await tags?.list()) ?? []),
+    );
   }
   const protocolMatch =
     /^\/(catalog|meta|stream)\/(movie|series)\/([^/]+)(?:\/([^/]+))?\.json$/.exec(

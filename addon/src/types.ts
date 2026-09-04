@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { isAbsolute } from "node:path";
-import { directPlaySchema } from "./direct-play.js";
-import { isSafeRelativePath } from "./path-safety.js";
+import { directPlaySchema } from "./direct-play.ts";
+import { isSafeRelativePath } from "./path-safety.ts";
+import { entryTagsSchema } from "./tags.ts";
 
 const absolutePath = z.string().refine(isAbsolute, {
   message: "Local media path must be absolute",
@@ -124,6 +125,8 @@ export const libraryEntrySchema = z
     description: z.string().optional(),
     poster: z.string().url().optional(),
     background: z.string().url().optional(),
+    // Genre-style labels from the tag registry (src/tags.ts), stored by name.
+    tags: entryTagsSchema.optional(),
     magnetUri: z.string().startsWith("magnet:?").optional(),
     torrentFilePath: z.string().endsWith(".torrent").optional(),
     localFilePath: absolutePath.optional(),
@@ -193,6 +196,8 @@ export const createEntrySchema = libraryEntrySchema
 
 export const patchEntrySchema = createEntrySchema.partial().extend({
   description: z.string().nullable().optional(),
+  // null clears every tag from the entry.
+  tags: entryTagsSchema.nullable().optional(),
   poster: z.string().url().nullable().optional(),
   background: z.string().url().nullable().optional(),
 });

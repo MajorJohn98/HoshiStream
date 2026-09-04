@@ -15,7 +15,7 @@ http://<MAC_LAN_IP>:7000/addon/<ACCESS_TOKEN>/manifest.json
 - id `com.john.private-torrent-streamer`, name **HoshiStream**, version 0.2.0
 - resources: `catalog`, `meta`, `stream`; types: `movie`, `series`
 - id prefix `hoshi:`; `behaviorHints.p2p: true`
-- Catalogs: `private-movies`, `private-series` — both support optional `search` and `skip` extras (pagination)
+- Catalogs: `private-movies`, `private-series` — both support optional `search`, `genre`, and `skip` extras (pagination). The `genre` extra's `options` are the current tag registry, filled in when the manifest is served (and when it is pushed to the pointer server), so Stremio's genre picker tracks the Tags page.
 
 ## Routes
 
@@ -26,7 +26,7 @@ GET /addon/{token}/meta/{movie|series}/{id}.json
 GET /addon/{token}/stream/{movie|series}/{id}.json
 ```
 
-`{extra}` is a URL-encoded query string (e.g. `search=title` or `skip=100`). Manifest, catalog, meta, and stream responses are served with `cache-control: no-store` so library changes appear immediately; all responses send `access-control-allow-origin: *`.
+`{extra}` is a URL-encoded query string (e.g. `search=title`, `genre=Comedy`, or `skip=100`). `genre` matches entry tags case-insensitively; catalog and meta previews carry the entry's tags as `genres`. Manifest, catalog, meta, and stream responses are served with `cache-control: no-store` so library changes appear immediately; all responses send `access-control-allow-origin: *`.
 
 ## IDs
 

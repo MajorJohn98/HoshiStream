@@ -1,22 +1,23 @@
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
-import { createAddon } from "./addon.js";
-import { config } from "./config.js";
-import { Library } from "./library.js";
-import { NativePicker } from "./native-picker.js";
-import { Playback } from "./playback.js";
-import { createHandler } from "./routes.js";
-import { TorrServerClient } from "./torrserver-client.js";
-import { TranscodeManager, detectVideoEncoder } from "./transcode.js";
-import { MdnsResponder } from "./mdns.js";
-import { PointerClient } from "./pointer.js";
-import { DeviceNames } from "./device-names.js";
-import { runSpeedTest } from "./speedtest.js";
-import { VolumeRegistry } from "./volumes.js";
-import { DiskCleanup } from "./disk-copy.js";
-import { Archiver } from "./archiver.js";
-import { ArchiveSchedule } from "./archive-schedule.js";
-import { defaultAnalyzer, LibraryAnalysis } from "./library-analysis.js";
+import { createAddon } from "./addon.ts";
+import { config } from "./config.ts";
+import { Library } from "./library.ts";
+import { NativePicker } from "./native-picker.ts";
+import { Playback } from "./playback.ts";
+import { createHandler } from "./routes.ts";
+import { TorrServerClient } from "./torrserver-client.ts";
+import { TranscodeManager, detectVideoEncoder } from "./transcode.ts";
+import { MdnsResponder } from "./mdns.ts";
+import { PointerClient } from "./pointer.ts";
+import { DeviceNames } from "./device-names.ts";
+import { Tags } from "./tags.ts";
+import { runSpeedTest } from "./speedtest.ts";
+import { VolumeRegistry } from "./volumes.ts";
+import { DiskCleanup } from "./disk-copy.ts";
+import { Archiver } from "./archiver.ts";
+import { ArchiveSchedule } from "./archive-schedule.ts";
+import { defaultAnalyzer, LibraryAnalysis } from "./library-analysis.ts";
 
 // How long an in-flight response — a stream in progress — may keep the server
 // open during shutdown before its socket is destroyed.
@@ -99,6 +100,7 @@ export async function startHoshiStream(settings = config) {
       },
       pointer,
       deviceNames: new DeviceNames(settings.DEVICE_NAMES_PATH),
+      tags: new Tags(settings.TAGS_PATH),
       volumes,
       diskCleanup: new DiskCleanup(settings.DISK_CLEANUP_PATH),
       archiver,

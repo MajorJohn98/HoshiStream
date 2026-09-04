@@ -10,14 +10,18 @@ Open the token-gated page locally:
 http://127.0.0.1:7000/manage/<ACCESS_TOKEN>
 ```
 
-From there you can add magnet links, upload `.torrent` files, pick local files (native Finder picker with the menu-bar app, or browser upload fallback), edit metadata and posters, inspect entries, and probe technical details.
+Press **+ Add Media** in the Library toolbar to open the Add Media dialog. From there you can add magnet links, upload `.torrent` files, pick local files (native Finder picker with the menu-bar app, or browser upload fallback), and pick tags; the entry sheet then lets you edit metadata, posters, and tags, inspect entries, and probe technical details.
+
+### Tags
+
+Tags are genre-style labels (Action, Comedy, Anime, …). Toggle them on the Add Media dialog or the entry sheet's Overview form; type a new name and press Enter to create one on the spot. The Library's tag chips filter to titles carrying **every** selected tag, and Stremio shows the same tags as genres in its catalog picker. The **Tags** page (sidebar) lists every tag with its usage count and lets you add, rename, or delete tags — renames and deletions update all titles that carry the tag.
 
 ### Multi-torrent series
 
 One series entry can be backed by several torrents — season packs, single
 episodes, or a mix:
 
-- **Add Media** (magnet source): use **+ Add another torrent** to attach
+- **Add Media** dialog (magnet source): use **+ Add another torrent** to attach
   extra magnets, each with an optional season number for packs whose file
   names carry no `SxxEyy` numbering.
 - **Detail → Source** tab: add or remove extra torrents on an existing

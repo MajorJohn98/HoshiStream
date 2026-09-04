@@ -10,7 +10,8 @@ import {
 } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
-import type { DirectPlay } from "./direct-play.js";
+import type { DirectPlay } from "./direct-play.ts";
+import { tagKey } from "./tags.ts";
 import {
   libraryEntrySchema,
   type CreateEntry,
@@ -19,7 +20,7 @@ import {
   type LibraryEntry,
   type PlaybackState,
   type PatchEntry,
-} from "./types.js";
+} from "./types.ts";
 
 const librarySchema = z.array(libraryEntrySchema);
 const STREAMED_THROTTLE_MS = 180_000;
@@ -43,7 +44,11 @@ export class Library {
   // disk-backed read path that every range request would otherwise hit.
   private readonly streamedAt = new Map<string, number>();
 
-  constructor(private readonly path: string) {}
+  private readonly path: string;
+
+  constructor(path: string) {
+    this.path = path;
+  }
 
   async list(): Promise<LibraryEntry[]> {
     await this.queue;
@@ -87,6 +92,7 @@ export class Library {
       if (input.description === null) delete candidate.description;
       if (input.poster === null) delete candidate.poster;
       if (input.background === null) delete candidate.background;
+      if (input.tags === null) delete candidate.tags;
       if (CACHE_INVALIDATING_FIELDS.some((field) => field in input)) {
         delete candidate.inspectionCache;
         delete candidate.directPlay;
@@ -103,6 +109,31 @@ export class Library {
       if (index === -1) return false;
       entries.splice(index, 1);
       return true;
+    });
+  }
+
+  // Cascade a tag rename (or removal when `to` is undefined) through every
+  // entry. Returns how many entries changed.
+  retag(from: string, to: string | undefined): Promise<number> {
+    const key = tagKey(from);
+    return this.update(async (entries) => {
+      let changed = 0;
+      const now = new Date().toISOString();
+      entries.forEach((entry, index) => {
+        if (!entry.tags?.some((tag) => tagKey(tag) === key)) return;
+        const tags = entry.tags.flatMap((tag) =>
+          tagKey(tag) === key ? (to === undefined ? [] : [to]) : [tag],
+        );
+        const candidate: Record<string, unknown> = {
+          ...entry,
+          tags,
+          updatedAt: now,
+        };
+        if (!tags.length) delete candidate.tags;
+        entries[index] = libraryEntrySchema.parse(candidate);
+        changed += 1;
+      });
+      return changed;
     });
   }
 

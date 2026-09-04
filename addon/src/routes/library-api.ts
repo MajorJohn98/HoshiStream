@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { assessDirectPlay } from "../direct-play.js";
-import { removeDiskCopyDirectory } from "../disk-copy.js";
-import { inspectEntry } from "../inspection.js";
+import { assessDirectPlay } from "../direct-play.ts";
+import { removeDiskCopyDirectory } from "../disk-copy.ts";
+import { inspectEntry } from "../inspection.ts";
 import {
   isManagedMediaPath,
   listLocalMedia,
@@ -9,10 +9,11 @@ import {
   saveTorrentUpload,
   saveUpload,
   validateBrowserLocalPath,
-} from "../local-media.js";
-import { probeMedia } from "../media-probe.js";
-import { homeSpeedMbps } from "../speedtest.js";
-import { createEntrySchema, patchEntrySchema } from "../types.js";
+} from "../local-media.ts";
+import { probeMedia } from "../media-probe.ts";
+import { homeSpeedMbps } from "../speedtest.ts";
+import { entryTagsSchema, type Tags } from "../tags.ts";
+import { createEntrySchema, patchEntrySchema } from "../types.ts";
 import {
   body,
   jsonObjectBody,
@@ -20,7 +21,7 @@ import {
   noStoreReply,
   reply,
   type RouteHandler,
-} from "./context.js";
+} from "./context.ts";
 
 const catalogResponseSchema = z.object({ metas: z.array(z.unknown()) });
 
@@ -28,8 +29,21 @@ export function technicalProbeRequested(url: URL): boolean {
   return url.searchParams.get("probe") === "true";
 }
 
+// Entry tags are stored with the registry's spelling; unknown names are
+// registered on the fly so the entry sheet can create tags inline.
+async function normalizeTags(
+  input: Record<string, unknown>,
+  tags: Tags | undefined,
+): Promise<void> {
+  if (!("tags" in input)) return;
+  const parsed = entryTagsSchema.parse(input.tags ?? []);
+  const resolved = tags ? await tags.ensure(parsed) : parsed;
+  if (resolved.length) input.tags = resolved;
+  else input.tags = null;
+}
+
 export const handleLibraryCollection: RouteHandler = async (
-  { library, nativePicker },
+  { library, nativePicker, tags },
   { request, response, url, method },
 ) => {
   if (url.pathname !== "/api/library") return false;
@@ -37,6 +51,8 @@ export const handleLibraryCollection: RouteHandler = async (
   if (method !== "POST") return false;
   const input = jsonObjectBody(await body(request));
   delete input.managedMedia;
+  await normalizeTags(input, tags);
+  if (input.tags === null) delete input.tags;
   if (typeof input.nativePathGrant === "string") {
     const selected = nativePicker.redeem(input.nativePathGrant);
     delete input.nativePathGrant;
@@ -68,7 +84,7 @@ export const handleLibraryCollection: RouteHandler = async (
 };
 
 export const handleLibraryItem: RouteHandler = async (
-  { library, volumes, diskCleanup, archiver },
+  { library, volumes, diskCleanup, archiver, tags },
   { request, response, url, method },
 ) => {
   const itemMatch = /^\/api\/library\/([^/]+)$/.exec(url.pathname);
@@ -81,6 +97,7 @@ export const handleLibraryItem: RouteHandler = async (
   if (method === "PATCH") {
     const patch = jsonObjectBody(await body(request));
     delete patch.managedMedia;
+    await normalizeTags(patch, tags);
     const input = patchEntrySchema.parse(patch);
     if (input.localFilePath)
       input.localFilePath = await validateBrowserLocalPath(

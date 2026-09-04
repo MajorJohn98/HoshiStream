@@ -39,6 +39,17 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `POST /api/pointer/push` | Push the current LAN base URL + manifest to the pointer server |
 | `POST /api/pointer/remove` | Delete the pointer record on the pointer server |
 
+### Tags
+
+Genre-style labels kept in a registry (`tags.json`, seeded with the TMDB/IMDb genre set on first run). Entries store tag **names**; renames and deletions cascade to every entry. Names are trimmed, ≤ 40 characters, and unique case-insensitively.
+
+| Method & path | Description |
+|---|---|
+| `GET /api/tags` | `{tags: [{name, count}]}` — every registered tag with how many entries carry it |
+| `POST /api/tags` | `{name}` → `201 {name}`; `400` if a tag with that name (any case) exists |
+| `PATCH /api/tags/{name}` | `{name}` → rename; returns `{name, entries}` with the number of entries updated |
+| `DELETE /api/tags/{name}` | Remove the tag and strip it from entries → `{name, entries}` |
+
 ### Entry fields (create)
 
 Exactly one source is required: `magnetUri` (must start `magnet:?`), `torrentFilePath` (must end `.torrent`), `localFilePath`, or `localFolderPath` (absolute paths).
@@ -49,6 +60,7 @@ Exactly one source is required: `magnetUri` (must start `magnet:?`), `torrentFil
 | `name` | string | required |
 | `description` | string | optional; nullable on PATCH |
 | `poster`, `background` | URL | optional; nullable on PATCH |
+| `tags` | `string[]` | optional, ≤ 32; stored with the registry's spelling and unknown names are registered on the fly; `null` on PATCH clears all tags |
 | `preferredFileIndex` | int ≥ 0 | force a TorrServer file ID |
 | `fileOverrides` | `[{id, included, season?, episode?}]` | per-file include/episode mapping (primary source's own IDs) |
 | `extraSources` | `[{magnetUri?\|torrentFilePath?, seasonHint?, fileOverrides?}]` | additional torrents merged into a torrent-backed **series**; rejected on movies and local entries |

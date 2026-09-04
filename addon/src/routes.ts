@@ -1,34 +1,34 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Archiver } from "./archiver.js";
-import type { ArchiveSchedule } from "./archive-schedule.js";
-import type { DeviceNames } from "./device-names.js";
-import type { DiskCleanup } from "./disk-copy.js";
-import type { Library } from "./library.js";
-import type { LibraryAnalysis } from "./library-analysis.js";
-import type { NativePicker } from "./native-picker.js";
-import { Playback } from "./playback.js";
-import type { PointerClient } from "./pointer.js";
-import type { ResourceDirs } from "./resources.js";
-import { bearerToken, validToken } from "./security.js";
-import type { AddonInterface } from "./server-types.js";
-import { setConfiguredSpeed } from "./speedtest.js";
-import type { PublicUrls } from "./streams.js";
-import type { TorrServerClient } from "./torrserver-client.js";
-import type { TranscodeManager } from "./transcode.js";
-import type { VolumeRegistry } from "./volumes.js";
+import type { Archiver } from "./archiver.ts";
+import type { ArchiveSchedule } from "./archive-schedule.ts";
+import type { DeviceNames } from "./device-names.ts";
+import type { DiskCleanup } from "./disk-copy.ts";
+import type { Library } from "./library.ts";
+import type { LibraryAnalysis } from "./library-analysis.ts";
+import type { NativePicker } from "./native-picker.ts";
+import { Playback } from "./playback.ts";
+import type { PointerClient } from "./pointer.ts";
+import type { ResourceDirs } from "./resources.ts";
+import { bearerToken, validToken } from "./security.ts";
+import type { AddonInterface } from "./server-types.ts";
+import { setConfiguredSpeed } from "./speedtest.ts";
+import type { PublicUrls } from "./streams.ts";
+import type { TorrServerClient } from "./torrserver-client.ts";
+import type { TranscodeManager } from "./transcode.ts";
+import type { VolumeRegistry } from "./volumes.ts";
 import {
   reply,
   type HandlerContext,
   type RouteHandler,
   type RouteRequest,
-} from "./routes/context.js";
-import { classifyError } from "./routes/errors.js";
+} from "./routes/context.ts";
+import { classifyError } from "./routes/errors.ts";
 import {
   handleDiskCopy,
   handleDiskJobs,
   handleDiskSchedule,
   handleVolumes,
-} from "./routes/disk-api.js";
+} from "./routes/disk-api.ts";
 import {
   handleInspect,
   handleLibraryCollection,
@@ -36,13 +36,13 @@ import {
   handleMediaFiles,
   handleRelink,
   handleStremioRefresh,
-} from "./routes/library-api.js";
+} from "./routes/library-api.ts";
 import {
   handleDiskMedia,
   handleHls,
   handleLocalMedia,
-} from "./routes/media.js";
-import { handleProtocol, handlePublic } from "./routes/protocol.js";
+} from "./routes/media.ts";
+import { handleProtocol, handlePublic } from "./routes/protocol.ts";
 import {
   handleAnalysis,
   handleClients,
@@ -53,10 +53,12 @@ import {
   handleSpeedTest,
   handleStatus,
   handleTranscodeSessions,
-} from "./routes/system-api.js";
+} from "./routes/system-api.ts";
+import { handleTags } from "./routes/tags-api.ts";
+import type { Tags } from "./tags.ts";
 
-export { manageAssetPath, noStoreProtocolResource } from "./routes/protocol.js";
-export { technicalProbeRequested } from "./routes/library-api.js";
+export { manageAssetPath, noStoreProtocolResource } from "./routes/protocol.ts";
+export { technicalProbeRequested } from "./routes/library-api.ts";
 
 export interface HandlerOptions {
   library: Library;
@@ -77,6 +79,7 @@ export interface HandlerOptions {
   archiver?: Archiver;
   archiveSchedule?: ArchiveSchedule;
   analysis?: LibraryAnalysis;
+  tags?: Tags;
 }
 
 // Unauthenticated or self-authenticating (token in the path) routes, tried in
@@ -98,6 +101,7 @@ const API_ROUTES: RouteHandler[] = [
   handleAnalysis,
   handleDiskSchedule,
   handleLibraryCollection,
+  handleTags,
   handleStremioRefresh,
   handlePlayer,
   handleClients,
