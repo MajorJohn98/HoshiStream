@@ -264,6 +264,11 @@ describe("management assets", () => {
     expect(playerJs).not.toMatch(/[🔇🔊⏸]/u);
     const libraryJs = await asset("views/library.js");
     expect(libraryJs).toContain("function resumeLabel");
+    // Continue watching is browser-player history only, capped at five.
+    expect(libraryJs).toContain("const HISTORY_SIZE = 5");
+    expect(libraryJs).toContain('playback.source !== "browser"');
+    expect(libraryJs).not.toContain("entry.lastStreamedAt");
+    expect(libraryJs).toContain("continue-rail");
     const appJs = await asset("app.js");
     expect(appJs).toContain('import { PlayerView } from "./views/player.js"');
     expect(appJs).toContain("play: PlayerView");

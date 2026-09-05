@@ -233,24 +233,89 @@ function watchNow(entry) {
     (fileId === undefined ? "" : "/" + fileId);
 }
 
-// The hero spotlights the most recently watched or streamed title — host
-// playback and streams to any device both count — falling back to the first
-// entry with artwork.
-function lastActivity(entry) {
-  return Math.max(
-    Date.parse(entry.playback?.updatedAt ?? 0) || 0,
-    Date.parse(entry.lastStreamedAt ?? 0) || 0,
-  );
+// "Continue watching" is the in-browser player's own history: the last five
+// titles it played, newest first. External Stremio clients only touch
+// lastStreamedAt and never appear here; host (mpv) playback writes playback
+// state too but with source "host", so it is excluded as well. Records from
+// before the source field existed count as browser plays.
+const HISTORY_SIZE = 5;
+
+function browserWatched(entry) {
+  const playback = entry.playback;
+  if (!playback) return 0;
+  if (playback.source && playback.source !== "browser") return 0;
+  return Date.parse(playback.updatedAt) || 0;
 }
 
-function heroEntry(entries) {
-  const recent = entries
-    .filter((entry) => lastActivity(entry) > 0)
-    .sort((a, b) => lastActivity(b) - lastActivity(a));
-  return recent[0] ?? entries.find((entry) => entry.poster) ?? entries[0];
+function watchHistory(entries) {
+  return entries
+    .filter((entry) => browserWatched(entry) > 0)
+    .sort((a, b) => browserWatched(b) - browserWatched(a))
+    .slice(0, HISTORY_SIZE);
 }
 
-function Hero({ entry }) {
+function agoShort(iso) {
+  const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return minutes + " min ago";
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return hours + " h ago";
+  const days = Math.round(hours / 24);
+  return days === 1 ? "yesterday" : days + " days ago";
+}
+
+// Where the viewer is in a title, for the rail: "S1 E3 · 12:34", "24:18",
+// or "Up next S1 E4" when the previous episode finished.
+function progressLabel(entry) {
+  const playback = entry.playback;
+  if (!playback) return "";
+  const position =
+    playback.positionSeconds > 15 ? clock(playback.positionSeconds) : "";
+  const episode =
+    entry.type === "series" && playback.fileId !== undefined
+      ? entry.inspectionCache?.selectedFiles?.find(
+          (file) => file.id === playback.fileId,
+        )
+      : undefined;
+  if (episode) {
+    const code = "S" + episode.season + " E" + episode.episode;
+    return position ? code + " · " + position : "Up next " + code;
+  }
+  return position;
+}
+
+function ContinueRail({ entries }) {
+  if (!entries.length) return null;
+  return html`
+    <div class="continue-rail" aria-label="Continue watching">
+      ${entries.map(
+        (entry) => html`
+          <button
+            class="continue-item"
+            key=${entry.id}
+            title=${entry.name}
+            onClick=${() => watchNow(entry)}
+          >
+            ${
+              entry.poster
+                ? html`<img src=${entry.poster} alt="" />`
+                : html`<span class="placeholder">★</span>`
+            }
+            <span class="continue-text">
+              <strong>${entry.name}</strong>
+              <span class="muted">
+                ${progressLabel(entry) || "Watched"} ·
+                ${agoShort(entry.playback.updatedAt)}
+              </span>
+            </span>
+          </button>
+        `,
+      )}
+    </div>
+  `;
+}
+
+function Hero({ entry, rail }) {
   if (!entry) return null;
   const verdict = entry.directPlay
     ? VERDICT_DOTS[entry.directPlay.compatibility]
@@ -270,8 +335,8 @@ function Hero({ entry }) {
             ${
               resume
                 ? "Continue watching"
-                : entry.lastStreamedAt
-                  ? "Recently streamed"
+                : entry.playback
+                  ? "Watched here · " + agoShort(entry.playback.updatedAt)
                   : "From your library"
             }
           </div>
@@ -313,6 +378,7 @@ function Hero({ entry }) {
           </div>
         </div>
       </div>
+      <${ContinueRail} entries=${rail} />
     </section>
   `;
 }
@@ -393,6 +459,7 @@ export function LibraryView() {
   // Only tags that are actually on some title are worth a filter chip.
   const usedTags = tags.filter((tag) => tag.count > 0);
   const unanalyzed = unanalyzedCount(entries);
+  const history = watchHistory(entries);
   const visible = entries.filter(
     (e) =>
       (filter === "all" || e.type === filter) &&
@@ -410,7 +477,10 @@ export function LibraryView() {
     }
   };
   return html`
-    <${Hero} entry=${heroEntry(entries)} />
+    <${Hero}
+      entry=${history[0] ?? entries.find((entry) => entry.poster) ?? entries[0]}
+      rail=${history.slice(1)}
+    />
     <${Shell}
       title="Your Library"
       actions=${html`

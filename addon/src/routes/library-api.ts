@@ -105,6 +105,7 @@ export const handlePlaybackPosition: RouteHandler = async (
     await library.setPlayback(id, {
       positionSeconds: Math.floor(input.positionSeconds),
       ...(input.fileId === undefined ? {} : { fileId: input.fileId }),
+      source: "browser",
       updatedAt: new Date().toISOString(),
     });
     return reply(response, 200, (await library.get(id))?.playback ?? null);

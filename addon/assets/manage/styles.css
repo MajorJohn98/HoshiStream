@@ -466,6 +466,69 @@ h3 {
   gap: 10px;
   flex-wrap: wrap;
 }
+/* The other recent in-browser watches, as a strip along the hero's foot. */
+.continue-rail {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  padding: 12px 30px 16px;
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.continue-item {
+  flex: 1 1 0;
+  min-width: 180px;
+  max-width: 260px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 8px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.continue-item:hover {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.continue-item img,
+.continue-item .placeholder {
+  flex: none;
+  width: 34px;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  border-radius: 6px;
+  background: linear-gradient(160deg, #232834, #10131a);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+.continue-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.continue-text strong {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.continue-text .muted {
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ---------- buttons ---------- */
 .primary,
@@ -2024,6 +2087,12 @@ video {
   }
   .hero-poster {
     width: 130px;
+  }
+  .continue-rail {
+    padding: 10px 16px 12px;
+  }
+  .continue-item {
+    min-width: 200px;
   }
   .form-grid {
     grid-template-columns: 1fr;

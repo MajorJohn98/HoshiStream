@@ -222,7 +222,11 @@ describe("playback position", () => {
       body: JSON.stringify({ positionSeconds: 754.6, fileId: 3 }),
     });
     expect(put.status).toBe(200);
-    expect(await put.json()).toMatchObject({ positionSeconds: 754, fileId: 3 });
+    expect(await put.json()).toMatchObject({
+      positionSeconds: 754,
+      fileId: 3,
+      source: "browser",
+    });
     const entry = await (
       await api(`/api/library/${encodeURIComponent(id)}`)
     ).json();

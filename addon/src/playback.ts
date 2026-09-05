@@ -155,6 +155,7 @@ export class Playback {
       .setPlayback(entryId, {
         positionSeconds,
         ...(fileId === undefined ? {} : { fileId }),
+        source: "host",
         updatedAt: new Date().toISOString(),
       })
       .catch(() => undefined);

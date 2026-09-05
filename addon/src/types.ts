@@ -67,6 +67,10 @@ export const playbackStateSchema = z.object({
   positionSeconds: z.number().nonnegative(),
   // Which file the position belongs to, so a series resumes the right episode.
   fileId: z.number().int().nonnegative().optional(),
+  // Who wrote it: the in-browser player or the host (mpv) player. External
+  // Stremio clients never write playback state; they only touch
+  // lastStreamedAt. Absent on records from before this field existed.
+  source: z.enum(["browser", "host"]).optional(),
   updatedAt: z.string().datetime(),
 });
 
