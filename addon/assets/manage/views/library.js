@@ -1,7 +1,7 @@
 // Library view: grid of titles, search/filter, JSON import/export, and the
 // Stremio catalog refresh flow. The import-review and Stremio modals stay as
 // body-level DOM (outside the preact root), same as the detail modal.
-import { html, useEffect, useState } from "../vendor/preact-htm.js";
+import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { api, esc, notify, token } from "../api.js";
 import { state, setState, useStore, load } from "../store.js";
 import { Shell } from "../components/shell.js";
@@ -264,65 +264,13 @@ function agoShort(iso) {
   return days === 1 ? "yesterday" : days + " days ago";
 }
 
-// Where the viewer is in a title, for the rail: "S1 E3 · 12:34", "24:18",
-// or "Up next S1 E4" when the previous episode finished.
-function progressLabel(entry) {
-  const playback = entry.playback;
-  if (!playback) return "";
-  const position =
-    playback.positionSeconds > 15 ? clock(playback.positionSeconds) : "";
-  const episode =
-    entry.type === "series" && playback.fileId !== undefined
-      ? entry.inspectionCache?.selectedFiles?.find(
-          (file) => file.id === playback.fileId,
-        )
-      : undefined;
-  if (episode) {
-    const code = "S" + episode.season + " E" + episode.episode;
-    return position ? code + " · " + position : "Up next " + code;
-  }
-  return position;
-}
-
-function ContinueRail({ entries }) {
-  if (!entries.length) return null;
-  return html`
-    <div class="continue-rail" aria-label="Continue watching">
-      ${entries.map(
-        (entry) => html`
-          <button
-            class="continue-item"
-            key=${entry.id}
-            title=${entry.name}
-            onClick=${() => watchNow(entry)}
-          >
-            ${
-              entry.poster
-                ? html`<img src=${entry.poster} alt="" />`
-                : html`<span class="placeholder">★</span>`
-            }
-            <span class="continue-text">
-              <strong>${entry.name}</strong>
-              <span class="muted">
-                ${progressLabel(entry) || "Watched"} ·
-                ${agoShort(entry.playback.updatedAt)}
-              </span>
-            </span>
-          </button>
-        `,
-      )}
-    </div>
-  `;
-}
-
-function Hero({ entry, rail }) {
-  if (!entry) return null;
+function HeroCard({ entry }) {
   const verdict = entry.directPlay
     ? VERDICT_DOTS[entry.directPlay.compatibility]
     : undefined;
   const resume = Boolean(resumeLabel(entry));
   return html`
-    <section class="hero">
+    <article class="hero-card" key=${entry.id}>
       <div class="hero-glow"></div>
       <div class="hero-in">
         ${
@@ -378,7 +326,106 @@ function Hero({ entry, rail }) {
           </div>
         </div>
       </div>
-      <${ContinueRail} entries=${rail} />
+    </article>
+  `;
+}
+
+// Continue-watching carousel: one full hero card per slide, newest first.
+// Scroll-snap does the paging; the dots and arrows mirror scroll position.
+function Hero({ entries }) {
+  const trackRef = useRef(null);
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    // Always open on the newest title; browsers otherwise restore a stale
+    // scroll offset across reloads.
+    track.scrollLeft = 0;
+    setIndex(0);
+    const onScroll = () => {
+      const width = track.clientWidth || 1;
+      setIndex(Math.round(track.scrollLeft / width));
+    };
+    track.addEventListener("scroll", onScroll, { passive: true });
+    return () => track.removeEventListener("scroll", onScroll);
+  }, [entries.length]);
+  if (!entries.length) return null;
+  const scrollTo = (next) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const target = Math.max(0, Math.min(entries.length - 1, next));
+    track.scrollTo({ left: target * track.clientWidth, behavior: "smooth" });
+  };
+  const many = entries.length > 1;
+  return html`
+    <section class="hero" aria-label="Continue watching">
+      <div class="hero-track" ref=${trackRef}>
+        ${entries.map((entry) => html`<${HeroCard} entry=${entry} />`)}
+      </div>
+      ${
+        many
+          ? html`
+              <button
+                class="hero-arrow prev"
+                aria-label="Previous"
+                disabled=${index === 0}
+                onClick=${() => scrollTo(index - 1)}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M15 5l-7 7 7 7"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <button
+                class="hero-arrow next"
+                aria-label="Next"
+                disabled=${index === entries.length - 1}
+                onClick=${() => scrollTo(index + 1)}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M9 5l7 7-7 7"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <div class="hero-dots" role="tablist" aria-label="Slides">
+                ${entries.map(
+                  (entry, i) => html`
+                    <button
+                      role="tab"
+                      aria-selected=${i === index}
+                      aria-label=${entry.name}
+                      class=${i === index ? "on" : ""}
+                      onClick=${() => scrollTo(i)}
+                      key=${entry.id}
+                    ></button>
+                  `,
+                )}
+              </div>
+            `
+          : null
+      }
     </section>
   `;
 }
@@ -478,8 +525,13 @@ export function LibraryView() {
   };
   return html`
     <${Hero}
-      entry=${history[0] ?? entries.find((entry) => entry.poster) ?? entries[0]}
-      rail=${history.slice(1)}
+      entries=${
+        history.length
+          ? history
+          : [entries.find((entry) => entry.poster) ?? entries[0]].filter(
+              Boolean,
+            )
+      }
     />
     <${Shell}
       title="Your Library"

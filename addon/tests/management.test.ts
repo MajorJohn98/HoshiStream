@@ -268,7 +268,8 @@ describe("management assets", () => {
     expect(libraryJs).toContain("const HISTORY_SIZE = 5");
     expect(libraryJs).toContain('playback.source !== "browser"');
     expect(libraryJs).not.toContain("entry.lastStreamedAt");
-    expect(libraryJs).toContain("continue-rail");
+    expect(libraryJs).toContain("hero-track");
+    expect(libraryJs).toContain("scrollTo({ left: target * track.clientWidth");
     const appJs = await asset("app.js");
     expect(appJs).toContain('import { PlayerView } from "./views/player.js"');
     expect(appJs).toContain("play: PlayerView");
