@@ -5,7 +5,12 @@ import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { api, esc, notify, token } from "../api.js";
 import { state, setState, useStore, load } from "../store.js";
 import { Shell } from "../components/shell.js";
+import { sourceCheckBadge } from "../components/source-check.js";
 import { classifyLibraryImports } from "../classify-imports.js";
+import {
+  additionalSourceImportProblems,
+  stripServerMetadata,
+} from "../import-state.js";
 import { AnalysisPanel, unanalyzedCount } from "./analysis.js";
 import { openAdd } from "./add.js";
 
@@ -29,17 +34,46 @@ function hasTags(entry, wanted) {
 }
 
 function exportLibrary() {
+  if (
+    !confirm(
+      "Export library metadata as JSON? This does not include managed .torrent files or local media; this JSON alone is not a portable backup. For a full backup, copy library.json and the managed media folder, plus any linked original media.",
+    )
+  )
+    return;
   const library = state.entries.map(
-    ({ torrentFilePath, localFilePath, localFolderPath, ...details }) => ({
-      ...details,
-      source: details.magnetUri
-        ? "magnet"
-        : torrentFilePath
-          ? "torrent"
-          : localFolderPath
-            ? "folder"
-            : "file",
-    }),
+    ({
+      torrentFilePath,
+      localFilePath,
+      localFolderPath,
+      searchImport,
+      searchReceipts,
+      sourceHash,
+      sourceCheck,
+      ...details
+    }) =>
+      stripServerMetadata({
+        ...details,
+        ...(details.extraSources
+          ? {
+              extraSources: details.extraSources.map(
+                ({
+                  torrentFilePath,
+                  localFilePath,
+                  localFolderPath,
+                  sourceHash,
+                  ...source
+                }) => source,
+              ),
+            }
+          : {}),
+        source: details.magnetUri
+          ? "magnet"
+          : torrentFilePath
+            ? "torrent"
+            : localFolderPath
+              ? "folder"
+              : "file",
+      }),
   );
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(library, null, 2)], { type: "application/json" }),
@@ -49,6 +83,9 @@ function exportLibrary() {
   link.download = "hoshistream-library.json";
   link.click();
   URL.revokeObjectURL(url);
+  notify(
+    "JSON exported — not a full backup. Keep library.json and the managed media folder.",
+  );
 }
 
 async function reviewImport(file) {
@@ -57,7 +94,14 @@ async function reviewImport(file) {
     candidates = classifyLibraryImports(
       JSON.parse(await file.text()),
       state.entries,
-    );
+    ).map((candidate) => {
+      const sourceProblems = additionalSourceImportProblems(candidate.entry);
+      return {
+        ...candidate,
+        conflicts: [...candidate.conflicts, ...sourceProblems],
+        blocked: candidate.blocked || sourceProblems.length > 0,
+      };
+    });
   } catch (error) {
     return notify(error.message);
   }
@@ -86,7 +130,7 @@ async function reviewImport(file) {
                     '<span class="badge warn">' + esc(conflict) + "</span>",
                 )
                 .join(" ")
-            : '<span class="online">Ready</span>') +
+            : '<span class="online">No import conflicts</span>') +
           "</td></tr>",
       )
       .join("") +
@@ -110,12 +154,22 @@ async function reviewImport(file) {
     let imported = 0;
     try {
       for (const entry of chosen) {
-        const { id, createdAt, updatedAt, source, managedMedia, ...input } =
-          entry;
+        const {
+          id,
+          createdAt,
+          updatedAt,
+          source,
+          managedMedia,
+          searchImport,
+          searchReceipts,
+          sourceHash,
+          sourceCheck,
+          ...input
+        } = entry;
         await api("library", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(input),
+          body: JSON.stringify(stripServerMetadata(input)),
         });
         imported++;
       }
@@ -180,11 +234,11 @@ function openDetail(entry) {
   });
 }
 
-const VERDICT_TONE = { direct: "ok", caution: "warn", risky: "bad" };
-const VERDICT_DOTS = {
-  direct: ["Direct play", "v direct"],
-  caution: ["Check device", "v caution"],
-  risky: ["May not play", "v risky"],
+const CHECK_DOT = {
+  ok: "v direct",
+  warn: "v caution",
+  bad: "v risky",
+  idle: "v idle",
 };
 
 function clock(seconds) {
@@ -265,9 +319,10 @@ function agoShort(iso) {
 }
 
 function HeroCard({ entry }) {
-  const verdict = entry.directPlay
-    ? VERDICT_DOTS[entry.directPlay.compatibility]
-    : undefined;
+  const check = sourceCheckBadge(
+    entry.sourceCheck,
+    state.checkStatusErrors[entry.id],
+  );
   const resume = Boolean(resumeLabel(entry));
   return html`
     <article class="hero-card" key=${entry.id}>
@@ -303,18 +358,10 @@ function HeroCard({ entry }) {
                 ? html`<span>${entry.tags.slice(0, 3).join(", ")}</span>`
                 : null
             }
-            ${
-              verdict
-                ? html`<span
-                    class="status ${VERDICT_TONE[entry.directPlay.compatibility]}"
-                  >
-                    <i
-                      class="dot ${VERDICT_TONE[entry.directPlay.compatibility]}"
-                    ></i>
-                    ${verdict[0]}
-                  </span>`
-                : null
-            }
+            <span class="status ${check.tone}">
+              <i class="dot ${check.tone}"></i>
+              ${check.label}
+            </span>
           </div>
           <div class="hero-cta">
             <button class="primary" onClick=${() => watchNow(entry)}>
@@ -439,10 +486,10 @@ const Card = ({ entry }) => html`
           : html`<span class="placeholder">★</span>`
       }
       ${
-        entry.directPlay
+        entry.sourceCheck || entry.sourceCheck === undefined
           ? html`<span
-              class=${VERDICT_DOTS[entry.directPlay.compatibility][1]}
-              title=${VERDICT_DOTS[entry.directPlay.compatibility][0]}
+              class=${CHECK_DOT[sourceCheckBadge(entry.sourceCheck, state.checkStatusErrors[entry.id]).tone]}
+              title=${sourceCheckBadge(entry.sourceCheck, state.checkStatusErrors[entry.id]).label}
             ></span>`
           : null
       }
@@ -469,6 +516,9 @@ const Card = ({ entry }) => html`
       ${entry.type === "series" ? "Series" : "Movie"} ·${" "}
       ${entry.localFilePath || entry.localFolderPath ? "Local" : "Torrent"}
     </p>
+    <p class="card-tags muted">
+      ${sourceCheckBadge(entry.sourceCheck, state.checkStatusErrors[entry.id]).label}
+    </p>
     ${
       entry.tags?.length
         ? html`<p class="card-tags muted" title=${entry.tags.join(", ")}>
@@ -484,7 +534,18 @@ const Card = ({ entry }) => html`
 const FILTERS = { all: "All", movie: "Movies", series: "Series" };
 
 export function LibraryView() {
-  const { entries, status, query, filter, tagFilter, tags } = useStore();
+  const {
+    entries,
+    status,
+    query,
+    filter,
+    tagFilter,
+    tags,
+    selected,
+    entryRouteId: routedEntryId,
+    entryRouteLoading,
+    entryRouteError,
+  } = useStore();
   const [refreshing, setRefreshing] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(analysisRequested());
   useEffect(() => {
@@ -524,6 +585,24 @@ export function LibraryView() {
     }
   };
   return html`
+    ${
+      (routedEntryId || entryRouteError) && !selected
+        ? html`<div class="panel stacked-sm">
+            <strong>
+              ${
+                entryRouteLoading
+                  ? "Opening entry…"
+                  : entryRouteError || "Open the entry from your library."
+              }
+            </strong>
+            ${
+              routedEntryId
+                ? html`<p class="muted">Entry ID: ${routedEntryId}</p>`
+                : null
+            }
+          </div>`
+        : null
+    }
     <${Hero}
       entries=${
         history.length
@@ -639,12 +718,29 @@ export function LibraryView() {
             ? visible.map(
                 (entry) => html`<${Card} key=${entry.id} entry=${entry} />`,
               )
-            : html`<div class="empty">
-                No matching
-                titles${
-                  tagFilter.length ? " with " + tagFilter.join(" + ") : ""
-                }.
-              </div>`
+            : !entries.length &&
+                !query.trim() &&
+                !tagFilter.length &&
+                filter === "all"
+              ? html`<div class="empty library-first-use">
+                  <h2>Your library starts here</h2>
+                  <p>
+                    Add a title on this Mac, then connect Nuvio or Stremio to
+                    watch it.
+                  </p>
+                  <div class="row">
+                    <button class="primary" onClick=${openAdd}>
+                      Add your first title
+                    </button>
+                    <a href="#/welcome">Get started</a>
+                  </div>
+                </div>`
+              : html`<div class="empty">
+                  No matching
+                  titles${
+                    tagFilter.length ? " with " + tagFilter.join(" + ") : ""
+                  }.
+                </div>`
         }
       </section>
     <//>

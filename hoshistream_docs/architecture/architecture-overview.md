@@ -42,6 +42,8 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 | `library.ts` | Atomic JSON library CRUD (`library.json`), tag rename/removal cascade |
 | `tags.ts`, `routes/tags-api.ts` | Tag registry (`tags.json`, seeded with TMDB/IMDb genres) and `/api/tags` |
 | `types.ts` | Zod schemas for library entries (create/patch) |
+| `imports/`, `routes/imports-api.ts` | Provider-neutral manual drafts, identity validation, retry-safe import, and episode-preview/series append (ADR 0020) |
+| `browser/`, `assets/chrome-extension/` | Chrome MV3 companion and a narrow macOS native-messaging relay; master token remains local |
 | `torrserver-client.ts` | Verified TorrServer API subset with timeouts and Zod parsing |
 | `inspection.ts` | Torrent registration + metadata polling + file selection |
 | `media-file-selection.ts` | Playable-extension filtering, series episode mapping (`S01E02`, `1x02`) |
@@ -95,4 +97,9 @@ Two processes are always supervised together:
 
 ## Explicit non-goals
 
-No torrent search or index scraping, no database, no graphical dashboard beyond the token-gated management page, no telemetry, no public exposure. Transcoding is opt-in repair only ([ADR 0010](../decisions/0010-opt-in-realtime-transcoding.md)): nothing is re-encoded when direct play works, there is no background/batch transcoding, and video is only ever encoded in hardware.
+No in-app torrent discovery, index scraping, challenge bypass, database, graphical
+dashboard beyond the token-gated management page, telemetry, or public exposure.
+[ADR 0020](../decisions/0020-manual-import-chrome-companion.md) replaces the earlier
+search-provider direction with manual imports and a Chrome capture/review
+companion. Transcoding remains opt-in repair only
+([ADR 0010](../decisions/0010-opt-in-realtime-transcoding.md)).

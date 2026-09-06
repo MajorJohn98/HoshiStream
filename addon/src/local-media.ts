@@ -1,22 +1,34 @@
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import {
+  lstat,
+  link,
   mkdir,
   readdir,
   realpath,
   rm,
+  rmdir,
   stat,
   unlink,
   writeFile,
 } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { containsPath, firstSegmentBelow } from "./path-safety.ts";
 import { pipeline } from "node:stream/promises";
 import { isPlayablePath, selectMediaFiles } from "./media-file-selection.ts";
 import type { LibraryEntry } from "./types.ts";
+import {
+  MAX_TORRENT_BYTES,
+  torrentIdentity,
+} from "./imports/source-identity.ts";
+import { stateRoot } from "./config-schema.ts";
+import { ImportError } from "./imports/errors.ts";
 
 const MEDIA_ROOT = resolve(process.env.MEDIA_ROOT ?? "/media");
-const UPLOAD_ROOT = resolve(process.env.UPLOAD_ROOT ?? "/data/media");
+const UPLOAD_ROOT = resolve(
+  process.env.UPLOAD_ROOT ?? join(stateRoot(), "media"),
+);
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONTENT_TYPES: Record<string, string> = {
@@ -165,20 +177,38 @@ export async function saveUpload(
   request: IncomingMessage,
   batch: string,
   relativePath: string,
-): Promise<void> {
+): Promise<{ path: string; folderRoot: string }> {
   if (!UUID_V4.test(batch) || !relativePath)
     throw new SyntaxError("Invalid upload path");
-  const batchRoot = resolve(UPLOAD_ROOT, batch);
+  const uploadRoot = await ensureUploadRoot(UPLOAD_ROOT);
+  const batchRoot = resolve(uploadRoot, batch);
   const destination = resolve(batchRoot, relativePath);
   if (!containsPath(batchRoot, destination) || !isPlayablePath(destination))
     throw new SyntaxError("Invalid upload path");
-  await mkdir(resolve(destination, ".."), { recursive: true });
+  await ensureOwnedDirectory(uploadRoot, dirname(destination));
+  const temporary = uploadTemporaryPath(destination);
+  const hash = createHash("sha256");
+  let size = 0;
   try {
-    await pipeline(request, createWriteStream(destination, { flags: "wx" }));
+    await pipeline(
+      request,
+      async function* (source) {
+        for await (const chunk of source) {
+          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          size += bytes.length;
+          hash.update(bytes);
+          yield bytes;
+        }
+      },
+      createWriteStream(temporary, { flags: "wx", mode: 0o600 }),
+    );
+    await publishOwnedFile(destination, temporary, size, hash.digest("hex"));
   } catch (error) {
-    await unlink(destination).catch(() => undefined);
+    await unlink(temporary).catch(() => undefined);
     throw error;
   }
+  await unlink(temporary).catch(() => undefined);
+  return { path: destination, folderRoot: batchRoot };
 }
 
 export async function saveTorrentUpload(
@@ -188,28 +218,132 @@ export async function saveTorrentUpload(
 ): Promise<string> {
   if (!UUID_V4.test(batch) || extname(name).toLowerCase() !== ".torrent")
     throw new SyntaxError("Invalid torrent upload");
-  const directory = resolve(UPLOAD_ROOT, batch);
-  const destination = resolve(directory, basename(name));
-  await mkdir(directory, { recursive: true });
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 1_000_000) throw new SyntaxError("Torrent file exceeds 1 MB");
+    if (size > MAX_TORRENT_BYTES)
+      throw new SyntaxError("Torrent file exceeds 1 MB");
     chunks.push(chunk);
   }
-  await writeFile(destination, Buffer.concat(chunks), { flag: "wx" });
-  return destination;
+  const data = Buffer.concat(chunks);
+  await torrentIdentity(data);
+  return saveTorrentBytes(data, batch, name);
 }
 
-export async function removeManagedMedia(entry: LibraryEntry): Promise<void> {
-  if (!entry.managedMedia) return;
-  const source =
-    entry.localFolderPath ?? entry.localFilePath ?? entry.torrentFilePath;
-  if (!source) return;
-  const batch = firstSegmentBelow(UPLOAD_ROOT, source);
-  if (batch && UUID_V4.test(batch))
-    await rm(resolve(UPLOAD_ROOT, batch), { recursive: true, force: true });
+export async function saveTorrentBytes(
+  data: Uint8Array,
+  batch: string,
+  name: string,
+  root = UPLOAD_ROOT,
+): Promise<string> {
+  if (!UUID_V4.test(batch) || extname(name).toLowerCase() !== ".torrent")
+    throw new SyntaxError("Invalid torrent upload");
+  if (data.length > MAX_TORRENT_BYTES)
+    throw new SyntaxError("Torrent file exceeds 1 MB");
+  const lexicalRoot = resolve(root);
+  const uploadRoot = await ensureUploadRoot(lexicalRoot);
+  const directory = resolve(uploadRoot, batch);
+  await ensureOwnedDirectory(uploadRoot, directory);
+  const destination = resolve(directory, basename(name));
+  const returnedPath = resolve(lexicalRoot, batch, basename(name));
+  const temporary = uploadTemporaryPath(destination);
+  await writeFile(temporary, data, { flag: "wx", mode: 0o600 });
+  try {
+    await publishOwnedFile(
+      destination,
+      temporary,
+      data.length,
+      createHash("sha256").update(data).digest("hex"),
+    );
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined);
+    throw error;
+  }
+  await unlink(temporary).catch(() => undefined);
+  return returnedPath;
+}
+
+function mediaPaths(entry: LibraryEntry): string[] {
+  return [
+    entry.localFolderPath,
+    entry.localFilePath,
+    entry.torrentFilePath,
+    ...(entry.extraSources ?? []).map((source) => source.torrentFilePath),
+  ].filter((path): path is string => Boolean(path));
+}
+
+async function existingRealpath(path: string): Promise<string | undefined> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+}
+
+export async function removeManagedMedia(
+  entry: LibraryEntry,
+  referencedEntries: LibraryEntry[] = [],
+  uploadRoot = UPLOAD_ROOT,
+): Promise<void> {
+  const owned = [
+    ...(entry.managedMedia
+      ? [entry.localFolderPath ?? entry.localFilePath ?? entry.torrentFilePath]
+      : []),
+    ...(entry.extraSources ?? [])
+      .filter((source) => source.managedMedia)
+      .map((source) => source.torrentFilePath),
+  ].filter((path): path is string => Boolean(path));
+  if (!owned.length) return;
+  const root = resolve(uploadRoot);
+  const actualRoot = await existingRealpath(root);
+  if (!actualRoot) return;
+  const references = await Promise.all(
+    referencedEntries.flatMap(mediaPaths).map(async (path) => ({
+      lexical: resolve(path),
+      actual: await existingRealpath(path),
+    })),
+  );
+  const overlaps = (a: string, b: string) =>
+    a === b || containsPath(a, b) || containsPath(b, a);
+  for (const path of new Set(owned)) {
+    const source = resolve(path);
+    const batch = firstSegmentBelow(root, source);
+    if (!batch || !UUID_V4.test(batch)) continue;
+    const actual = await existingRealpath(source);
+    if (
+      !actual ||
+      !containsPath(actualRoot, actual) ||
+      // Never follow a replaced file or intermediate directory symlink.
+      actual !== resolve(actualRoot, relative(root, source)) ||
+      references.some(
+        (reference) =>
+          overlaps(source, reference.lexical) ||
+          (reference.actual && overlaps(actual, reference.actual)),
+      )
+    )
+      continue;
+    // A managed file owns only itself, not other user files in its batch.
+    await rm(source, {
+      recursive: source === entry.localFolderPath,
+      force: true,
+    });
+    for (
+      let directory = dirname(source);
+      containsPath(root, directory);
+      directory = dirname(directory)
+    ) {
+      try {
+        await rmdir(directory);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") continue;
+        if (code === "ENOTEMPTY" || code === "EEXIST") break;
+        throw error;
+      }
+    }
+  }
 }
 
 export function parseRange(
@@ -292,4 +426,74 @@ export async function serveLocalMedia(
     ...range,
     highWaterMark: MEDIA_HIGH_WATER_MARK,
   }).pipe(response);
+}
+
+function uploadTemporaryPath(destination: string): string {
+  return join(
+    dirname(destination),
+    `.${basename(destination)}.${randomUUID()}.pending`,
+  );
+}
+
+async function ensureUploadRoot(root: string): Promise<string> {
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  return realpath(root);
+}
+
+async function ensureOwnedDirectory(
+  root: string,
+  directory: string,
+): Promise<void> {
+  if (directory !== root && !containsPath(root, directory))
+    throw new SyntaxError("Invalid upload path");
+  let current = root;
+  for (const segment of relative(root, directory)
+    .split(/[\\/]/)
+    .filter(Boolean)) {
+    current = join(current, segment);
+    try {
+      const info = await lstat(current);
+      if (info.isSymbolicLink() || !info.isDirectory())
+        throw new SyntaxError("Invalid upload path");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await mkdir(current, { mode: 0o700 });
+    }
+  }
+}
+
+async function publishOwnedFile(
+  destination: string,
+  temporary: string,
+  size: number,
+  digest: string,
+): Promise<void> {
+  try {
+    // Publish atomically without replacing an existing file.
+    await link(temporary, destination);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    if (await fileMatches(destination, size, digest)) return;
+    throw new ImportError(
+      "upload_conflict",
+      "A file already exists at this path with different content.",
+      409,
+    );
+  }
+}
+
+async function fileMatches(
+  path: string,
+  expectedSize: number,
+  expectedDigest: string,
+): Promise<boolean> {
+  const info = await lstat(path);
+  if (info.isSymbolicLink() || !info.isFile())
+    throw new SyntaxError("Invalid upload path");
+  if (info.size !== expectedSize) return false;
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) {
+    hash.update(chunk);
+  }
+  return hash.digest("hex") === expectedDigest;
 }

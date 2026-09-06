@@ -107,7 +107,9 @@ export async function ensureFirstRunSetup({
   let existing = null;
   try {
     existing = await readFile(envPath, "utf8");
-  } catch {}
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
 
   if (existing === null) {
     const accessToken = generateAccessToken();
@@ -116,7 +118,10 @@ export async function ensureFirstRunSetup({
       envPath,
       renderEnvFile({ accessToken, pointerPushSecret, mediaDir, addonPort }),
     );
-    return { environment: parseEnvFile(await readFile(envPath, "utf8")) };
+    return {
+      environment: parseEnvFile(await readFile(envPath, "utf8")),
+      firstRun: true,
+    };
   }
 
   const environment = parseEnvFile(existing);
@@ -143,5 +148,5 @@ export async function ensureFirstRunSetup({
   if (contents !== existing) {
     await writePrivateFile(envPath, contents);
   }
-  return { environment };
+  return { environment, firstRun: false };
 }

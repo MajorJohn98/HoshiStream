@@ -1,7 +1,7 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   inspectEntry,
   resolveStreamSource,
@@ -9,11 +9,26 @@ import {
 } from "../src/inspection.ts";
 import { Library } from "../src/library.ts";
 import { getMetadata } from "../src/metadata.ts";
-import type { TorrServerClient } from "../src/torrserver-client.ts";
+import {
+  TorrServerError,
+  type TorrServerClient,
+  type TorrentStatus,
+} from "../src/torrserver-client.ts";
 import type { LibraryEntry } from "../src/types.ts";
 
+const directories: string[] = [];
+afterEach(async () => {
+  await Promise.all(
+    directories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
+
 async function temporaryLibrary() {
-  const directory = await mkdtemp(join(tmpdir(), "hoshistream-"));
+  const directory = resolve(`.test-inspection-data-${randomUUID()}`);
+  directories.push(directory);
+  await mkdir(directory);
   const path = join(directory, "library.json");
   await writeFile(path, "[]\n");
   return new Library(path);
@@ -34,12 +49,55 @@ function fakeTorrServer(known = true) {
     get: vi
       .fn()
       .mockImplementation(() =>
-        known ? Promise.resolve(status) : Promise.reject(new Error("404")),
+        known
+          ? Promise.resolve(status)
+          : Promise.reject(
+              new TorrServerError("Missing torrent", "not_found", 404),
+            ),
       ),
   } as unknown as TorrServerClient;
 }
 
 describe("inspection cache", () => {
+  it("does not overwrite a newer series cache when an old inspection finishes late", async () => {
+    const library = await temporaryLibrary();
+    const entry = await library.create({
+      type: "series",
+      name: "Series",
+      magnetUri: "magnet:?xt=urn:btih:old",
+    });
+    const torrServer = fakeTorrServer();
+    let finish!: (value: TorrentStatus) => void;
+    vi.mocked(torrServer.waitForFiles).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const inspecting = inspectEntry(entry, torrServer, library);
+    await vi.waitFor(() => expect(torrServer.waitForFiles).toHaveBeenCalled());
+    await library.patch(entry.id, {
+      extraSources: [{ magnetUri: "magnet:?xt=urn:btih:new" }],
+    });
+    const newer = {
+      hash: status.hash,
+      selectedFiles: [
+        {
+          id: 100_001,
+          hash: "new",
+          path: "S02E01.mkv",
+          length: 100,
+          season: 2,
+          episode: 1,
+        },
+      ],
+      inspectedAt: new Date().toISOString(),
+    };
+    await library.setInspectionCache(entry.id, newer);
+    finish(status);
+    await inspecting;
+    expect((await library.get(entry.id))?.inspectionCache).toEqual(newer);
+  });
+
   it("persists the cache after a full inspection", async () => {
     const library = await temporaryLibrary();
     const entry = await library.create({
@@ -126,6 +184,110 @@ describe("inspection cache", () => {
   });
 });
 
+describe("reviewed catalog film selection", () => {
+  const hash = "a".repeat(40);
+  const files = [
+    { id: 1, path: "bundle/sintel-2048-surround.mp4", length: 100 },
+    { id: 2, path: "bundle/documentary.avi", length: 500 },
+  ];
+
+  async function fixture() {
+    const library = await temporaryLibrary();
+    const created = await library.create({
+      type: "movie",
+      name: "Reviewed film",
+      magnetUri: `magnet:?xt=urn:btih:${hash}`,
+    });
+    const entry: LibraryEntry = {
+      ...created,
+      searchImport: {
+        providerId: "curated",
+        catalogId: "sintel",
+        hash,
+        rightsUrl: "https://durian.blender.org/sharing/",
+        license: "CC-BY-3.0",
+        filmPath: "sintel-2048-surround.mp4",
+        filmSizeBytes: 100,
+      },
+    };
+    const torrServer = fakeTorrServer();
+    vi.mocked(torrServer.waitForFiles).mockResolvedValue({
+      ...status,
+      hash,
+      file_stats: files,
+    });
+    return { entry, torrServer };
+  }
+
+  it("selects the reviewed film rather than the largest video in the bundle", async () => {
+    const { entry, torrServer } = await fixture();
+    const inspected = await inspectEntry(entry, torrServer);
+    expect(inspected.selectedFiles.map((file) => file.id)).toEqual([1]);
+    expect(inspected.files).toHaveLength(2);
+  });
+
+  it("maps a catalog film to one episode when the user chooses Series", async () => {
+    const { entry, torrServer } = await fixture();
+    const inspected = await inspectEntry(
+      { ...entry, type: "series" },
+      torrServer,
+    );
+    expect(inspected.selectedFiles).toMatchObject([
+      { id: 1, season: 1, episode: 1 },
+    ]);
+  });
+
+  it("also honors reviewed-file pins on imported extra sources", async () => {
+    const { entry, torrServer } = await fixture();
+    const inspected = await inspectEntry(
+      {
+        ...entry,
+        type: "series",
+        extraSources: [
+          {
+            magnetUri: `magnet:?xt=urn:btih:${hash}`,
+            seasonHint: 2,
+            searchImport: entry.searchImport,
+          },
+        ],
+      },
+      torrServer,
+    );
+    expect(inspected.selectedFiles).toMatchObject([
+      { id: 1, season: 1, episode: 1 },
+      { id: 100_001, season: 2, episode: 1, hash },
+    ]);
+    expect(
+      inspected.selectedFiles.every((file) =>
+        file.path.endsWith("sintel-2048-surround.mp4"),
+      ),
+    ).toBe(true);
+  });
+
+  it("honors explicit file selection rather than forcing the catalog default", async () => {
+    const { entry, torrServer } = await fixture();
+    const inspected = await inspectEntry(
+      { ...entry, preferredFileIndex: 2 },
+      torrServer,
+    );
+    expect(inspected.selectedFiles.map((file) => file.id)).toEqual([2]);
+  });
+
+  it("fails closed if the expected reviewed file is missing or ambiguous", async () => {
+    const { entry, torrServer } = await fixture();
+    for (const file_stats of [[files[1]], [files[0], { ...files[0], id: 3 }]]) {
+      vi.mocked(torrServer.waitForFiles).mockResolvedValue({
+        ...status,
+        hash,
+        file_stats,
+      });
+      await expect(inspectEntry(entry, torrServer)).rejects.toThrow(
+        "reviewed film file",
+      );
+    }
+  });
+});
+
 describe("stream prewarming", () => {
   it("registers a movie torrent when its detail page is opened", async () => {
     const library = await temporaryLibrary();
@@ -138,6 +300,9 @@ describe("stream prewarming", () => {
 
     await getMetadata(library, torrServer, "movie", entry.id);
     await vi.waitFor(() => expect(torrServer.addMagnet).toHaveBeenCalledOnce());
+    await vi.waitFor(async () => {
+      expect((await library.get(entry.id))?.inspectionCache).toBeDefined();
+    });
   });
 
   it("does not touch TorrServer for local entries", async () => {
@@ -196,7 +361,9 @@ describe("multi-torrent series", () => {
         .mockImplementation((hash: string) =>
           knownHashes.has(hash)
             ? Promise.resolve(hash === "hash-extra" ? extraStatus : packStatus)
-            : Promise.reject(new Error("404")),
+            : Promise.reject(
+                new TorrServerError("Missing torrent", "not_found", 404),
+              ),
         ),
     } as unknown as TorrServerClient;
   }

@@ -12,8 +12,12 @@ export const state = {
   tab: "overview",
   // True while the Add Media modal is open.
   adding: false,
+  magnetLinkId: null,
   inspection: null,
   inspectionError: "",
+  entryRouteId: null,
+  entryRouteLoading: false,
+  entryRouteError: "",
   source: "torrent",
   query: "",
   filter: "all",
@@ -23,6 +27,8 @@ export const state = {
   tags: [],
   loaded: false,
   loadError: "",
+  checkRequests: [],
+  checkStatusErrors: {},
   // Live activity, refreshed by startActivityPolling().
   activity: {
     jobs: [],
@@ -34,6 +40,91 @@ export const state = {
 };
 
 const listeners = new Set();
+const checkPollFailures = new Map();
+
+export function markSourceCheckRequested(id) {
+  checkPollFailures.delete(id);
+  setState({ checkRequests: [...new Set([...state.checkRequests, id])] });
+}
+
+export async function refreshSourceCheckReports() {
+  const active = new Set(["queued", "inspecting", "probing"]);
+  const phases = new Set([
+    ...active,
+    "unchecked",
+    "complete",
+    "failed",
+    "cancelled",
+    "interrupted",
+  ]);
+  const existing = new Set(state.entries.map((entry) => entry.id));
+  const requested = state.checkRequests.filter((id) => existing.has(id));
+  for (const id of checkPollFailures.keys())
+    if (!existing.has(id)) checkPollFailures.delete(id);
+  if (requested.length !== state.checkRequests.length)
+    setState({ checkRequests: requested });
+  const ids = [
+    ...new Set([
+      ...requested,
+      ...state.entries
+        .filter((entry) => active.has(entry.sourceCheck?.phase))
+        .map((entry) => entry.id),
+    ]),
+  ]
+    .filter((id) => (checkPollFailures.get(id) ?? 0) < 3)
+    .slice(0, 32);
+  if (!ids.length) return;
+  const before = new Map(state.entries.map((entry) => [entry.id, entry]));
+  const reports = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const report = await api(
+          "library/" + encodeURIComponent(id) + "/check",
+          { signal: AbortSignal.timeout(5000) },
+        );
+        if (!report || report.entryId !== id || !phases.has(report.phase))
+          throw Error("Invalid check status");
+        checkPollFailures.delete(id);
+        return { id, report };
+      } catch {
+        checkPollFailures.set(id, (checkPollFailures.get(id) ?? 0) + 1);
+        return {
+          id,
+          error: "Check status is unavailable. Open the entry to refresh it.",
+        };
+      }
+    }),
+  );
+  const errors = { ...state.checkStatusErrors };
+  let selected = state.selected;
+  let pending = state.checkRequests;
+  const byId = new Map(reports.map((report) => [report.id, report]));
+  const entries = state.entries.map((entry) => {
+    const result = byId.get(entry.id);
+    if (!result) return entry;
+    if (entry !== before.get(entry.id)) return entry;
+    if (result.error) {
+      errors[entry.id] = result.error;
+      return entry;
+    }
+    delete errors[entry.id];
+    if (!active.has(result.report.phase))
+      pending = pending.filter((id) => id !== entry.id);
+    const next = {
+      ...entry,
+      sourceCheck:
+        result.report.phase === "unchecked" ? undefined : result.report,
+    };
+    if (selected === entry) selected = next;
+    return next;
+  });
+  setState({
+    entries,
+    selected,
+    checkRequests: pending,
+    checkStatusErrors: errors,
+  });
+}
 
 export function setState(patch) {
   Object.assign(state, patch);
@@ -92,6 +183,8 @@ let pollingStarted = false;
 export function startActivityPolling() {
   if (pollingStarted) return;
   pollingStarted = true;
+  poller(3000, refreshSourceCheckReports);
+  addEventListener("online", () => checkPollFailures.clear());
   poller(3000, async () => {
     const report = await api("disk-jobs").catch(() => null);
     if (report)

@@ -10,7 +10,7 @@
 // fallback for the seconds between saves.
 import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { api, token } from "../api.js";
-import { load, useStore } from "../store.js";
+import { load, setState, useStore } from "../store.js";
 
 const SAVE_INTERVAL_MS = 10_000;
 const RESUME_MIN_SECONDS = 15;
@@ -192,7 +192,9 @@ export function PlayerView() {
   const [request, setRequest] = useState(params());
   const [streams, setStreams] = useState(null);
   const [active, setActive] = useState(0);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(null);
+  const [streamStatus, setStreamStatus] = useState("idle");
+  const [reload, setReload] = useState(0);
   const [paused, setPaused] = useState(true);
   const [waiting, setWaiting] = useState(false);
   const [time, setTime] = useState(0);
@@ -238,7 +240,8 @@ export function PlayerView() {
       if (nextRequest) {
         setStreams(null);
         setActive(0);
-        setError("");
+        setError(null);
+        setStreamStatus("idle");
         setResumedFrom(0);
         setUpNextDismissed(false);
         setRequest(nextRequest);
@@ -259,6 +262,10 @@ export function PlayerView() {
   useEffect(() => {
     if (!entry) return;
     let alive = true;
+    setStreams(null);
+    setActive(0);
+    setError(null);
+    setStreamStatus("loading-streams");
     const id =
       entry.type === "series" && file
         ? `${entry.id}:${file.season}:${file.episode}`
@@ -272,22 +279,53 @@ export function PlayerView() {
         encodeURIComponent(id) +
         ".json",
     )
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok)
+          throw {
+            kind: "request",
+            message: `Could not load stream metadata (HTTP ${response.status}).`,
+          };
+        return response.json().catch(() => {
+          throw {
+            kind: "request",
+            message:
+              "Could not read the stream metadata reply from HoshiStream.",
+          };
+        });
+      })
       .then((data) => {
         if (!alive) return;
-        if (!data.streams?.length) return setError("No playable stream");
+        if (!data.streams?.length) {
+          setStreamStatus("idle");
+          return setError({
+            kind: "unresolved",
+            message:
+              "No streams were returned for this title. Run a source check, then retry playback.",
+          });
+        }
         const preferred = localStorage.getItem(qualityKey(entry.id));
         const at = data.streams.findIndex(
           (stream) => qualityLabel(stream) === preferred,
         );
         setActive(at === -1 ? 0 : at);
         setStreams(data.streams);
+        setStreamStatus("loading-media");
       })
-      .catch((requestError) => alive && setError(requestError.message));
+      .catch(
+        (requestError) =>
+          alive &&
+          (setStreamStatus("idle"),
+          setError({
+            kind: requestError.kind || "request",
+            message:
+              requestError.message ||
+              "Could not load stream metadata from HoshiStream.",
+          })),
+      );
     return () => {
       alive = false;
     };
-  }, [entry?.id, file?.id]);
+  }, [entry?.id, file?.id, reload]);
 
   // Attach the active stream, resume, and keep the server's position current.
   useEffect(() => {
@@ -322,7 +360,14 @@ export function PlayerView() {
         }
         return video.play().catch(() => undefined);
       })
-      .catch((sourceError) => alive && setError(sourceError.message));
+      .catch(
+        (sourceError) =>
+          alive &&
+          setError({
+            kind: "codec",
+            message: sourceError.message,
+          }),
+      );
 
     let lastSaved = -1;
     const save = () => {
@@ -416,23 +461,44 @@ export function PlayerView() {
         : [];
       setTracks({ audio, text });
     };
-    const onWaiting = () => setWaiting(true);
-    const onPlaying = () => setWaiting(false);
+    const onPlaying = () => {
+      setWaiting(false);
+      setStreamStatus("playing");
+    };
     // A source the browser cannot decode: try the next quality (usually the
     // repaired "Compatible" stream) before giving up.
     const onError = () => {
       const code = video.error?.code;
-      if (code !== 3 && code !== 4) return;
-      if (streams && active + 1 < streams.length) {
-        setNotice(
-          qualityLabel(streams[active]) +
-            " won't play here — switched to " +
-            qualityLabel(streams[active + 1]),
-        );
-        setActive(active + 1);
-      } else {
-        setError("This browser cannot decode the stream");
+      if (code === 3 || code === 4) {
+        if (streams && active + 1 < streams.length) {
+          setNotice(
+            qualityLabel(streams[active]) +
+              " won't play here — switched to " +
+              qualityLabel(streams[active + 1]),
+          );
+          setActive(active + 1);
+          return;
+        }
+        setStreamStatus("idle");
+        return setError({
+          kind: "codec",
+          message: "This browser cannot decode the stream.",
+        });
       }
+      if (code !== 2) return;
+      setStreamStatus("idle");
+      setError({
+        kind: "network",
+        message: "The stream stopped responding during playback.",
+      });
+    };
+    const onWaitingForBuffer = () => {
+      setWaiting(true);
+      if (streams) setStreamStatus("buffering");
+    };
+    const onMetadata = () => {
+      setStreamStatus("playing");
+      sync();
     };
     const events = [
       "play",
@@ -441,21 +507,22 @@ export function PlayerView() {
       "durationchange",
       "volumechange",
       "progress",
-      "loadedmetadata",
       "ratechange",
     ];
     for (const name of events) video.addEventListener(name, sync);
+    video.addEventListener("loadedmetadata", onMetadata);
     for (const name of ["waiting", "seeking"])
-      video.addEventListener(name, onWaiting);
+      video.addEventListener(name, onWaitingForBuffer);
     for (const name of ["playing", "seeked", "canplay"])
       video.addEventListener(name, onPlaying);
     video.addEventListener("error", onError);
     sync();
     return () => {
       video.removeEventListener("error", onError);
+      video.removeEventListener("loadedmetadata", onMetadata);
       for (const name of events) video.removeEventListener(name, sync);
       for (const name of ["waiting", "seeking"])
-        video.removeEventListener(name, onWaiting);
+        video.removeEventListener(name, onWaitingForBuffer);
       for (const name of ["playing", "seeked", "canplay"])
         video.removeEventListener(name, onPlaying);
     };
@@ -592,6 +659,24 @@ export function PlayerView() {
       </button>
     </div>`;
 
+  const openEntryCheck = () => {
+    setState({
+      selected: entry,
+      tab: "playback",
+      inspection: null,
+      inspectionError: "",
+    });
+    location.hash = "#/library";
+  };
+  const retry = () => {
+    setStreams(null);
+    setActive(0);
+    setError(null);
+    setNotice("");
+    setStreamStatus("loading-streams");
+    setReload((value) => value + 1);
+  };
+
   const video = videoRef.current;
   const name = episodeName(file);
   const subtitle =
@@ -667,14 +752,33 @@ export function PlayerView() {
       ${
         error
           ? html`<div class="pl-error">
-              <p class="danger">${error}</p>
+              <p class="danger">${error.message}</p>
               <p class="muted">
-                Browsers cannot decode every codec — try the Compatible quality
-                if one is offered.
+                ${
+                  error.kind === "codec"
+                    ? "Browsers cannot decode every codec — try the Compatible quality if one is offered."
+                    : error.kind === "network"
+                      ? "The stream request started, but playback stalled. Retry, then review the entry if it happens again."
+                      : "This looks unresolved rather than unsupported. Open the entry and review its source check, then retry."
+                }
               </p>
+              <div class="row tight stacked-sm">
+                <button class="secondary" onClick=${retry}>Retry</button>
+                <button class="primary" onClick=${openEntryCheck}>
+                  Open entry check
+                </button>
+              </div>
             </div>`
           : !streams
-            ? html`<div class="pl-error"><p class="muted">Loading…</p></div>`
+            ? html`<div class="pl-error">
+                <p class="muted">
+                  ${
+                    streamStatus === "loading-media"
+                      ? "Loading video into the player…"
+                      : "Loading stream metadata…"
+                  }
+                </p>
+              </div>`
             : null
       }
       ${
@@ -743,7 +847,8 @@ export function PlayerView() {
                           active === streamIndex ? "on" : ""
                         }"
                         onClick=${() => {
-                          setError("");
+                          setError(null);
+                          setStreamStatus("loading-media");
                           setActive(streamIndex);
                           localStorage.setItem(
                             qualityKey(entry.id),

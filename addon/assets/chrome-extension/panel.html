@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HoshiStream companion</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main class="panel-shell">
+      <header class="panel-header">
+        <div class="brand">
+          <img
+            class="brand-logo"
+            src="icons/icon-128.png"
+            alt=""
+            width="32"
+            height="32"
+          />
+          <div>
+            <h1>HoshiStream</h1>
+            <p class="subtle">Chrome companion</p>
+          </div>
+        </div>
+        <div
+          id="global-alert"
+          class="notice notice-bad"
+          role="alert"
+          hidden
+        ></div>
+      </header>
+
+      <section
+        class="connection"
+        id="status-card"
+        aria-label="Connection to this Mac"
+      >
+        <div class="connection-strip">
+          <div id="status-pills" class="pill-row" role="status"></div>
+          <button
+            id="retry-status"
+            class="ghost icon-button"
+            type="button"
+            aria-label="Refresh connection"
+            title="Refresh connection"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17"
+              />
+            </svg>
+          </button>
+        </div>
+        <p id="status-copy" class="copy"></p>
+        <div class="action-row">
+          <button id="open-app" class="primary" type="button">
+            Open HoshiStream
+          </button>
+        </div>
+      </section>
+
+      <section class="panel-section" id="capture-card">
+        <div class="section-head">
+          <div>
+            <h2>Add media</h2>
+            <p class="subtle">Choose a source, then review before adding.</p>
+          </div>
+        </div>
+        <button
+          id="capture-page"
+          class="secondary capture-button"
+          type="button"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M3 9h18M8 14h8M12 11v6" />
+          </svg>
+          Capture page links
+        </button>
+        <p id="capture-copy" class="copy copy-tight"></p>
+
+        <label class="field" for="magnet-input">
+          <span>Magnet link</span>
+          <textarea
+            id="magnet-input"
+            rows="2"
+            spellcheck="false"
+            placeholder="magnet:?xt=urn:btih:…"
+          ></textarea>
+        </label>
+        <div class="action-row magnet-actions">
+          <button id="use-magnet" class="primary" type="button">
+            Use magnet
+          </button>
+        </div>
+
+        <div class="field">
+          <span>.torrent file</span>
+          <label id="torrent-dropzone" class="dropzone" for="torrent-input">
+            <input
+              id="torrent-input"
+              type="file"
+              accept=".torrent,application/x-bittorrent"
+              class="visually-hidden"
+              aria-label="Choose a .torrent file"
+            />
+            <strong id="torrent-drop-title"
+              >Choose or drop a .torrent file</strong
+            >
+            <p id="torrent-drop-copy" class="subtle"></p>
+          </label>
+        </div>
+        <details class="capture-help">
+          <summary>How capture works</summary>
+          <p class="subtle">
+            Open the companion from Chrome's toolbar before capturing the active
+            page. Only links on that page are read, after your click.
+          </p>
+          <p class="subtle">
+            For protected .torrent links, download the file in Chrome and choose
+            it here. Title suggestions come only from the magnet or link you
+            selected.
+          </p>
+        </details>
+      </section>
+
+      <section class="panel-section" id="chooser-card" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Choose a captured source</h2>
+            <p id="chooser-copy" class="subtle"></p>
+          </div>
+        </div>
+        <div id="chooser-list" class="stack"></div>
+      </section>
+
+      <section class="panel-section" id="draft-card" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Review and add</h2>
+            <p id="draft-source-copy" class="subtle"></p>
+          </div>
+          <div id="draft-pill" class="pill"></div>
+        </div>
+        <p id="draft-message" class="copy copy-tight"></p>
+
+        <div class="name-row">
+          <label class="field grow" for="entry-name">
+            <span>Name</span>
+            <input
+              id="entry-name"
+              type="text"
+              maxlength="200"
+              placeholder="Title"
+            />
+          </label>
+          <button
+            id="primary-action"
+            class="primary primary-tall"
+            type="button"
+          >
+            Add to library
+          </button>
+        </div>
+        <p id="primary-hint" class="subtle"></p>
+
+        <div class="action-row action-row-tight">
+          <button id="clear-import" class="secondary" type="button">
+            Clear source
+          </button>
+        </div>
+
+        <details id="details-toggle" class="details-card">
+          <summary>Type, tags, and series destination</summary>
+          <div class="details-body">
+            <fieldset class="field-group type-picker">
+              <legend>Type</legend>
+              <label class="choice">
+                <input type="radio" name="entry-type" value="movie" />
+                <span>Movie</span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="entry-type" value="series" />
+                <span>Series</span>
+              </label>
+            </fieldset>
+
+            <label class="field" for="tags-input">
+              <span>Tags</span>
+              <input
+                id="tags-input"
+                type="text"
+                maxlength="400"
+                placeholder="anime, sci-fi"
+              />
+            </label>
+            <div id="tag-suggestions" class="chip-row"></div>
+
+            <label class="choice note-choice">
+              <input id="check-after-save" type="checkbox" />
+              <span>
+                Start a source check after saving. This may contact peers and
+                read a small media sample.
+              </span>
+            </label>
+
+            <div id="series-fields" class="series-fields" hidden>
+              <fieldset class="field-group">
+                <legend>Series destination</legend>
+                <label class="choice">
+                  <input type="radio" name="series-mode" value="new" />
+                  <span>Create a new series entry</span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="series-mode" value="existing" />
+                  <span>Add into an existing series</span>
+                </label>
+              </fieldset>
+
+              <label class="field" for="series-target">
+                <span>Existing inspected series</span>
+                <select id="series-target"></select>
+              </label>
+              <p id="series-target-copy" class="subtle"></p>
+
+              <label class="field field-narrow" for="season-hint">
+                <span>Season hint</span>
+                <input
+                  id="season-hint"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Optional"
+                />
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <div id="duplicate-card" class="stacked-card" hidden>
+          <h3>Possible duplicates</h3>
+          <p class="subtle">
+            These entries already match the prepared source hash. Open one if
+            you want to compare before saving.
+          </p>
+          <div id="duplicate-list" class="stack"></div>
+        </div>
+
+        <div id="preview-card" class="stacked-card" hidden>
+          <h3>Series preview</h3>
+          <p id="preview-copy" class="copy copy-tight"></p>
+          <div id="preview-actions" class="action-row action-row-tight"></div>
+          <div class="metric-row">
+            <div class="metric">
+              <strong id="preview-added-count">0</strong>
+              <span>Added</span>
+            </div>
+            <div class="metric">
+              <strong id="preview-replaced-count">0</strong>
+              <span>Replaced</span>
+            </div>
+          </div>
+          <div id="preview-lists" class="preview-columns"></div>
+          <label id="replace-consent-row" class="choice note-choice" hidden>
+            <input id="replace-consent" type="checkbox" />
+            <span
+              >I want to replace the overlapping episodes listed above.</span
+            >
+          </label>
+        </div>
+      </section>
+
+      <section class="panel-section" id="save-card" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Saved entry</h2>
+            <p id="save-copy" class="subtle"></p>
+          </div>
+          <div id="save-pill" class="pill"></div>
+        </div>
+        <p id="save-message" class="copy copy-tight"></p>
+        <div id="save-actions" class="action-row"></div>
+
+        <div id="check-card" class="stacked-card" hidden>
+          <div class="section-head section-head-tight">
+            <div>
+              <h3>Source check</h3>
+              <p id="check-copy" class="subtle"></p>
+            </div>
+            <div id="check-pill" class="pill"></div>
+          </div>
+          <p id="check-message" class="copy copy-tight"></p>
+          <div id="check-actions" class="action-row action-row-tight"></div>
+        </div>
+      </section>
+
+      <section class="panel-section" id="guidance-card" hidden>
+        <h2>Install guidance</h2>
+        <p id="guidance-copy" class="copy copy-tight"></p>
+        <ul id="guidance-list" class="guidance-list"></ul>
+      </section>
+    </main>
+
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

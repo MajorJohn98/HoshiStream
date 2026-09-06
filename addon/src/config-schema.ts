@@ -47,6 +47,11 @@ export const configSchema = z.object({
   PUBLIC_ADDON_URL: httpUrl,
   ACCESS_TOKEN: z.string().min(20),
   LIBRARY_PATH: z.string().min(1).default(join(root, "library.json")),
+  ONBOARDING_PATH: z.string().min(1).default(join(root, "onboarding.json")),
+  ONBOARDING_FIRST_RUN: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   MEDIA_ROOT: z.string().min(1).default(join(homedir(), "Movies")),
   UPLOAD_ROOT: z.string().min(1).default(join(root, "media")),
   NATIVE_PICKER_SOCKET: z

@@ -53,6 +53,17 @@ describe("parseConfig", () => {
     expect(() => parseConfig({ ...valid, LAN_REDIRECT: "on" })).toThrow();
   });
 
+  it("ignores removed search-provider settings", () => {
+    expect(
+      parseConfig({
+        ...valid,
+        TORRENT_SEARCH_ENABLED: "true",
+        PROWLARR_URL: "http://127.0.0.1:9696",
+        JACKETT_URL: "http://127.0.0.1:9117",
+      }),
+    ).not.toHaveProperty("TORRENT_SEARCH_ENABLED");
+  });
+
   it("rejects missing or malformed public configuration", () => {
     expect(() =>
       parseConfig({ ...valid, PUBLIC_TORRSERVER_URL: "torrserver:8090" }),

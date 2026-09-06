@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "HoshiStream Companion",
+  "description": "Capture local magnet or .torrent sources and add them to HoshiStream on this same computer.",
+  "version": "0.1.1",
+  "minimum_chrome_version": "116",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApoONvzEVsbhO+/ibQRiN2FJhHUTgsQRaE54qNe4IbUYlzsWKBw6sOdG3/xLYdD2e0CifIDDj50XtzXV/aDdv326As6hAjQneAPvdQyhAM3/F0TV5hckP77hIWZYDiwY325LtIg9zutHhZHvZg4HffqnwuZTnhW5ukQjg6pFti72V/tsR5+Y9lSKDedCGBFqVs1rt3vDPO2DaBo4RCnoLNbC88vNGCauGdzi1S/zmqDA6aR02TE9uftjua9o93mSZ6SoQ5NL0s1xgO2f4BOmraJ6S71DYp6d2bCzMuW+3wWMIAzz8LPfzFnFhQgyzSu39Vdm7dXNIlNahNTHMUKQSWwIDAQAB",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "sidePanel",
+    "storage",
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "action": {
+    "default_title": "Open HoshiStream companion"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

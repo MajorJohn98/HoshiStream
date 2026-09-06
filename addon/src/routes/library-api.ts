@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { assessDirectPlay } from "../direct-play.ts";
 import { removeDiskCopyDirectory } from "../disk-copy.ts";
@@ -11,9 +12,14 @@ import {
   validateBrowserLocalPath,
 } from "../local-media.ts";
 import { probeMedia } from "../media-probe.ts";
+import { entrySourceDefinitionRevision } from "../imports/source-identity.ts";
 import { homeSpeedMbps } from "../speedtest.ts";
 import { entryTagsSchema, type Tags } from "../tags.ts";
-import { createEntrySchema, patchEntrySchema } from "../types.ts";
+import {
+  createEntrySchema,
+  patchEntrySchema,
+  type LibraryEntry,
+} from "../types.ts";
 import {
   body,
   jsonObjectBody,
@@ -24,6 +30,83 @@ import {
 } from "./context.ts";
 
 const catalogResponseSchema = z.object({ metas: z.array(z.unknown()) });
+const optionalIdempotencyKeySchema = z.string().uuid().optional();
+const SOURCE_DEFINITION_FIELDS = [
+  "type",
+  "magnetUri",
+  "torrentFilePath",
+  "localFilePath",
+  "localFolderPath",
+  "preferredFileIndex",
+  "fileOverrides",
+  "extraSources",
+] as const;
+
+function rejectServerOwnedFields(input: Record<string, unknown>): void {
+  if (
+    "sourceHash" in input ||
+    "searchImport" in input ||
+    "searchReceipts" in input ||
+    "sourceCheck" in input
+  )
+    throw new SyntaxError(
+      "Source identity, search metadata, and source checks are server-owned",
+    );
+}
+
+function rejectNestedOwnership(input: Record<string, unknown>): void {
+  if (!Array.isArray(input.extraSources)) return;
+  for (const source of input.extraSources) {
+    if (
+      source &&
+      typeof source === "object" &&
+      ("managedMedia" in source ||
+        "sourceHash" in source ||
+        "searchImport" in source ||
+        "searchReceipts" in source ||
+        "sourceCheck" in source)
+    )
+      throw new SyntaxError(
+        "Extra-source ownership, source identity, search metadata, and source checks are server-owned",
+      );
+  }
+}
+
+function manualCreateReceipt(input: Record<string, unknown>) {
+  const key = optionalIdempotencyKeySchema.parse(input.idempotencyKey);
+  if (!key) return;
+  const fingerprintInput = { ...input };
+  delete fingerprintInput.idempotencyKey;
+  return {
+    key,
+    fingerprint: createHash("sha256")
+      .update(
+        JSON.stringify({
+          operation: "manual-create",
+          input: fingerprintInput,
+        }),
+      )
+      .digest("hex"),
+  };
+}
+
+async function cleanupManagedSources(
+  entry: LibraryEntry,
+  remaining: LibraryEntry[],
+): Promise<void> {
+  try {
+    await removeManagedMedia(entry, remaining);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        event: "managed_media_cleanup_failed",
+        entryId: entry.id,
+      }),
+    );
+    throw error;
+  }
+}
 
 export function technicalProbeRequested(url: URL): boolean {
   return url.searchParams.get("probe") === "true";
@@ -50,6 +133,14 @@ export const handleLibraryCollection: RouteHandler = async (
   if (method === "GET") return reply(response, 200, await library.list());
   if (method !== "POST") return false;
   const input = jsonObjectBody(await body(request));
+  rejectServerOwnedFields(input);
+  rejectNestedOwnership(input);
+  const receipt = manualCreateReceipt(input);
+  if (receipt) {
+    const replay = await library.searchReceipt(receipt);
+    if (replay) return reply(response, 200, replay);
+  }
+  delete input.idempotencyKey;
   delete input.managedMedia;
   await normalizeTags(input, tags);
   if (input.tags === null) delete input.tags;
@@ -77,6 +168,15 @@ export const handleLibraryCollection: RouteHandler = async (
     if (typeof input.torrentFilePath === "string") {
       input.managedMedia = await isManagedMediaPath(input.torrentFilePath);
     }
+  }
+  if (receipt) {
+    const result = await library.createWithReceipt(
+      createEntrySchema.parse(input),
+      receipt,
+    );
+    if (result.created)
+      logInfo("library_created", { entryId: result.entry.id });
+    return reply(response, result.created ? 201 : 200, result.entry);
   }
   const entry = await library.create(createEntrySchema.parse(input));
   logInfo("library_created", { entryId: entry.id });
@@ -118,7 +218,7 @@ export const handlePlaybackPosition: RouteHandler = async (
 };
 
 export const handleLibraryItem: RouteHandler = async (
-  { library, volumes, diskCleanup, archiver, tags },
+  { library, volumes, diskCleanup, archiver, tags, sourceChecks },
   { request, response, url, method },
 ) => {
   const itemMatch = /^\/api\/library\/([^/]+)$/.exec(url.pathname);
@@ -130,9 +230,16 @@ export const handleLibraryItem: RouteHandler = async (
   }
   if (method === "PATCH") {
     const patch = jsonObjectBody(await body(request));
+    rejectServerOwnedFields(patch);
+    rejectNestedOwnership(patch);
     delete patch.managedMedia;
     await normalizeTags(patch, tags);
     const input = patchEntrySchema.parse(patch);
+    const current = await library.get(id);
+    const previousRevision =
+      current && SOURCE_DEFINITION_FIELDS.some((field) => field in input)
+        ? entrySourceDefinitionRevision(current)
+        : undefined;
     if (input.localFilePath)
       input.localFilePath = await validateBrowserLocalPath(
         input.localFilePath,
@@ -143,14 +250,30 @@ export const handleLibraryItem: RouteHandler = async (
         input.localFolderPath,
         "folder",
       );
-    const entry = await library.patch(id, input);
+    const entry = await library.patch(id, input, cleanupManagedSources);
+    if (
+      entry &&
+      previousRevision &&
+      entrySourceDefinitionRevision(entry) !== previousRevision
+    )
+      await sourceChecks?.cancel(id, previousRevision);
     if (entry) logInfo("library_updated", { entryId: entry.id });
     return reply(response, entry ? 200 : 404, entry ?? { error: "Not found" });
   }
   if (method === "DELETE") {
-    const entry = await library.get(id);
-    const removed = await library.remove(id);
-    if (removed && entry) await removeManagedMedia(entry);
+    const current = await library.get(id);
+    if (current)
+      await sourceChecks?.cancel(id, entrySourceDefinitionRevision(current));
+    let entry: LibraryEntry | undefined;
+    let cleanupError: unknown;
+    const removed = await library.remove(id, async (previous, remaining) => {
+      entry = previous;
+      try {
+        await cleanupManagedSources(previous, remaining);
+      } catch (error) {
+        cleanupError = error;
+      }
+    });
     // Disk copies mirror managed media: deleting the entry cleans up its
     // files, deferred via tombstone when the drive is offline.
     if (removed && entry?.diskCopy && volumes) {
@@ -165,6 +288,7 @@ export const handleLibraryItem: RouteHandler = async (
         await diskCleanup?.add({ volumeId, relativeDir });
       }
     }
+    if (cleanupError) throw cleanupError;
     if (removed) logInfo("library_deleted", { entryId: id });
     return reply(response, removed ? 204 : 404, { error: "Not found" });
   }
@@ -179,6 +303,7 @@ export const handleInspect: RouteHandler = async (
   if (!inspectMatch || method !== "POST") return false;
   const entry = await library.get(decodeURIComponent(inspectMatch[1]));
   if (!entry) return reply(response, 404, { error: "Not found" });
+  const sourceDefinitionRevision = entrySourceDefinitionRevision(entry);
   const inspection = await inspectEntry(entry, torrServer, library);
   const selected = inspection.selectedFiles[0];
   const source = inspection.files.find((file) => file.id === selected?.id) as
@@ -189,25 +314,24 @@ export const handleInspect: RouteHandler = async (
       const input =
         source.localPath ?? torrServer.streamUrl(inspection.hash, selected);
       technical = await probeMedia(input, source);
-      const directPlay = assessDirectPlay(technical, homeSpeedMbps());
-      await library.setDirectPlay(entry.id, directPlay).catch(() => {
-        console.error(
-          JSON.stringify({
-            level: "warn",
-            event: "direct_play_write_failed",
-            entryId: entry.id,
-          }),
-        );
-      });
-      return reply(response, 200, {
-        ...inspection,
-        technical,
-        directPlay,
-        homeSpeedMbps: homeSpeedMbps(),
-      });
     } catch {
       technical = { error: "Media details could not be read" };
     }
+    if ("error" in technical) {
+      return reply(response, 200, {
+        ...inspection,
+        technical,
+        homeSpeedMbps: homeSpeedMbps(),
+      });
+    }
+    const directPlay = assessDirectPlay(technical, homeSpeedMbps());
+    await library.setDirectPlay(entry.id, directPlay, sourceDefinitionRevision);
+    return reply(response, 200, {
+      ...inspection,
+      technical,
+      directPlay,
+      homeSpeedMbps: homeSpeedMbps(),
+    });
   }
   return reply(response, 200, {
     ...inspection,
@@ -274,12 +398,15 @@ export const handleMediaFiles: RouteHandler = async (
     return reply(response, 200, await listLocalMedia());
   }
   if (url.pathname === "/api/upload" && method === "POST") {
-    await saveUpload(
-      request,
-      url.searchParams.get("batch") ?? "",
-      url.searchParams.get("path") ?? "",
+    return reply(
+      response,
+      201,
+      await saveUpload(
+        request,
+        url.searchParams.get("batch") ?? "",
+        url.searchParams.get("path") ?? "",
+      ),
     );
-    return reply(response, 204, null);
   }
   if (url.pathname === "/api/torrent-upload" && method === "POST") {
     return reply(response, 201, {

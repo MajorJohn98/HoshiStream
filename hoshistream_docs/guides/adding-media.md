@@ -1,6 +1,12 @@
 # Adding Media
 
-Use only media you own, public-domain media, or media you are authorized to access. HoshiStream provides no torrent search, index scraping, source lists, or bundled magnet links.
+Use only media you own, public-domain media, or media you are authorized to access.
+Add media manually in the app or with the same-computer
+[Chrome companion](chrome-companion.md). In-app torrent discovery and provider
+configuration have been removed; existing library entries remain usable.
+
+New to the app? Open **Get started** in the sidebar for
+[first-title and player setup](getting-started.md).
 
 ## Management page (recommended)
 
@@ -11,6 +17,79 @@ http://127.0.0.1:7000/manage/<ACCESS_TOKEN>
 ```
 
 Press **+ Add Media** in the Library toolbar to open the Add Media dialog. From there you can add magnet links, upload `.torrent` files, pick local files (native Finder picker with the menu-bar app, or browser upload fallback), and pick tags; the entry sheet then lets you edit metadata, posters, and tags, inspect entries, and probe technical details.
+
+### Saved does not mean ready to play
+
+**Inspect and check after saving** is on by default in interactive Add, with a
+per-add opt-out. Saving happens first. The separate check then resolves metadata
+and reads a bounded sample with ffprobe; torrent checks may contact peers.
+Failures keep the saved entry and offer retry/cancel rather than another Add.
+
+Progress distinguishes queued, inspecting and probing from completed or failed
+checks. A basic check examines one selected file, not every episode. Format,
+audio codec, browser capabilities and changing swarm availability can still
+affect actual playback. Use the existing Compatible/native-player options where
+appropriate; checks do not start transcoding or change your selected file.
+
+Checks have a 60-second overall deadline and a 20-second probe limit. TorrServer
+can prefetch cache pieces, so the probe's analysis limit is not a hard network
+byte cap. Restarted/incomplete checks are marked interrupted and are not
+automatically resumed.
+
+### Open magnet links directly on macOS
+
+Install the current HoshiStream app in Applications and choose **Use HoshiStream
+for Magnet Links** from its menu-bar menu. This changes the Mac's default magnet
+handler; it does not require the Chrome extension. Accept the browser's
+**Open HoshiStream** prompt when shown.
+
+Clicking a magnet starts HoshiStream if necessary and opens Add Media in your
+default browser, with the magnet and any suggested name filled in. Review and
+edit the details, then press **Add to library**. Opening a link alone never saves
+an entry or downloads torrent data.
+
+The private handoff expires after ten minutes or an app restart. If it expires,
+click the original magnet again or choose **Enter manually**. To use another
+default torrent app later, select that app's magnet-association setting.
+
+### Chrome-assisted adding
+
+Browse normally, then use **Add to HoshiStream** on a magnet link or open the
+companion's side panel. Review the suggested name, type and tags before adding.
+You can also paste a magnet or choose/drop a `.torrent` file already downloaded
+through the browser. No indexer, API key or local server address is needed.
+
+The native helper transfers only the selected source and approved metadata to
+the local app. It does not export browser cookies or browsing history. A duplicate
+source offers the existing entry instead of silently adding another copy.
+See [the companion guide](chrome-companion.md) for installation and recovery.
+
+Back up **`library.json` and the managed media directory together**. The browser's
+JSON export excludes local paths and does not embed `.torrent` files; by itself it
+cannot restore a file-backed source. Imported files follow the existing managed
+media deletion rules.
+
+### Add a captured source to an existing series
+
+In the companion, choose **Add to existing series**, select a torrent-backed
+series and optionally supply a season hint. Local-file/folder entries are not
+eligible. Filename season/episode numbers take precedence over the hint.
+
+Request an episode preview explicitly. This can contact peers through TorrServer
+to inspect metadata, but does not yet add the source. If the existing series
+has not been inspected, inspect it first so the preview can compare its episodes.
+
+Review new episodes and overlaps. Confirm replacements before adding a source
+that covers episodes already present; the newly appended source wins those
+overlaps. A changed target or expired preview requires a fresh review rather
+than silently reusing old approval. Existing title, tags and source choices are
+not overwritten.
+
+The confirmation is retry-safe, including after a lost response and restart.
+Cancelling or expiring a preview reclaims its temporary torrent metadata.
+Imported extra-source files retain their managed ownership through source edits
+and reorderings. Removing a source or entry never deletes user-owned files or
+managed files still referenced elsewhere.
 
 ### Tags
 

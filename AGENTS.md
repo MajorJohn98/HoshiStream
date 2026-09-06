@@ -11,7 +11,7 @@ HoshiStream is a private, local-first Stremio-compatible add-on for Nuvio: a Nod
 - Implement only the requested phase.
 - Verify TorrServer behavior against its source or Swagger before adding API calls.
 - Keep media legal, local-first, direct-play, and private by default.
-- Do not add torrent search, transcoding, a database, a dashboard, or containers.
+- In-app torrent discovery is retired (ADR 0020). Keep media adding manual, with the Chrome companion as a user-triggered capture/review bridge. Do not reintroduce provider search, scraping, challenge bypass, or generic Torznab without approval. Do not add transcoding, a database, a dashboard, or containers.
 - Never log access tokens, authorization headers, or complete magnet URIs.
 - Run type checks, tests, lint, and format checks before finishing.
 
@@ -76,7 +76,7 @@ The optional TorrServer integration test is opt-in: `TORRSERVER_TEST_URL=http://
 - Validate every external boundary with Zod: environment config, HTTP request bodies, TorrServer responses.
 - Structured JSON logs (`level`, `event`, context) to stdout/stderr — never tokens, auth headers, or magnet URIs.
 - Tests mirror source modules in `addon/tests/*.test.ts` (Vitest).
-- Only `stremio-addon-sdk` and `zod` as runtime dependencies; ask before adding more.
+- Runtime dependencies are `stremio-addon-sdk`, `zod`, and `bencode` (with `uint8-util`). Ask before adding more. The Chrome companion uses browser APIs; do not add a browser automation runtime.
 
 ## Workflow Best Practices
 

@@ -23,6 +23,10 @@ To hand the app to another Mac, build a disk image instead — see
 
 ## First run
 
+Once the local server is ready, a fresh install opens the skippable
+[Get started guide](getting-started.md) in your browser. It helps you add a title
+and connect Nuvio or Stremio. Reopen it with **Get Started** in the menu-bar menu.
+
 The app resolves its state directory at runtime, so the bundle is portable across Macs. On
 first launch it creates `~/Library/Application Support/HoshiStream` with a `.env` (mode
 `0600`) containing a generated `ACCESS_TOKEN` and a `MEDIA_DIR` defaulting to `~/Movies`,
@@ -38,10 +42,12 @@ HOSHISTREAM_PROJECT_ROOT=/path/to/checkout ./packaging/build-macos-app.sh
 ## Menu-bar controls
 
 - Open HoshiStream (management page in the default browser)
+- Get Started (reopen the setup guide)
 - Copy the Stremio URL
 - Restart the server
 - Reveal logs
 - Start at Login
+- Use HoshiStream for Magnet Links (opt-in system default; opens Add Media for review)
 - Quit (stops both services cleanly)
 
 ## State and logs
@@ -50,6 +56,7 @@ HOSHISTREAM_PROJECT_ROOT=/path/to/checkout ./packaging/build-macos-app.sh
 |---|---|
 | `~/Library/Application Support/HoshiStream` | Library, settings, managed media |
 | `~/Library/Logs/HoshiStream/server.log` | Server logs |
+| `~/Library/Application Support/HoshiStream/onboarding.json` | Local setup progress and dismissal |
 
 ## Native file pickers
 

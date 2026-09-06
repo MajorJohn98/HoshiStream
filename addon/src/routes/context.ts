@@ -10,12 +10,15 @@ import type { NativePicker } from "../native-picker.ts";
 import type { Playback } from "../playback.ts";
 import type { PointerClient } from "../pointer.ts";
 import type { ResourceDirs } from "../resources.ts";
+import type { ImportService } from "../imports/service.ts";
 import type { AddonInterface } from "../server-types.ts";
 import type { PublicUrls } from "../streams.ts";
 import type { Tags } from "../tags.ts";
 import type { TorrServerClient } from "../torrserver-client.ts";
 import type { TranscodeManager } from "../transcode.ts";
 import type { VolumeRegistry } from "../volumes.ts";
+import type { SourceChecks } from "../source-checks.ts";
+import type { Onboarding } from "../onboarding.ts";
 
 // Everything a route module may need. Optional members are features the
 // supervisor can leave unconfigured; routes answer 409 when they are missing.
@@ -38,6 +41,9 @@ export interface HandlerContext {
   archiveSchedule?: ArchiveSchedule;
   analysis?: LibraryAnalysis;
   tags?: Tags;
+  imports?: ImportService;
+  sourceChecks?: SourceChecks;
+  onboarding?: Onboarding;
 }
 
 export interface RouteRequest {
@@ -78,7 +84,7 @@ export function noStoreReply(
     ...JSON_HEADERS,
     "cache-control": "no-store, max-age=0",
   });
-  response.end(JSON.stringify(value));
+  response.end(status === 204 ? undefined : JSON.stringify(value));
   return true;
 }
 

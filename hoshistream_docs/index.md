@@ -23,7 +23,21 @@
 - [decisions/0014-run-typescript-source-directly.md](decisions/0014-run-typescript-source-directly.md) — Run `addon/src` directly via Node type stripping: `.ts` import specifiers, erasable-only syntax, `--dev` launcher flag; `tsx` rejected.
 - [decisions/0015-keep-json-stores-sqlite-deferred.md](decisions/0015-keep-json-stores-sqlite-deferred.md) — Keep atomic JSON stores; SQLite (`node:sqlite`) deferred with explicit revisit criteria and the inspection-cache split as the first remedy.
 
+- [decisions/0016-opt-in-curated-torrent-search.md](decisions/0016-opt-in-curated-torrent-search.md) — Approved opt-in open-film search in Add Media, reviewed source pins, bounded torrent parsing, and retry-safe JSON import.
+
+- [decisions/0017-local-search-bridges-and-series-import.md](decisions/0017-local-search-bridges-and-series-import.md) — Optional loopback Prowlarr/Jackett adapters, explicit public indexers, and collision-reviewed series source imports.
+
+- [decisions/0018-bundled-direct-search-providers.md](decisions/0018-bundled-direct-search-providers.md) — Approved bundled YTS/Nyaa/1337x adapters, bounded HTML parsing, and no external search-service requirement.
+
+- [decisions/0019-post-save-source-checks.md](decisions/0019-post-save-source-checks.md) — Opt-out bounded checks after saving, persistent progress, source-revision guards, and honest playback readiness.
+
+- [decisions/0020-manual-import-chrome-companion.md](decisions/0020-manual-import-chrome-companion.md) — Retire discovery and use a least-privilege Chrome companion with a same-computer macOS native bridge.
+- [decisions/0021-native-magnet-link-handler.md](decisions/0021-native-magnet-link-handler.md) — Opt-in macOS magnet handling with private, expiring handoff tickets and explicit Add Media review.
+
 ## Guides
+
+- [guides/getting-started.md](guides/getting-started.md) — First-launch setup: add a title, connect Nuvio or Stremio, skip and resume privately.
+- [guides/chrome-companion.md](guides/chrome-companion.md) — Companion workflow, native registration, local testing, packaging and publication requirements.
 
 - [guides/setup-native-macos.md](guides/setup-native-macos.md) — Build and install the native app, configure `.env`, tune TorrServer, and forward the peer port.
 - [guides/distributing-macos-app.md](guides/distributing-macos-app.md) — Build a `.dmg`, the Gatekeeper quarantine workaround, first-run behavior, and signing limitations.
@@ -58,8 +72,20 @@
 - [plans/2026-09-03-ui-redesign-plan.md](plans/2026-09-03-ui-redesign-plan.md) — Cinema shelf + live sidebar UI redesign: HUD, merged System page, entry sheet.
 - [plans/2026-09-04-entry-tags-plan.md](plans/2026-09-04-entry-tags-plan.md) — Entry tags: default genre set, tag registry + API, Library filter, Tags page, Stremio genre extra.
 
+- [plans/2026-09-05-torrent-search-plan.md](plans/2026-09-05-torrent-search-plan.md) — Completed phases 0-4: curated search, local Prowlarr/Jackett, and collision-reviewed series additions; generic Torznab deferred.
+
+- [plans/2026-09-06-search-add-hardening.md](plans/2026-09-06-search-add-hardening.md) — Search/add reliability: metadata preservation, bounded automatic checks, retry-safe additions, honest readiness, and recovery.
+
+- [plans/2026-09-06-chrome-companion-plan.md](plans/2026-09-06-chrome-companion-plan.md) — Replace in-app discovery with manual imports, a Chrome side panel and a same-computer macOS native bridge.
+
 ## Changelog
 
+- [changelog/new-user-onboarding.md](changelog/new-user-onboarding.md) — Skippable first-run guidance, persistent setup progress, and private player connection.
+- [changelog/chrome-companion-manual-import.md](changelog/chrome-companion-manual-import.md) — Manual-import pivot, discovery removal, Chrome side panel and native messaging.
+- [changelog/search-add-hardening.md](changelog/search-add-hardening.md) — Metadata-preserving resolution, durable additions/uploads, bounded post-save checks, and actionable recovery states.
+- [changelog/bundled-direct-search-providers.md](changelog/bundled-direct-search-providers.md) — Direct YTS/Nyaa/1337x search, parser/transport limits, and current site availability.
+- [changelog/local-search-bridges-and-series-import.md](changelog/local-search-bridges-and-series-import.md) — Optional Prowlarr/Jackett search, explicit provider selection, collision-reviewed series append, and managed extra-source cleanup.
+- [changelog/curated-torrent-search.md](changelog/curated-torrent-search.md) — Opt-in Add Media search, three reviewed open films, pinned torrent metadata, reviewed-file selection, and retry-safe library import.
 - [changelog/0.1.0-mvp.md](changelog/0.1.0-mvp.md) — Five completed MVP phases, post-MVP additions, known gaps.
 - [changelog/0.3.0-reliability.md](changelog/0.3.0-reliability.md) — Git init, host-derived URLs, library recovery, retries, inspection cache, supervisor hardening, sleep prevention.
 - [changelog/0.4.0-management-ui.md](changelog/0.4.0-management-ui.md) — UI restructured into static ES modules, Finder linking/relinking, cache-aware detail view, status refresh.

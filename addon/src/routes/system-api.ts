@@ -188,7 +188,7 @@ export const handlePointer: RouteHandler = async (
 };
 
 export const handleStatus: RouteHandler = async (
-  { library, torrServer, nativePicker, transcode, pointer },
+  { library, torrServer, nativePicker, transcode, pointer, onboarding },
   { response, url, method },
 ) => {
   if (url.pathname !== "/api/status" || method !== "GET") return false;
@@ -204,6 +204,12 @@ export const handleStatus: RouteHandler = async (
     status: "online",
     torrServer: torrServerStatus,
     libraryCount: entries.length,
+    onboarding: onboarding
+      ? {
+          available: true,
+          welcomePending: (await onboarding.read()).welcomePending,
+        }
+      : { available: false, welcomePending: false },
     homeSpeedMbps: homeSpeedMbps(),
     speed: currentSpeed(),
     nativePicker: pickerAvailable,

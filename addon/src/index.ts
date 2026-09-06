@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { createAddon } from "./addon.ts";
 import { config } from "./config.ts";
+import { ImportService } from "./imports/service.ts";
 import { Library } from "./library.ts";
 import { NativePicker } from "./native-picker.ts";
 import { Playback } from "./playback.ts";
@@ -18,6 +19,8 @@ import { DiskCleanup } from "./disk-copy.ts";
 import { Archiver } from "./archiver.ts";
 import { ArchiveSchedule } from "./archive-schedule.ts";
 import { defaultAnalyzer, LibraryAnalysis } from "./library-analysis.ts";
+import { SourceChecks } from "./source-checks.ts";
+import { Onboarding } from "./onboarding.ts";
 
 // How long an in-flight response — a stream in progress — may keep the server
 // open during shutdown before its socket is destroyed.
@@ -25,8 +28,36 @@ const SHUTDOWN_GRACE_MS = 3_000;
 
 export async function startHoshiStream(settings = config) {
   const library = new Library(settings.LIBRARY_PATH);
+  let onboarding: Onboarding | undefined;
+  try {
+    onboarding = new Onboarding(
+      settings.ONBOARDING_PATH,
+      settings.ONBOARDING_FIRST_RUN,
+    );
+    await onboarding.read();
+  } catch {
+    onboarding = undefined;
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "onboarding_unavailable",
+        message:
+          "Setup state could not be loaded. The library remains available.",
+      }),
+    );
+  }
   const torrServer = new TorrServerClient(settings.TORRSERVER_INTERNAL_URL);
   const nativePicker = new NativePicker(settings.NATIVE_PICKER_SOCKET);
+  const tags = new Tags(settings.TAGS_PATH);
+  const sourceChecks = new SourceChecks(library, torrServer);
+  await sourceChecks.initialize();
+  const imports = new ImportService({
+    library,
+    tags,
+    torrServer,
+    uploadRoot: settings.UPLOAD_ROOT,
+  });
+  await imports.initialize();
   const volumes = new VolumeRegistry(settings.VOLUMES_PATH);
   const archiveSchedule = new ArchiveSchedule(settings.DISK_SCHEDULE_PATH);
   const archiver = new Archiver(library, torrServer, volumes, {
@@ -81,6 +112,7 @@ export async function startHoshiStream(settings = config) {
   const server = createServer(
     createHandler({
       library,
+      onboarding,
       addon,
       torrServer,
       accessToken: settings.ACCESS_TOKEN,
@@ -100,7 +132,9 @@ export async function startHoshiStream(settings = config) {
       },
       pointer,
       deviceNames: new DeviceNames(settings.DEVICE_NAMES_PATH),
-      tags: new Tags(settings.TAGS_PATH),
+      tags,
+      imports,
+      sourceChecks,
       volumes,
       diskCleanup: new DiskCleanup(settings.DISK_CLEANUP_PATH),
       archiver,
@@ -146,6 +180,8 @@ export async function startHoshiStream(settings = config) {
   return {
     close: async () => {
       mdns?.close();
+      await imports.close();
+      await sourceChecks.close();
       await archiver.close();
       await transcode?.close();
       // server.close() only stops new connections; it resolves once every

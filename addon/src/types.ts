@@ -3,6 +3,16 @@ import { isAbsolute } from "node:path";
 import { directPlaySchema } from "./direct-play.ts";
 import { isSafeRelativePath } from "./path-safety.ts";
 import { entryTagsSchema } from "./tags.ts";
+import { sourceCheckSchema } from "./source-check-types.ts";
+
+const LEGACY_SEARCH_PROVIDER_IDS = [
+  "curated",
+  "yts",
+  "nyaa",
+  "1337x",
+  "prowlarr",
+  "jackett",
+] as const;
 
 const absolutePath = z.string().refine(isAbsolute, {
   message: "Local media path must be absolute",
@@ -33,20 +43,6 @@ const fileOverrideSchema = z.object({
   season: z.number().int().nonnegative().optional(),
   episode: z.number().int().positive().optional(),
 });
-// An additional torrent backing a series entry (multi-torrent series). File
-// override ids here are the source's own TorrServer file indexes.
-export const seriesSourceSchema = z
-  .object({
-    magnetUri: z.string().startsWith("magnet:?").optional(),
-    torrentFilePath: z.string().endsWith(".torrent").optional(),
-    // Files whose names don't parse into season/episode default to this
-    // season (unlabeled season packs, single-episode releases).
-    seasonHint: z.number().int().nonnegative().optional(),
-    fileOverrides: z.array(fileOverrideSchema).optional(),
-  })
-  .refine((source) => source.magnetUri || source.torrentFilePath, {
-    message: "Each extra source needs magnetUri or torrentFilePath",
-  });
 const cachedFileSchema = z.object({
   id: z.number().int().nonnegative(),
   path: z.string().min(1),
@@ -124,6 +120,57 @@ function diskCopyRule(entry: {
   );
 }
 
+export const searchImportSchema = z
+  .object({
+    providerId: z.enum(LEGACY_SEARCH_PROVIDER_IDS),
+    catalogId: z.string().min(1).optional(),
+    sourceId: z.string().min(1).optional(),
+    indexerId: z.string().min(1).optional(),
+    hash: z.string().regex(/^[0-9a-f]{40}$/),
+    rightsUrl: z.string().url().optional(),
+    license: z.string().min(1).optional(),
+    creator: z.string().min(1).optional(),
+    filmPath: safeRelativePath.optional(),
+    filmSizeBytes: z.number().int().positive().safe().optional(),
+    retrievalWarnings: z.array(z.string().max(500)).max(5).optional(),
+  })
+  .refine(
+    (source) =>
+      source.providerId === "curated"
+        ? Boolean(source.catalogId && source.rightsUrl && source.license)
+        : Boolean(
+            source.sourceId &&
+            (source.providerId === "prowlarr" || source.providerId === "jackett"
+              ? source.indexerId
+              : true),
+          ),
+    { message: "Search import is missing its provider's provenance" },
+  );
+export const searchReceiptSchema = z.object({
+  key: z.string().uuid(),
+  fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+});
+export type SearchImport = z.infer<typeof searchImportSchema>;
+export type SearchReceipt = z.infer<typeof searchReceiptSchema>;
+
+// File override ids here are the source's own TorrServer file indexes.
+export const seriesSourceSchema = z
+  .object({
+    magnetUri: z.string().startsWith("magnet:?").optional(),
+    torrentFilePath: z.string().endsWith(".torrent").optional(),
+    sourceHash: z
+      .string()
+      .regex(/^[0-9a-f]{40}$/)
+      .optional(),
+    seasonHint: z.number().int().nonnegative().optional(),
+    fileOverrides: z.array(fileOverrideSchema).optional(),
+    managedMedia: z.boolean().optional(),
+    searchImport: searchImportSchema.optional(),
+  })
+  .refine((source) => source.magnetUri || source.torrentFilePath, {
+    message: "Each extra source needs magnetUri or torrentFilePath",
+  });
+
 export const libraryEntrySchema = z
   .object({
     id: z.string().min(1),
@@ -139,6 +186,10 @@ export const libraryEntrySchema = z
     localFilePath: absolutePath.optional(),
     localFolderPath: absolutePath.optional(),
     managedMedia: z.boolean().optional(),
+    sourceHash: z
+      .string()
+      .regex(/^[0-9a-f]{40}$/)
+      .optional(),
     preferredFileIndex: z.number().int().nonnegative().optional(),
     fileOverrides: z.array(fileOverrideSchema).optional(),
     // Additional torrents merged into this series' episode list. Torrent-
@@ -154,6 +205,9 @@ export const libraryEntrySchema = z
     // When a client last requested this entry's stream (any device, not just
     // host playback). Drives "Recently streamed" in the management UI.
     lastStreamedAt: z.string().datetime().optional(),
+    searchImport: searchImportSchema.optional(),
+    searchReceipts: z.array(searchReceiptSchema).optional(),
+    sourceCheck: sourceCheckSchema.optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -183,8 +237,23 @@ export const createEntrySchema = libraryEntrySchema
     playback: true,
     diskCopy: true,
     lastStreamedAt: true,
+    sourceHash: true,
+    searchImport: true,
+    searchReceipts: true,
+    sourceCheck: true,
     createdAt: true,
     updatedAt: true,
+  })
+  .extend({
+    extraSources: z
+      .array(
+        seriesSourceSchema
+          .omit({ managedMedia: true, searchImport: true, sourceHash: true })
+          .refine((source) => source.magnetUri || source.torrentFilePath, {
+            message: "Each extra source needs magnetUri or torrentFilePath",
+          }),
+      )
+      .optional(),
   })
   .refine(
     (entry) =>

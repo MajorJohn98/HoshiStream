@@ -11,7 +11,15 @@ import {
 import { dirname } from "node:path";
 import { z } from "zod";
 import type { DirectPlay } from "./direct-play.ts";
+import { ImportError } from "./imports/errors.ts";
+import type { SeriesPreviewPlan } from "./imports/series.ts";
 import { tagKey } from "./tags.ts";
+import {
+  entryHasHash,
+  entrySourceRevision,
+  entrySourceDefinitionRevision,
+} from "./imports/source-identity.ts";
+import { sourceCheckSchema, type SourceCheck } from "./source-check-types.ts";
 import {
   libraryEntrySchema,
   type CreateEntry,
@@ -20,6 +28,9 @@ import {
   type LibraryEntry,
   type PlaybackState,
   type PatchEntry,
+  type SearchImport,
+  type SearchReceipt,
+  searchReceiptSchema,
 } from "./types.ts";
 
 const librarySchema = z.array(libraryEntrySchema);
@@ -36,6 +47,18 @@ const CACHE_INVALIDATING_FIELDS = [
 ] as const;
 
 export class LibraryError extends Error {}
+
+// Runs after persistence while holding the mutation queue; use the supplied
+// snapshot for references, not library.list()/get(), which wait on that queue.
+type SourceCleanup = (
+  previous: LibraryEntry,
+  remaining: LibraryEntry[],
+) => Promise<void>;
+type ImportedSourceOptions = {
+  sourceHash: string;
+  receipt: SearchReceipt;
+  searchImport?: SearchImport;
+};
 
 export class Library {
   private queue: Promise<void> = Promise.resolve();
@@ -77,39 +100,236 @@ export class Library {
     });
   }
 
-  patch(id: string, input: PatchEntry): Promise<LibraryEntry | undefined> {
+  createWithReceipt(
+    input: CreateEntry,
+    receipt: SearchReceipt,
+  ): Promise<{ entry: LibraryEntry; created: boolean }> {
+    searchReceiptSchema.parse(receipt);
     return this.update(async (entries) => {
-      const index = entries.findIndex((entry) => entry.id === id);
-      if (index === -1) return undefined;
-      const current = entries[index];
-      const candidate: Record<string, unknown> = {
-        ...current,
+      const existing = this.findSearchReceipt(entries, receipt);
+      if (existing) return { entry: existing, created: false };
+      const now = new Date().toISOString();
+      const entry = libraryEntrySchema.parse({
         ...input,
-        id,
-        createdAt: current.createdAt,
-        updatedAt: new Date().toISOString(),
-      };
-      if (input.description === null) delete candidate.description;
-      if (input.poster === null) delete candidate.poster;
-      if (input.background === null) delete candidate.background;
-      if (input.tags === null) delete candidate.tags;
-      if (CACHE_INVALIDATING_FIELDS.some((field) => field in input)) {
-        delete candidate.inspectionCache;
-        delete candidate.directPlay;
-      }
-      const updated = libraryEntrySchema.parse(candidate);
-      entries[index] = updated;
-      return updated;
+        id: `hoshi:${randomUUID()}`,
+        createdAt: now,
+        updatedAt: now,
+        searchReceipts: [receipt],
+      });
+      entries.push(entry);
+      return { entry, created: true };
     });
   }
 
-  remove(id: string): Promise<boolean> {
+  async searchReceipt(
+    receipt: SearchReceipt,
+  ): Promise<LibraryEntry | undefined> {
+    return this.findSearchReceipt(await this.list(), receipt);
+  }
+
+  private findSearchReceipt(entries: LibraryEntry[], receipt: SearchReceipt) {
+    for (const entry of entries) {
+      const recorded = entry.searchReceipts?.find(
+        (item) => item.key === receipt.key,
+      );
+      if (!recorded) continue;
+      if (recorded.fingerprint !== receipt.fingerprint)
+        throw new ImportError(
+          "idempotency_conflict",
+          "This retry key was already used for different details.",
+          409,
+        );
+      return entry;
+    }
+  }
+
+  importSource(input: CreateEntry, options: ImportedSourceOptions) {
+    searchReceiptSchema.parse(options.receipt);
     return this.update(async (entries) => {
-      const index = entries.findIndex((entry) => entry.id === id);
-      if (index === -1) return false;
-      entries.splice(index, 1);
-      return true;
+      const replay = this.findSearchReceipt(entries, options.receipt);
+      if (replay) return { entry: replay, outcome: "existing" as const };
+      const existing = entries.find((entry) =>
+        entryHasHash(entry, options.sourceHash),
+      );
+      if (existing) {
+        existing.searchReceipts = [
+          ...(existing.searchReceipts ?? []),
+          options.receipt,
+        ];
+        return { entry: existing, outcome: "existing" as const };
+      }
+      const now = new Date().toISOString();
+      const entry = libraryEntrySchema.parse({
+        ...input,
+        id: `hoshi:${randomUUID()}`,
+        createdAt: now,
+        updatedAt: now,
+        sourceHash: options.sourceHash.toLowerCase(),
+        searchImport: options.searchImport,
+        searchReceipts: [options.receipt],
+      });
+      entries.push(entry);
+      return { entry, outcome: "created" as const };
     });
+  }
+
+  importSearch(
+    input: CreateEntry,
+    source: SearchImport,
+    receipt: SearchReceipt,
+  ) {
+    return this.importSource(input, {
+      sourceHash: source.hash,
+      searchImport: source,
+      receipt,
+    });
+  }
+
+  appendImportedSeries(
+    plan: SeriesPreviewPlan,
+    receipt: SearchReceipt,
+    allowReplace: boolean,
+  ): Promise<{ entry: LibraryEntry; outcome: "appended" | "existing" }> {
+    searchReceiptSchema.parse(receipt);
+    return this.update(async (entries) => {
+      const replay = this.findSearchReceipt(entries, receipt);
+      if (replay) return { entry: replay, outcome: "existing" as const };
+      const index = entries.findIndex((entry) => entry.id === plan.entryId);
+      const current = entries[index];
+      if (
+        !current ||
+        current.type !== "series" ||
+        current.localFilePath ||
+        current.localFolderPath ||
+        !(current.magnetUri || current.torrentFilePath)
+      )
+        throw new ImportError(
+          "invalid_target",
+          "Choose an existing torrent-backed series.",
+          409,
+        );
+      if (entryHasHash(current, plan.hash)) {
+        current.searchReceipts = [...(current.searchReceipts ?? []), receipt];
+        return { entry: current, outcome: "existing" as const };
+      }
+      if (entrySourceRevision(current) !== plan.sourceRevision)
+        throw new ImportError(
+          "stale_preview",
+          "The series sources or episode selection changed. Preview again before adding.",
+          409,
+        );
+      if (plan.replacements.length && !allowReplace)
+        throw new ImportError(
+          "replacement_confirmation_required",
+          "Confirm episode replacements before adding this source.",
+          409,
+        );
+      const updated = libraryEntrySchema.parse({
+        ...current,
+        extraSources: [...(current.extraSources ?? []), plan.source],
+        inspectionCache: plan.inspectionCache,
+        directPlay: undefined,
+        sourceCheck: undefined,
+        searchReceipts: [...(current.searchReceipts ?? []), receipt],
+        updatedAt: new Date().toISOString(),
+      });
+      entries[index] = updated;
+      return { entry: updated, outcome: "appended" as const };
+    });
+  }
+
+  appendSearchSeries(
+    plan: SeriesPreviewPlan,
+    receipt: SearchReceipt,
+    allowReplace: boolean,
+  ) {
+    return this.appendImportedSeries(plan, receipt, allowReplace);
+  }
+
+  patch(
+    id: string,
+    input: PatchEntry,
+    cleanup?: SourceCleanup,
+  ): Promise<LibraryEntry | undefined> {
+    let previous: LibraryEntry | undefined;
+    return this.update(
+      async (entries) => {
+        const index = entries.findIndex((entry) => entry.id === id);
+        if (index === -1) return undefined;
+        const current = entries[index];
+        previous = current;
+        const candidate: Record<string, unknown> = {
+          ...current,
+          ...input,
+          id,
+          createdAt: current.createdAt,
+          updatedAt: new Date().toISOString(),
+        };
+        if (input.description === null) delete candidate.description;
+        if (input.poster === null) delete candidate.poster;
+        if (input.background === null) delete candidate.background;
+        if (input.tags === null) delete candidate.tags;
+        if (input.extraSources) {
+          candidate.extraSources = input.extraSources.map((source) => {
+            const original = current.extraSources?.find(
+              (existing) =>
+                existing.magnetUri === source.magnetUri &&
+                existing.torrentFilePath === source.torrentFilePath,
+            );
+            return {
+              ...source,
+              managedMedia: original?.managedMedia,
+              searchImport: original?.searchImport,
+              sourceHash: original?.sourceHash,
+            };
+          });
+        }
+        if (CACHE_INVALIDATING_FIELDS.some((field) => field in input)) {
+          delete candidate.inspectionCache;
+          delete candidate.directPlay;
+        }
+        if (
+          (
+            [
+              "magnetUri",
+              "torrentFilePath",
+              "localFilePath",
+              "localFolderPath",
+            ] as const
+          ).some((field) => field in input && input[field] !== current[field])
+        ) {
+          delete candidate.searchImport;
+          delete candidate.sourceHash;
+          if (input.managedMedia === undefined) delete candidate.managedMedia;
+        }
+        const updated = libraryEntrySchema.parse(candidate);
+        if (
+          entrySourceDefinitionRevision(updated) !==
+          entrySourceDefinitionRevision(current)
+        )
+          delete updated.sourceCheck;
+        entries[index] = updated;
+        return updated;
+      },
+      async (updated, remaining) => {
+        if (updated && previous && cleanup) await cleanup(previous, remaining);
+      },
+    );
+  }
+
+  remove(id: string, cleanup?: SourceCleanup): Promise<boolean> {
+    let previous: LibraryEntry | undefined;
+    return this.update(
+      async (entries) => {
+        const index = entries.findIndex((entry) => entry.id === id);
+        if (index === -1) return false;
+        [previous] = entries.splice(index, 1);
+        return true;
+      },
+      async (removed, remaining) => {
+        if (removed && previous && cleanup) await cleanup(previous, remaining);
+      },
+    );
   }
 
   // Cascade a tag rename (or removal when `to` is undefined) through every
@@ -137,10 +357,19 @@ export class Library {
     });
   }
 
-  setInspectionCache(id: string, cache: InspectionCache): Promise<void> {
+  setInspectionCache(
+    id: string,
+    cache: InspectionCache,
+    expectedRevision?: string,
+  ): Promise<void> {
     return this.update(async (entries) => {
       const index = entries.findIndex((entry) => entry.id === id);
       if (index === -1) return;
+      if (
+        expectedRevision !== undefined &&
+        entrySourceRevision(entries[index]) !== expectedRevision
+      )
+        return;
       entries[index] = libraryEntrySchema.parse({
         ...entries[index],
         inspectionCache: cache,
@@ -169,14 +398,48 @@ export class Library {
     });
   }
 
-  setDirectPlay(id: string, directPlay: DirectPlay): Promise<void> {
+  setDirectPlay(
+    id: string,
+    directPlay: DirectPlay,
+    expectedDefinitionRevision?: string,
+  ): Promise<void> {
     return this.update(async (entries) => {
       const index = entries.findIndex((entry) => entry.id === id);
       if (index === -1) return;
+      if (
+        expectedDefinitionRevision !== undefined &&
+        entrySourceDefinitionRevision(entries[index]) !==
+          expectedDefinitionRevision
+      )
+        return;
       entries[index] = libraryEntrySchema.parse({
         ...entries[index],
         directPlay,
       });
+    });
+  }
+
+  setSourceCheck(
+    id: string,
+    check: SourceCheck | undefined,
+    expectedRevision: string,
+    expectedJobId?: string,
+  ): Promise<boolean> {
+    if (check) sourceCheckSchema.parse(check);
+    return this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (
+        index === -1 ||
+        entrySourceDefinitionRevision(entries[index]) !== expectedRevision ||
+        (expectedJobId !== undefined &&
+          entries[index].sourceCheck?.jobId !== expectedJobId)
+      )
+        return false;
+      entries[index] = libraryEntrySchema.parse({
+        ...entries[index],
+        sourceCheck: check,
+      });
+      return true;
     });
   }
 
@@ -280,6 +543,7 @@ export class Library {
 
   private update<T>(
     change: (entries: LibraryEntry[]) => Promise<T>,
+    afterWrite?: (result: T, entries: LibraryEntry[]) => Promise<void>,
   ): Promise<T> {
     const operation = this.queue.then(async () => {
       // Mutations work on a copy so the cached array stays pristine until
@@ -287,6 +551,7 @@ export class Library {
       const entries = structuredClone(await this.read());
       const result = await change(entries);
       await this.write(entries);
+      if (afterWrite) await afterWrite(result, entries);
       return result;
     });
     this.queue = operation.then(

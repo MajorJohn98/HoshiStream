@@ -4,6 +4,10 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
+    files: ["assets/chrome-extension/**/*.js"],
+    languageOptions: { globals: { ...globals.browser, chrome: "readonly" } },
+  },
+  {
     ignores: [
       "dist",
       "node_modules",

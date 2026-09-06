@@ -27,4 +27,18 @@ describe("media probe summary", () => {
       height: 1080,
     });
   });
+
+  it("does not publish non-finite or negative probe measurements", () => {
+    const summary = summarizeProbe(
+      {
+        format: { duration: "Infinity", bit_rate: "Infinity" },
+        streams: [{ codec_type: "video", width: 0, height: 0 }],
+      },
+      100,
+    );
+    expect(summary.durationSeconds).toBeUndefined();
+    expect(summary.bitrateMbps).toBeUndefined();
+    expect(summary.width).toBeUndefined();
+    expect(summary.height).toBeUndefined();
+  });
 });

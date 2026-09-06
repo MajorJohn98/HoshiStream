@@ -37,10 +37,32 @@ const stateRoot = resolve(
 );
 // First run on a new machine has no .env: create the state directory and a
 // generated access token rather than failing to start.
-const { environment: projectEnvironment } = await ensureFirstRunSetup({
-  projectRoot,
-  mediaDir: defaultMediaDir(),
-});
+const { environment: projectEnvironment, firstRun } = await ensureFirstRunSetup(
+  {
+    projectRoot,
+    mediaDir: defaultMediaDir(),
+  },
+);
+if (
+  options["register-browser-bridge"] === "true" &&
+  process.platform === "darwin"
+) {
+  try {
+    const { registerBrowserBridge } =
+      await import("./register-browser-bridge.mjs");
+    await registerBrowserBridge({ runtimeRoot, projectRoot, stateRoot });
+    console.log(
+      JSON.stringify({ level: "info", event: "chrome_bridge_registered" }),
+    );
+  } catch {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        event: "chrome_bridge_registration_failed",
+      }),
+    );
+  }
+}
 const addonPort = Number(
   options["addon-port"] ?? projectEnvironment.ADDON_PORT ?? 7001,
 );
@@ -265,9 +287,11 @@ const parentWatchdog =
     : undefined;
 parentWatchdog?.unref();
 
-process.once("SIGINT", () => void stop());
-process.once("SIGTERM", () => void stop());
-process.once("SIGHUP", () => void stop());
+// Watch mode and the terminal can deliver the same signal. Keep handlers
+// installed until asynchronous child cleanup has finished.
+process.on("SIGINT", () => void stop());
+process.on("SIGTERM", () => void stop());
+process.on("SIGHUP", () => void stop());
 torrServer.once("exit", (code) => {
   if (!stopping) void stop(code || 1);
 });
@@ -281,6 +305,8 @@ try {
     PUBLIC_ADDON_URL: `http://${address}:${addonPort}`,
     ACCESS_TOKEN: accessToken,
     LIBRARY_PATH: libraryPath,
+    ONBOARDING_PATH: join(stateRoot, "onboarding.json"),
+    ONBOARDING_FIRST_RUN: firstRun ? "true" : "false",
     MEDIA_ROOT: mediaRoot,
     UPLOAD_ROOT: uploadRoot,
     // Unix-socket Finder picker; Windows has no supervisor socket, so the

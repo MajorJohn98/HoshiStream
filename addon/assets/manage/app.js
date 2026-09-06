@@ -4,7 +4,21 @@
 // entry sheet overlays everything when state.selected is set, and the Add
 // Media modal when state.adding is set.
 import { html, render, useEffect, useState } from "./vendor/preact-htm.js";
-import { setState, useStore, load, startActivityPolling } from "./store.js";
+import { api, notify } from "./api.js";
+import {
+  state,
+  setState,
+  useStore,
+  load,
+  startActivityPolling,
+} from "./store.js";
+import { entryRouteId } from "./entry-route.js";
+import {
+  MAGNET_LINK_ROUTE,
+  magnetLinkRouteId,
+  clearMagnetLinkRoute,
+} from "./magnet-link.js";
+import { createRequestGate } from "./import-state.js";
 import { LibraryView } from "./views/library.js";
 import { AddSheet, openAdd } from "./views/add.js";
 import { StatusView } from "./views/status.js";
@@ -12,6 +26,7 @@ import { ActivityView } from "./views/activity.js";
 import { StorageView } from "./views/storage.js";
 import { TagsView } from "./views/tags.js";
 import { PlayerView } from "./views/player.js";
+import { WelcomeView } from "./views/welcome.js";
 import { DetailSheet } from "./views/detail.js";
 
 const VIEWS = {
@@ -21,6 +36,7 @@ const VIEWS = {
   storage: StorageView,
   tags: TagsView,
   play: PlayerView,
+  welcome: WelcomeView,
 };
 
 // Bookmarks and HUD links from the merged System page (0.12.0–0.12.2), and
@@ -37,6 +53,8 @@ const LEGACY_ROUTES = {
 };
 
 function currentRoute() {
+  if (location.hash.startsWith(MAGNET_LINK_ROUTE)) return "library";
+  if (location.hash.startsWith("#/entry/")) return "library";
   const match = /^#\/([a-z]+)(\/[a-z]+)?/.exec(location.hash);
   const name = match?.[1];
   // Add Media is a modal over the Library; old #/add bookmarks open it.
@@ -64,6 +82,7 @@ const NAV = [
   ["activity", "◔", "Activity"],
   ["storage", "▤", "Storage"],
   ["tags", "⌗", "Tags"],
+  ["welcome", null, "Get started"],
 ];
 
 function fmtBytes(n) {
@@ -201,7 +220,9 @@ function Sidebar({ route }) {
         ${NAV.map(
           ([key, glyph, label]) => html`
             <a class=${route === key ? "on" : ""} href=${"#/" + key}>
-              <i>${glyph}</i>${label}
+              <i
+                >${glyph ?? html`<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>`}</i
+              >${label}
             </a>
           `,
         )}
@@ -215,15 +236,94 @@ function App() {
   const store = useStore();
   const [route, setRoute] = useState(currentRoute());
   useEffect(() => {
+    const gate = createRequestGate();
+    const openRoutedMagnet = () => {
+      try {
+        const magnetLinkId = magnetLinkRouteId();
+        if (magnetLinkId && magnetLinkId !== state.magnetLinkId)
+          openAdd({ magnetLinkId });
+      } catch (error) {
+        clearMagnetLinkRoute();
+        notify(error.message);
+      }
+    };
+    const openRoutedEntry = async () => {
+      let entryId;
+      try {
+        entryId = entryRouteId();
+      } catch {
+        gate.cancel();
+        setState({
+          selected: null,
+          entryRouteId: null,
+          entryRouteLoading: false,
+          entryRouteError: "This entry link is invalid.",
+        });
+        return;
+      }
+      if (!entryId) {
+        gate.cancel();
+        setState({
+          entryRouteId: null,
+          entryRouteLoading: false,
+          entryRouteError: "",
+        });
+        return;
+      }
+      const request = gate.start();
+      const requestedHash = location.hash;
+      setState({
+        selected: null,
+        inspection: null,
+        inspectionError: "",
+        entryRouteId: entryId,
+        entryRouteLoading: true,
+        entryRouteError: "",
+      });
+      try {
+        const entry = await api("library/" + encodeURIComponent(entryId), {
+          signal: AbortSignal.any([request.signal, AbortSignal.timeout(10000)]),
+        });
+        if (!request.isCurrent() || location.hash !== requestedHash) return;
+        setState({
+          entries: [
+            ...state.entries.filter((candidate) => candidate.id !== entry.id),
+            entry,
+          ],
+          selected: entry,
+          tab: "playback",
+          inspection: null,
+          inspectionError: "",
+          entryRouteLoading: false,
+          entryRouteError: "",
+        });
+      } catch (error) {
+        if (!request.isCurrent() || location.hash !== requestedHash) return;
+        setState({
+          entryRouteLoading: false,
+          entryRouteError:
+            error.status === 404
+              ? "That library entry was not found."
+              : "Could not open that entry: " + error.message,
+        });
+      }
+    };
     const onHash = () => {
       // Drop DOM-level modals (import review, Stremio) and the entry sheet.
       // The Add Media modal is preact-managed and closes through state.
       document.querySelector(".modal-backdrop:not(.add-backdrop)")?.remove();
       setState({ selected: null });
       setRoute(currentRoute());
+      openRoutedMagnet();
+      void openRoutedEntry();
     };
     addEventListener("hashchange", onHash);
-    return () => removeEventListener("hashchange", onHash);
+    openRoutedMagnet();
+    void openRoutedEntry();
+    return () => {
+      gate.cancel();
+      removeEventListener("hashchange", onHash);
+    };
   }, []);
   useEffect(() => {
     load()

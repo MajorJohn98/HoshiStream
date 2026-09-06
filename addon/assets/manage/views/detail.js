@@ -2,8 +2,15 @@
 // entry. Rendered by App whenever state.selected is set; closing clears it.
 import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { api, fmt, notify, token } from "../api.js";
-import { setState, useStore, load } from "../store.js";
+import { closeDetailRoute } from "../entry-route.js";
+import { state, setState, useStore, load } from "../store.js";
 import { TagPicker } from "../components/tag-picker.js";
+import { editableSource } from "../import-state.js";
+import {
+  SourceCheckPanel,
+  pickSourceCheckFileId,
+  sourceCheckBadge,
+} from "../components/source-check.js";
 
 function agoLabel(iso) {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
@@ -16,6 +23,8 @@ function agoLabel(iso) {
 
 function closeDetail() {
   setState({ selected: null, inspection: null, inspectionError: "" });
+  const next = closeDetailRoute();
+  if (next !== location.hash) location.replace(next);
 }
 
 async function inspect(state, technical = false) {
@@ -39,6 +48,13 @@ async function patch(state, d) {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(d),
+  });
+}
+
+function syncSelectedEntry(entry) {
+  setState({
+    selected: entry,
+    entries: state.entries.map((item) => (item.id === entry.id ? entry : item)),
   });
 }
 
@@ -210,7 +226,9 @@ function ExtraSourcesPanel({ state }) {
   const save = async (extraSources) => {
     setSaving(true);
     try {
-      const selected = await patch(state, { extraSources });
+      const selected = await patch(state, {
+        extraSources: extraSources.map(editableSource),
+      });
       setState({ selected, inspection: null });
       setMagnet("");
       setSeason("");
@@ -305,6 +323,7 @@ function SourceTab({ state }) {
   const entry = state.selected;
   const [busy, run] = useInspect(state);
   const [relinking, setRelinking] = useState(false);
+  const check = entry.sourceCheck;
   const path =
     entry.localFolderPath || entry.localFilePath || entry.torrentFilePath;
   const relinkable =
@@ -376,6 +395,10 @@ function SourceTab({ state }) {
               </div>`
             : null
         }
+        <div>
+          <dt>Source check</dt>
+          <dd>${sourceCheckBadge(check).label}</dd>
+        </div>
       </dl>
       ${
         state.inspectionError
@@ -655,39 +678,13 @@ function FilesTab({ state }) {
   `;
 }
 
-const DIRECT_PLAY_TEXT = {
-  direct: "Supported",
-  caution: "Check device",
-  risky: "May stutter",
-};
-
-function verdictTitle(t, dp, ready, needed) {
-  if (t.error) return "Analysis incomplete";
-  if (dp?.compatibility === "risky") return "May not direct play";
-  if (dp?.compatibility === "caution") return "Check compatibility";
-  if (ready) return "Likely to direct play";
-  if (needed) return "Connection may be too slow";
-  return "Compatibility unknown";
-}
-
-function verdictBody(t, dp, ready, needed) {
-  if (dp?.warnings?.length)
-    return html`<ul class="muted">
-      ${dp.warnings.map((w) => html`<li>${w}</li>`)}
-    </ul>`;
-  return html`<p class="muted">
-    ${
-      ready
-        ? "Your configured home speed meets the recommended 1.5× bitrate target."
-        : needed
-          ? "Recommended speed is above your configured home speed. Playback may buffer."
-          : "A bitrate estimate was unavailable. Test playback on the target device."
-    }
-  </p>`;
-}
-
 async function testPlayback(state) {
-  const f = state.inspection.selectedFiles[0];
+  const f =
+    state.inspection?.selectedFiles?.[0] ??
+    state.selected.inspectionCache?.selectedFiles?.find(
+      (file) => file.id === pickSourceCheckFileId(state.selected),
+    ) ??
+    state.selected.inspectionCache?.selectedFiles?.[0];
   const id =
     state.selected.type === "series" && f
       ? state.selected.id + ":" + f.season + ":" + f.episode
@@ -701,92 +698,44 @@ async function testPlayback(state) {
       encodeURIComponent(id) +
       ".json",
   );
-  const s = (await r.json()).streams?.[0];
-  if (s) window.open(s.url, "_blank");
-  else notify("No playable stream");
+  if (!r.ok)
+    throw Error(
+      `Could not load stream metadata (HTTP ${r.status}). Open the entry and review its source check.`,
+    );
+  const payload = await r.json().catch(() => {
+    throw Error(
+      "Could not read the stream reply. Open the entry and review its source check.",
+    );
+  });
+  const s = payload.streams?.[0];
+  if (!s)
+    throw Error(
+      "No streams were returned for this title. Open the entry and review its source check.",
+    );
+  window.open(s.url, "_blank");
 }
 
 function PlaybackTab({ state }) {
-  const [busy, run] = useInspect(state);
-  if (!state.inspection?.technical)
-    return html`
-      <${Section}
-        id="playback"
-        title="Playback check"
-        note="Codec, bitrate, and whether this title will direct-play."
-        action=${html`<${InspectButton} state=${state} technical />`}
-      >
-        <${NotYet} state=${state}>
-          ${
-            state.inspection
-              ? "File metadata is ready — analyze the selected video for compatibility and speed guidance."
-              : "Not analyzed yet — probe the selected video for compatibility and speed guidance."
-          }
-        <//>
-      <//>
-    `;
-  const f = state.inspection.selectedFiles[0];
-  const t = state.inspection.technical || {};
-  const dp = state.inspection.directPlay;
-  const needed = t.recommendedMbps;
-  const ready = needed && state.inspection.homeSpeedMbps >= needed;
-  const metrics = [
-    ["Size", fmt(f?.length || 0)],
-    [
-      "Resolution",
-      t.width && t.height ? t.width + " × " + t.height : "Unknown",
-    ],
-    ["Video", (t.videoCodec || "Unknown").toUpperCase()],
-    ["Audio", (t.audioCodec || "Unknown").toUpperCase()],
-    [
-      "Average bitrate",
-      t.bitrateMbps ? t.bitrateMbps.toFixed(1) + " Mbps" : "Unknown",
-    ],
-    ["Recommended speed", needed ? needed.toFixed(1) + " Mbps" : "Unknown"],
-    ["Home speed", state.inspection.homeSpeedMbps + " Mbps"],
-    [
-      "Direct play",
-      dp ? DIRECT_PLAY_TEXT[dp.compatibility] || "Unknown" : "Unknown",
-    ],
-    ["Selected files", state.inspection.selectedFiles.length],
-  ];
-  const tone = t.error
-    ? "warn"
-    : dp?.compatibility
-      ? VERDICT_TONE[dp.compatibility]
-      : ready
-        ? "ok"
-        : needed
-          ? "warn"
-          : "idle";
+  const f =
+    state.selected.inspectionCache?.selectedFiles?.find(
+      (file) => file.id === pickSourceCheckFileId(state.selected),
+    ) ?? state.selected.inspectionCache?.selectedFiles?.[0];
   return html`
     <${Section}
       id="playback"
       title="Playback check"
-      note=${f?.path || "No selected file"}
-      aside=${html`<span class="status ${tone}">
-        <i class="dot ${tone}"></i>${verdictTitle(t, dp, ready, needed)}
-      </span>`}
-      action=${html`<button
-        class="secondary"
-        disabled=${busy}
-        onClick=${() => run(true)}
-      >
-        ${busy ? "Analyzing…" : "Refresh analysis"}
-      </button>`}
+      note="Inspect metadata first, then use the bounded check as a browser hint for one representative file."
     >
-      <div class="verdict">${verdictBody(t, dp, ready, needed)}</div>
-      ${t.error ? html`<p class="danger">${t.error}</p>` : null}
-      <dl class="kv stacked-sm">
-        ${metrics.map(
-          ([label, value]) => html`
-            <div key=${label}>
-              <dt>${label}</dt>
-              <dd>${value}</dd>
-            </div>
-          `,
-        )}
-      </dl>
+      <${SourceCheckPanel}
+        entry=${state.selected}
+        onEntry=${syncSelectedEntry}
+        startOptions=${{
+          probe: true,
+          ...(pickSourceCheckFileId(state.selected)
+            ? { fileId: pickSourceCheckFileId(state.selected) }
+            : {}),
+        }}
+      />
       <div class="actions">
         <button
           class="primary"
@@ -794,7 +743,12 @@ function PlaybackTab({ state }) {
         >
           ▶ Play this file
         </button>
-        <button class="secondary" onClick=${() => testPlayback(state)}>
+        <button
+          class="secondary"
+          onClick=${() =>
+            testPlayback(state).catch((error) => notify(error.message))}
+          }
+        >
           Test playback
         </button>
       </div>
@@ -809,6 +763,10 @@ function PlaybackTab({ state }) {
           → Player. Direct play needs the player to support the listed codecs;
           with stream repair enabled, incompatible titles also get a
           "Compatible" stream in Stremio.
+        </p>
+        <p class="muted stacked-xs">
+          A completed check is not a universal browser guarantee, and one
+          representative file does not cover every episode.
         </p>
         ${
           state.status.transcode?.enabled
@@ -1212,13 +1170,6 @@ const SECTIONS = [
   ["storage", "Keep on disk", StorageTab],
 ];
 
-const VERDICT_TONE = { direct: "ok", caution: "warn", risky: "bad" };
-const VERDICTS = {
-  direct: ["Direct play", "direct"],
-  caution: ["Check device", "caution"],
-  risky: ["May not play", "risky"],
-};
-
 function diskBadge(entry) {
   const diskCopy = entry.diskCopy;
   if (diskCopy?.desired !== "keep") return null;
@@ -1243,7 +1194,7 @@ export function DetailSheet() {
   if (!entry) return null;
   const resume =
     entry.playback?.fileId !== undefined || entry.playback?.positionSeconds;
-  const verdict = entry.directPlay && VERDICTS[entry.directPlay.compatibility];
+  const check = sourceCheckBadge(entry.sourceCheck);
   const disk = diskBadge(entry);
   const active = SECTIONS.find(([key]) => key === state.tab) ?? SECTIONS[0];
   const [, , Tab] = active;
@@ -1327,14 +1278,10 @@ export function DetailSheet() {
                       ? html`<span>${entry.tags.slice(0, 3).join(", ")}</span>`
                       : null
                   }
-                  ${
-                    verdict
-                      ? html`<span class="status ${VERDICT_TONE[verdict[1]]}">
-                          <i class="dot ${VERDICT_TONE[verdict[1]]}"></i>
-                          ${verdict[0]}
-                        </span>`
-                      : null
-                  }
+                  <span class="status ${check.tone}">
+                    <i class="dot ${check.tone}"></i>
+                    ${check.label}
+                  </span>
                   ${
                     disk
                       ? html`<span class="status ok">

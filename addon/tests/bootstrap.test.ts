@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -68,6 +68,12 @@ describe("platform defaults", () => {
 });
 
 describe("ensureFirstRunSetup", () => {
+  it("does not mistake an unreadable existing environment for a fresh install", async () => {
+    const projectRoot = await temporaryRoot();
+    await mkdir(join(projectRoot, ".env"));
+    await expect(ensureFirstRunSetup({ projectRoot })).rejects.toThrow();
+    expect((await stat(join(projectRoot, ".env"))).isDirectory()).toBe(true);
+  });
   it("creates .env with a generated token on a fresh machine", async () => {
     const projectRoot = join(await temporaryRoot(), "state");
     const { environment } = await ensureFirstRunSetup({
@@ -156,6 +162,8 @@ describe("ensureFirstRunSetup", () => {
     const projectRoot = await temporaryRoot();
     const first = await ensureFirstRunSetup({ projectRoot });
     const second = await ensureFirstRunSetup({ projectRoot });
+    expect(first.firstRun).toBe(true);
+    expect(second.firstRun).toBe(false);
     expect(second.environment.ACCESS_TOKEN).toBe(
       first.environment.ACCESS_TOKEN,
     );

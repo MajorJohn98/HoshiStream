@@ -326,7 +326,7 @@ UI → POST /api/library {..., nativePathGrant}
 
 ## 20. Invariants worth remembering
 
-- Direct-play only: no transcoding, no proxying of video bytes, no torrent search, no database, no dashboard backend beyond the manage UI, no containers — by explicit decision records.
+- Direct-play only: no transcoding, no proxying of video bytes, no arbitrary index scraping (opt-in curated search and named public providers are now allowed by ADRs 0016–0018), no database, no dashboard backend beyond the manage UI, no containers — by explicit decision records.
 - One token protects three channels (path, bearer, local-stream path); comparisons are constant-time.
 - Every write to `library.json` is atomic + backed up; every external input is Zod-parsed.
 - Deleting media is doubly guarded (`managedMedia` flag **and** UUID-batch containment).

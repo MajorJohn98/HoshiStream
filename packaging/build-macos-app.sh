@@ -40,10 +40,12 @@ cp "$ROOT/vendor/node/darwin-arm64/node" "$RUNTIME/bin/node"
 cp "$ROOT/scripts/native-server.mjs" "$RUNTIME/scripts/native-server.mjs"
 cp "$ROOT/scripts/bootstrap.mjs" "$RUNTIME/scripts/bootstrap.mjs"
 cp "$ROOT/scripts/lan-ip.mjs" "$RUNTIME/scripts/lan-ip.mjs"
+cp "$ROOT/scripts/register-browser-bridge.mjs" "$RUNTIME/scripts/register-browser-bridge.mjs"
 cp "$ROOT/packaging/torrserver-settings.json" \
   "$RUNTIME/packaging/torrserver-settings.json"
 cp -R "$ROOT/addon/dist" "$RUNTIME/addon/dist"
 cp -R "$ROOT/addon/assets" "$RUNTIME/addon/assets"
+cp "$ROOT/addon/package.json" "$RUNTIME/addon/package.json"
 # Production-only dependencies. The checkout's node_modules carries the seven
 # devDependencies (vitest, eslint, typescript, vite, ...) that nothing needs at
 # runtime, and the UI is prebuilt into addon/assets, so shipping them only

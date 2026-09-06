@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import Darwin
 import IOKit.pwr_mgt
 import ServiceManagement
@@ -11,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let speedItem = NSMenuItem(title: "Check Speed", action: #selector(checkSpeed), keyEquivalent: "s")
     private let pointerItem = NSMenuItem(title: "Update Remote Pointer", action: #selector(pushPointer), keyEquivalent: "u")
     private let loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleLogin), keyEquivalent: "")
+    private let magnetItem = NSMenuItem(title: "Use HoshiStream for Magnet Links", action: #selector(makeDefaultMagnetHandler), keyEquivalent: "")
     private var service: Process?
     private var healthTimer: Timer?
     private var pickerSocket: PickerSocket?
@@ -18,6 +20,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var quitting = false
     private var sleepAssertion: IOPMAssertionID = 0
     private var sleepAssertionHeld = false
+    private var receivedMagnetThisLaunch = false
+    private var attemptedWelcome = false
+    private lazy var magnetLinks = MagnetLinkReceiver(
+        credentials: { [weak self] in
+            guard let self, let token = self.token else { return nil }
+            return (self.addonPort, token)
+        },
+        openReview: { [weak self] id in self?.openMagnetReview(id) ?? false },
+        reportError: { [weak self] message in self?.showMagnetError(message) }
+    )
 
     // Resolved at runtime so the bundle is portable across machines. The
     // Info.plist key stays as a development override; the shipped build leaves
@@ -90,6 +102,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return addresses.first { $0.name == "en0" }?.address ?? addresses.first?.address
     }
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleMagnetEvent(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         statusItem.button?.image = NSImage(systemSymbolName: "sparkles.tv", accessibilityDescription: "HoshiStream")
@@ -103,6 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(status)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open HoshiStream", action: #selector(openLibrary), keyEquivalent: "o").target = self
+        menu.addItem(withTitle: "Get Started", action: #selector(openGettingStarted), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Copy Stremio URL", action: #selector(copyStremioURL), keyEquivalent: "c").target = self
         menu.addItem(startItem)
         speedItem.target = self
@@ -111,11 +133,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pointerItem.isHidden = true
         menu.addItem(pointerItem)
         menu.addItem(loginItem)
+        magnetItem.target = self
+        menu.addItem(magnetItem)
         menu.addItem(withTitle: "Show Logs", action: #selector(showLogs), keyEquivalent: "l").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit HoshiStream", action: #selector(quit), keyEquivalent: "q").target = self
         statusItem.menu = menu
         refreshLoginState()
+        refreshMagnetHandler()
         do {
             let socket = PickerSocket(path: "\(projectRoot)/run/supervisor.sock") {
                 [weak self] kind, completion in
@@ -130,6 +155,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         healthTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             self?.checkHealth()
         }
+    }
+
+    @objc private func handleMagnetEvent(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
+        receivedMagnetThisLaunch = true
+        guard let value = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              value.utf8.count <= 16_384,
+              let url = URL(string: value)
+        else {
+            showMagnetError("The magnet link is invalid or too long. Paste a valid BitTorrent v1 magnet into Add Media.")
+            return
+        }
+        record("Magnet link received")
+        magnetLinks.receive([url])
+    }
+
+    private func refreshMagnetHandler() {
+        let handler = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "magnet:")!)
+        let isDefault = handler.flatMap { Bundle(url: $0)?.bundleIdentifier } == Bundle.main.bundleIdentifier
+        magnetItem.state = isDefault ? .on : .off
+        magnetItem.title = isDefault ? "Default Magnet App: HoshiStream" : "Use HoshiStream for Magnet Links"
+        magnetItem.isEnabled = !isDefault
+    }
+
+    @objc private func makeDefaultMagnetHandler() {
+        magnetItem.isEnabled = false
+        NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpenURLsWithScheme: "magnet") { [weak self] error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.refreshMagnetHandler()
+                if error != nil {
+                    self.showMagnetError("macOS did not change the default magnet app. Your current choice is unchanged; you can try again from the HoshiStream menu.")
+                }
+            }
+        }
+    }
+
+    private func showMagnetError(_ message: String) {
+        record("Magnet link action failed")
+        let alert = NSAlert()
+        alert.messageText = "Could not open magnet link"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func openMagnetReview(_ id: String) -> Bool {
+        guard let token,
+              let escaped = token.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "http://127.0.0.1:\(addonPort)/manage/\(escaped)#/add/magnet/\(id)")
+        else { return false }
+        let opened = NSWorkspace.shared.open(url)
+        if opened { record("Magnet review opened") }
+        return opened
     }
 
     private func setStatus(_ title: String) {
@@ -151,6 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startServer() {
         guard service == nil else { return }
+        magnetLinks.pump(serverReady: false)
         setStatus("Starting…")
         // Process.run() fails outright when the working directory is missing,
         // which is the normal state on a first launch.
@@ -163,6 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         process.executableURL = resources.appendingPathComponent("bin/node")
         process.arguments = [
             resources.appendingPathComponent("scripts/native-server.mjs").path,
+            "--register-browser-bridge",
             "--project-root=\(projectRoot)",
             "--state-dir=\(projectRoot)",
         ]
@@ -223,6 +304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // On a first launch the server writes .env itself, so a missing token
         // is expected briefly rather than an error.
         guard let token else {
+            magnetLinks.pump(serverReady: false)
             return setStatus(service?.isRunning == true ? "Starting…" : "Error — missing access token")
         }
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(addonPort)/api/status")!)
@@ -235,7 +317,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.updateSleepAssertion(streaming: ready && summary?.streamingActive == true)
+                self.magnetLinks.pump(serverReady: ready)
                 if ready {
+                    self.offerWelcomeIfNeeded(summary?.onboarding)
                     self.restartCount = 0
                     self.updatePointerItem(summary?.pointer)
                     self.setStatus(
@@ -339,6 +423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func restartServer() {
+        magnetLinks.pump(serverReady: false)
         restartCount = 0
         if let service, service.isRunning {
             service.terminate()
@@ -356,6 +441,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    @objc private func openGettingStarted() {
+        guard let token,
+              let escaped = token.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "http://127.0.0.1:\(addonPort)/manage/\(escaped)#/welcome")
+        else { return setStatus("Error — missing access token") }
+        if !NSWorkspace.shared.open(url) {
+            setStatus("Could not open setup — try Get Started again")
+        }
+    }
+
+    private func offerWelcomeIfNeeded(_ onboarding: OnboardingStatus?) {
+        guard onboarding?.welcomePending == true,
+              !attemptedWelcome, !receivedMagnetThisLaunch,
+              let token else { return }
+        attemptedWelcome = true
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(addonPort)/api/onboarding")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{\"action\":\"welcome-shown\"}".utf8)
+        URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
+            DispatchQueue.main.async {
+                guard let self, !self.quitting else { return }
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                    self.record("First-run setup could not be opened; use Get Started from the menu")
+                    return
+                }
+                if !self.receivedMagnetThisLaunch { self.openGettingStarted() }
+            }
+        }.resume()
     }
 
     @objc private func copyStremioURL() {
@@ -464,6 +582,11 @@ private struct ServerStatus: Decodable {
     let homeSpeedMbps: Double
     let streamingActive: Bool?
     let pointer: PointerStatus?
+    let onboarding: OnboardingStatus?
+}
+
+private struct OnboardingStatus: Decodable {
+    let welcomePending: Bool
 }
 
 @main

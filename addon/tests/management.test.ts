@@ -3,6 +3,12 @@ import { describe, expect, it } from "vitest";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore plain browser ES module shared with the management UI
 import { classifyLibraryImports } from "../assets/manage/classify-imports.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore plain browser ES module shared with the management UI
+import {
+  closeDetailRoute,
+  entryRouteId,
+} from "../assets/manage/entry-route.js";
 import { managementHtml } from "../src/management.ts";
 
 const asset = (name: string) =>
@@ -31,6 +37,7 @@ describe("management assets", () => {
   it("app module wires the sidebar shell, router, and entry sheet", async () => {
     const appJs = await asset("app.js");
     expect(appJs).toContain('from "./vendor/preact-htm.js"');
+    expect(appJs).toContain('import { api, notify } from "./api.js"');
     expect(appJs).toContain('import { LibraryView } from "./views/library.js"');
     expect(appJs).toContain(
       'import { AddSheet, openAdd } from "./views/add.js"',
@@ -58,6 +65,11 @@ describe("management assets", () => {
     expect(appJs).not.toContain('"#/system');
     expect(appJs).toContain('href="#/activity/repair"');
     expect(appJs).toContain("hashchange");
+    expect(appJs).toContain('location.hash.startsWith("#/entry/")');
+    expect(appJs).toContain("This entry link is invalid.");
+    expect(appJs).toContain("const openRoutedEntry = async () => {");
+    expect(appJs).toContain('tab: "playback"');
+    expect(appJs).toContain("error.status === 404");
     expect(appJs).not.toContain("ACCESS_TOKEN");
   });
 
@@ -90,8 +102,32 @@ describe("management assets", () => {
     expect(libraryJs).toContain("Import JSON");
     expect(libraryJs).toContain("Choose titles to add");
     expect(libraryJs).toContain('link.download = "hoshistream-library.json"');
+    expect(libraryJs).toContain("does not include managed .torrent files");
+    expect(libraryJs).toContain("JSON alone is not a portable backup");
     expect(libraryJs).toContain(
-      "({ torrentFilePath, localFilePath, localFolderPath, ...details })",
+      "For a full backup, copy library.json and the managed media folder",
+    );
+    expect(libraryJs).toMatch(
+      /\(\{\s*torrentFilePath,\s*localFilePath,\s*localFolderPath,\s*searchImport,\s*searchReceipts,\s*sourceHash,\s*sourceCheck,\s*\.\.\.details,?\s*\}\)/,
+    );
+    expect(libraryJs).toMatch(
+      /const \{\s*id,\s*createdAt,\s*updatedAt,\s*source,\s*managedMedia,\s*searchImport,\s*searchReceipts,\s*sourceHash,\s*sourceCheck,\s*\.\.\.input,?\s*\} = entry/,
+    );
+    expect(libraryJs).toContain("stripServerMetadata({");
+    expect(libraryJs).toContain("JSON.stringify(stripServerMetadata(input))");
+    expect(libraryJs).toContain("extraSources: details.extraSources.map(");
+    expect(libraryJs).toContain(
+      "additionalSourceImportProblems(candidate.entry)",
+    );
+    expect(libraryJs).toContain(
+      "blocked: candidate.blocked || sourceProblems.length > 0",
+    );
+    expect(libraryJs).toContain("No import conflicts");
+    expect(libraryJs).toMatch(
+      /candidates = classifyLibraryImports\(\s*JSON\.parse\(await file\.text\(\)\),\s*state\.entries,\s*\)\.map/,
+    );
+    expect(libraryJs.split("async function reviewImport")[0]).not.toContain(
+      "additionalSourceImportProblems(candidate.entry)",
     );
     expect(libraryJs).toContain('api("stremio-refresh", { method: "POST" })');
     expect(libraryJs).toContain('location.href = "stremio:///board"');
@@ -101,41 +137,105 @@ describe("management assets", () => {
     expect(libraryJs).toContain(
       'import { classifyLibraryImports } from "../classify-imports.js"',
     );
+    expect(libraryJs).toContain("routedEntryId || entryRouteError");
+    expect(libraryJs).toContain("Opening entry…");
+    expect(libraryJs).toContain("Entry ID:");
   });
 
   it("add modal uploads torrents and media through the API", async () => {
     const addJs = await asset("views/add.js");
     expect(addJs).toContain("export function AddSheet");
     expect(addJs).toContain('class="modal-backdrop add-backdrop"');
-    expect(addJs).toContain('if (e.key === "Escape") closeAdd()');
+    expect(addJs).toContain('if (event.key === "Escape")');
+    expect(addJs).toContain("requestClose()");
     expect(addJs).toContain("/api/torrent-upload");
     expect(addJs).toContain("/api/upload?batch=");
     expect(addJs).toContain("webkitdirectory");
+    expect(addJs).toContain("manualSubmission(");
+    expect(addJs).toContain("new FormData(e.target)");
+    expect(addJs).toContain("Inspect and check after saving");
+    expect(addJs).toContain("Could not confirm whether the entry was saved");
+    expect(addJs).toContain(
+      "Choose a folder with at least one playable video file",
+    );
+    expect(addJs).toContain("Add to library");
+    expect(addJs).toContain("<${SourceCheckPanel}");
+    expect(addJs).not.toContain("SearchMedia");
+  });
+
+  it("scraps search import UI while keeping manual add and source-check flows", async () => {
+    const [addJs, storeJs, detailJs, sourceCheckJs] = await Promise.all([
+      asset("views/add.js"),
+      asset("store.js"),
+      asset("views/detail.js"),
+      asset("components/source-check.js"),
+    ]);
+    expect(addJs).not.toContain('["search", null, "Search"]');
+    expect(addJs).not.toContain("<${SearchMedia}");
+    expect(addJs).not.toContain('source === "search"');
+    expect(addJs).toContain("manualSubmission(");
+    expect(storeJs).toContain('source: "torrent"');
+    expect(detailJs).toContain('from "../import-state.js"');
+    expect(detailJs).toContain("closeDetailRoute()");
+    expect(detailJs).toContain("location.replace(next)");
+    expect(sourceCheckJs).toContain(
+      "value.sourceHash ?? value.searchImport?.hash",
+    );
+    expect(sourceCheckJs).toContain("entry?.sourceHash ??");
+  });
+
+  it("add sheet traps and restores focus and guards every dismiss action", async () => {
+    const addJs = await asset("views/add.js");
+    expect(addJs).toContain('event.key === "Tab"');
+    expect(addJs).toContain(
+      'document.addEventListener("focusin", containFocus)',
+    );
+    expect(addJs).toContain(
+      'document.removeEventListener("focusin", containFocus)',
+    );
+    expect(addJs).toContain("returnFocus.focus({ preventScroll: true })");
+    expect(addJs).toContain("if (mayLeave()) closeAdd()");
+    expect(addJs).toContain("disabled=${pending}");
+    expect(addJs).toContain('role="tabpanel"');
+    expect(addJs).toContain('event.key === "ArrowRight"');
+    expect(addJs).toContain('event.key === "ArrowLeft"');
   });
 
   it("add modal offers Finder linking only when the picker is available", async () => {
     const addJs = await asset("views/add.js");
     expect(addJs).toContain("status.nativePicker");
     expect(addJs).toContain("Choose with Finder");
-    expect(addJs).toContain("d.nativePathGrant = picked.grant");
+    expect(addJs).toContain("nativePathGrant: picked.grant");
     expect(addJs).toContain('"native-picker/"');
   });
 
   it("detail view keeps inspection, mapping, and playback flows", async () => {
     const detailJs = await asset("views/detail.js");
     expect(detailJs).toContain('method: "PATCH"');
+    expect(detailJs).toContain(
+      "extraSources: extraSources.map(editableSource)",
+    );
     expect(detailJs).toContain("Save mapping");
     expect(detailJs).toContain("Test playback");
-    expect(detailJs).toContain("Refresh analysis");
+    expect(detailJs).toContain("Source check");
+    expect(detailJs).toContain(
+      "A completed check is not a universal browser guarantee",
+    );
+    expect(detailJs).toContain('from "../components/source-check.js"');
     expect(detailJs).toContain('class="kv');
-    expect(detailJs).toContain("Recommended speed");
-    expect(detailJs).toContain("Likely to direct play");
+    expect(detailJs).toContain("Open the entry and review its source check");
     expect(detailJs).toContain("Inspecting…");
-    expect(detailJs).toContain("Analyzing…");
     expect(detailJs).toContain('technical ? "?probe=true" : ""');
     expect(detailJs).toContain('<textarea name="magnetUri" required>');
     expect(detailJs).toContain("visible only on this tokenized page");
     expect(detailJs).toContain('role="dialog"');
+  });
+
+  it("route helpers decode entry deep links and send deep-link closes back to the library", () => {
+    expect(entryRouteId("#/entry/Alpha%2FBeta")).toBe("Alpha/Beta");
+    expect(entryRouteId("#/library")).toBeNull();
+    expect(closeDetailRoute("#/entry/Alpha%2FBeta")).toBe("#/library");
+    expect(closeDetailRoute("#/play/demo/1")).toBe("#/play/demo/1");
   });
 
   it("detail source tab can relink local entries in Finder", async () => {
@@ -253,6 +353,13 @@ describe("management assets", () => {
     expect(playerJs).toContain('import("../vendor/hls.js")');
     expect(playerJs).toContain("application/vnd.apple.mpegurl");
     expect(playerJs).toContain("/stream/");
+    expect(playerJs).toContain("if (!response.ok)");
+    expect(playerJs).toContain("Could not load stream metadata (HTTP");
+    expect(playerJs).toContain("Run a source check, then retry playback");
+    expect(playerJs).toContain("Open entry check");
+    expect(playerJs).toContain("Retry");
+    expect(playerJs).toContain("Loading stream metadata…");
+    expect(playerJs).toContain("Loading video into the player…");
     expect(playerJs).toContain("localStorage");
     // Resume position is server-side; finishing an episode advances it.
     expect(playerJs).toContain('"/playback"');
@@ -261,6 +368,7 @@ describe("management assets", () => {
     expect(playerJs).toContain("Up next");
     expect(playerJs).toContain("requestPictureInPicture");
     expect(playerJs).toContain("playbackRate");
+    expect(playerJs).not.toContain("No playable stream");
     expect(playerJs).not.toMatch(/[🔇🔊⏸]/u);
     const libraryJs = await asset("views/library.js");
     expect(libraryJs).toContain("function resumeLabel");

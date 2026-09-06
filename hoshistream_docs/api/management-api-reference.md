@@ -22,7 +22,7 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | Method & path | Description |
 |---|---|
 | `GET /api/library` | List all entries |
-| `POST /api/library` | Create entry → `201` with the entry |
+| `POST /api/library` | Create entry → `201` with the entry; optional `idempotencyKey` UUID enables same-request replay → `200` |
 | `GET /api/library/{id}` | Fetch one entry (404 if missing) |
 | `PATCH /api/library/{id}` | Partial update → `200` with the entry |
 | `DELETE /api/library/{id}` | Remove entry (also deletes managed-upload media) → `204` |
@@ -40,6 +40,104 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `GET /api/pointer/remote` | Server-side pointer record health (reachable, registered, expiry) |
 | `POST /api/pointer/push` | Push the current LAN base URL + manifest to the pointer server |
 | `POST /api/pointer/remove` | Delete the pointer record on the pointer server |
+
+### Onboarding
+
+`GET /api/onboarding` returns `{state,hasMedia,addonUrl,loopbackOnly,observedClient}`.
+`state` is `{version:1,status,client,clientConfirmed,welcomePending}`. Status is
+`active`, `dismissed`, or `complete`; client is `nuvio` or `stremio`.
+
+`POST /api/onboarding` accepts one action:
+`select-client` with `client`, `confirm-client` with the expected `client`,
+`welcome-shown`, `dismiss`, `resume`, or `finish`. Finishing requires actual
+library content plus explicit client confirmation. Changing player clears that
+confirmation. Neither endpoint creates media or configures an external client.
+
+Both endpoints require the management bearer token and return no-store responses.
+The add-on URL contains the access token and must not be logged or sent to third
+parties. `observedClient` reports only a recognized recent player name; it is not
+used as proof of successful installation or playback.
+
+### Manual import drafts and series imports
+
+These endpoints share the bearer-token gate and return `Cache-Control: no-store`.
+They accept manually supplied sources and perform no indexer or website searches.
+
+| Method & path | Contract |
+|---|---|
+| `GET /api/imports/capabilities` | `{version:1,maxTorrentBytes:1000000}` |
+| `GET /api/imports/series` | Eligible targets as `{entries:[{id,name,inspected,sourceCount}]}` |
+| `POST /api/imports/magnet-links` | `{magnetUri}` -> opaque `{id,expiresAt}` for native Add Media handoff |
+| `GET /api/imports/magnet-links/{id}` | `{id,expiresAt,magnetUri,suggestedName?}`; `410` if expired/missing |
+| `POST /api/imports/prepare` | `{magnetUri}` -> draft |
+| `POST /api/imports/prepare-torrent` | Raw torrent bytes, at most 1 MB -> draft |
+| `DELETE /api/imports/drafts/{draftId}` | Discard an unused draft -> `204` |
+| `POST /api/imports/commit` | `{draftId,name,type,tags?,idempotencyKey}` -> `{entry,outcome:"created"|"existing"}` |
+| `POST /api/imports/series-preview` | `{draftId,entryId,seasonHint?}` -> `{previewId,expiresAt,entryId,entryName,addedEpisodes,replacements}` |
+| `POST /api/imports/series-commit` | `{previewId,idempotencyKey,allowReplace}` -> `{entry,outcome:"appended"|"existing"}` |
+| `DELETE /api/imports/previews/{previewId}` | Discard an unused preview -> `204` |
+
+A draft is `{draftId,expiresAt,hash,suggestedName?,existingEntries:[{id,name,type}]}`.
+It contains no client-visible local path. Preparation validates supplied data
+without scraping sites or fetching an arbitrary source URL. Drafts and previews
+are bounded/expiring; cancellation only reclaims uncommitted owned metadata.
+
+Native magnet-link tickets are separate from import drafts: at most 32 are kept
+in memory for ten minutes and cleared on shutdown. Repeated identical links
+reuse the live ticket. Issuing/reading a ticket performs no torrent resolution or
+library mutation. The browser receives the magnet only through an authenticated,
+no-store API read; the management fragment contains only `#/add/magnet/{id}`.
+
+Retry confirmation with the **same body and idempotency key**. Durable receipts
+are checked before requiring the in-memory draft, allowing recovery after a lost
+response or restart. Different input under the same key conflicts. Content-hash
+deduplication prevents duplicate sources.
+
+Added episodes contain `{season,episode,path}`; replacements contain
+`{season,episode,previousPath,incomingPath}`. Preview can contact TorrServer/peers
+to inspect metadata; preparation and ordinary save do not start playback.
+
+Legacy `searchImport` and `searchReceipts` remain readable for existing entries;
+the removed `/api/search/*` endpoints are no longer available. Source identity
+and ownership are server-controlled, not browser-supplied paths or flags.
+
+Series confirmation rechecks the target's source revision inside the serialized
+library mutation. Stale previews, missing required inspection and unconfirmed
+overlaps are explicit errors, not silent updates. Durable append receipts are
+checked before requiring an in-memory preview, so successful retries survive a
+restart. A different confirmation body under the same key conflicts.
+
+### Source checks
+
+Manual create retries must reuse the same body and `idempotencyKey`. Receipt
+lookup happens before consuming a native-picker grant or revalidating uploaded
+paths. Reusing a key with different input returns `409`. Interactive clients keep
+completed upload paths and per-file progress across save retries.
+
+Source checks use the same bearer-token gate and return `Cache-Control: no-store`.
+They are separate from create/import: clients may save without checking. The
+interactive UI opts into a check after new saves by default.
+
+| Method & path | Contract |
+|---|---|
+| `POST /api/library/{id}/check` | `{probe?: boolean, fileId?: number}`; defaults to a bounded probe; returns `202` with a check report |
+| `GET /api/library/{id}/check` | Current report, or `phase: "unchecked"` for the current source |
+| `DELETE /api/library/{id}/check` | Cancel the active check without removing the entry; returns the report |
+
+Reports include `entryId`, `phase`, `message` and, where applicable, `jobId`,
+`revision`, `probe`, `updatedAt`, `code`, `fileId`, `checkedFiles`, `totalFiles`,
+`technical` and `browserSupport` (`likely`, `limited`, `unknown`). Active phases
+are `queued`, `inspecting`, `probing`; terminal phases are `complete`, `failed`,
+`cancelled`, `interrupted`.
+
+One check runs at a time, with up to 32 active/queued entries. Identical concurrent
+requests coalesce; conflicting options return `409`. Checks have a 60-second
+overall deadline and a 20-second probe budget. Completed probe results describe
+one selected file and are not a universal playback guarantee.
+
+`sourceCheck` is server-owned. Source/selection changes invalidate it; stale jobs
+cannot overwrite new source state. Unfinished checks are marked interrupted on
+restart rather than automatically resumed.
 
 ### Tags
 
@@ -113,7 +211,7 @@ Available only when `TRANSCODE_ENABLED=true`; the UI's "Stream Repair" view is b
 | `GET /api/resources` | Resource usage: per-group process stats (`addon`, `torrServer`, `ffmpeg` repair sessions — CPU %, RSS bytes, process count; `available:false` where `ps` is missing) plus disk usage of the torrent cache, stream-repair sessions, and managed uploads (15 s cache) |
 | `POST /api/stremio-refresh` | Recount catalogs → `{movies, series, total, updatedAt}` (no-store) |
 | `GET /api/media-files` | List files available under the read-only media mount |
-| `POST /api/upload?batch=&path=` | Browser upload of a video into managed storage → `204` |
+| `POST /api/upload?batch=&path=` | Browser upload of a video into managed storage → `201 {"path": ..., "folderRoot": ...}`; identical same-path retries are accepted, conflicting content returns `409` |
 | `POST /api/torrent-upload?batch=&name=` | Upload a `.torrent` → `201 {"path": ...}` |
 | `POST /api/native-picker/{file\|folder}` | Open a native Finder picker; returns a grant (native app only) |
 

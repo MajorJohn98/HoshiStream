@@ -84,7 +84,7 @@ TORRSERVER_TEST_URL=http://127.0.0.1:8090 npm test
 - Implement only the requested phase.
 - Verify TorrServer behavior against its source or Swagger before adding API calls ([ADR 0001](../decisions/0001-torrserver-matrix-141-pinning.md)).
 - Keep media legal, local-first, direct-play, and private by default.
-- Do not add torrent search, transcoding, a database, or a dashboard.
+- In-app discovery is retired (ADR 0020). Keep adding manual, with the Chrome companion as an explicit capture/review bridge. Do not reintroduce provider search, scraping, challenge bypass, transcoding, a database, or a dashboard without approval.
 - HoshiStream runs natively; do not reintroduce containers ([ADR 0009](../decisions/0009-native-only-deployment.md)).
 - Never log access tokens, authorization headers, or complete magnet URIs.
 - Run type checks, tests, lint, and format checks before finishing.
@@ -95,4 +95,4 @@ TORRSERVER_TEST_URL=http://127.0.0.1:8090 npm test
 - Structured JSON logs to stdout/stderr (`level`, `event`, context fields).
 - Tests mirror source modules in `addon/tests/*.test.ts` (Vitest).
 - Formatting is Prettier-enforced; lint is flat-config ESLint + typescript-eslint.
-- Dependencies are minimal (`stremio-addon-sdk`, `zod`); ask before adding more.
+- Dependencies are minimal (`stremio-addon-sdk`, `zod`, `bencode`); ask before adding more.

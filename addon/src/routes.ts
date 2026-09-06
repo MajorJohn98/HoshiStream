@@ -5,6 +5,7 @@ import type { DeviceNames } from "./device-names.ts";
 import type { DiskCleanup } from "./disk-copy.ts";
 import type { Library } from "./library.ts";
 import type { LibraryAnalysis } from "./library-analysis.ts";
+import type { ImportService } from "./imports/service.ts";
 import type { NativePicker } from "./native-picker.ts";
 import { Playback } from "./playback.ts";
 import type { PointerClient } from "./pointer.ts";
@@ -38,6 +39,7 @@ import {
   handleRelink,
   handleStremioRefresh,
 } from "./routes/library-api.ts";
+import { handleImports } from "./routes/imports-api.ts";
 import {
   handleDiskMedia,
   handleHls,
@@ -57,6 +59,10 @@ import {
 } from "./routes/system-api.ts";
 import { handleTags } from "./routes/tags-api.ts";
 import type { Tags } from "./tags.ts";
+import { handleSourceCheck } from "./routes/source-check-api.ts";
+import type { SourceChecks } from "./source-checks.ts";
+import type { Onboarding } from "./onboarding.ts";
+import { handleOnboarding } from "./routes/onboarding-api.ts";
 
 export { manageAssetPath, noStoreProtocolResource } from "./routes/protocol.ts";
 export { technicalProbeRequested } from "./routes/library-api.ts";
@@ -81,6 +87,9 @@ export interface HandlerOptions {
   archiveSchedule?: ArchiveSchedule;
   analysis?: LibraryAnalysis;
   tags?: Tags;
+  imports?: ImportService;
+  sourceChecks?: SourceChecks;
+  onboarding?: Onboarding;
 }
 
 // Unauthenticated or self-authenticating (token in the path) routes, tried in
@@ -96,6 +105,9 @@ const OPEN_ROUTES: RouteHandler[] = [
 // Everything under /api/* requires a bearer token (checked once in the
 // dispatcher before any of these run).
 const API_ROUTES: RouteHandler[] = [
+  handleOnboarding,
+  handleSourceCheck,
+  handleImports,
   handleVolumes,
   handleDiskCopy,
   handleDiskJobs,
@@ -160,16 +172,16 @@ export function createHandler(options: HandlerOptions) {
       }
       reply(response, 404, { error: "Not found" });
     } catch (error) {
-      const { status, message } = classifyError(error);
+      const { status, message, code } = classifyError(error);
       console.error(
         JSON.stringify({
           level: "error",
           event: "request_failed",
           method: request.method,
-          error: error instanceof Error ? error.message : String(error),
+          code: code ?? (status < 500 ? "invalid_request" : "internal_error"),
         }),
       );
-      reply(response, status, { error: message });
+      reply(response, status, { error: message, ...(code ? { code } : {}) });
     }
   };
 }

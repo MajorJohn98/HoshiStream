@@ -6,14 +6,45 @@ export const token = decodeURIComponent(
 );
 export const headers = { Authorization: "Bearer " + token };
 
+export class ApiError extends Error {
+  constructor(message, { status = 0, code = "", details = null } = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
 export async function api(path, opt = {}) {
   const r = await fetch("/api/" + path, {
     ...opt,
     headers: { ...headers, ...opt.headers },
   });
-  if (!r.ok)
-    throw Error((await r.json().catch(() => ({}))).error || "Request failed");
-  return r.status === 204 ? null : r.json();
+  return apiResponse(r);
+}
+
+export async function apiResponse(r) {
+  if (!r.ok) {
+    const details = await r.json().catch(() => null);
+    throw new ApiError(details?.error || "Request failed", {
+      status: r.status,
+      code: details?.code,
+      details,
+    });
+  }
+  if (r.status === 204) return null;
+  try {
+    return await r.json();
+  } catch {
+    throw new ApiError(
+      "The server response could not be read. Retry the same request to recover its outcome.",
+      {
+        status: r.status,
+        code: "invalid_response",
+      },
+    );
+  }
 }
 
 export const fmt = (n) =>

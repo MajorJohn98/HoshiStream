@@ -1,16 +1,18 @@
 import { markInspectActivity } from "./activity.ts";
-import type { LibraryEntry, SeriesSource } from "./types.ts";
+import { entrySourceRevision } from "./imports/source-identity.ts";
+import type { LibraryEntry, SearchImport, SeriesSource } from "./types.ts";
 import type { Library } from "./library.ts";
 import { inspectLocalEntry } from "./local-media.ts";
 import {
   compositeFileId,
   fileSourceIndex,
   mergeSelectedFiles,
+  MediaSelectionError,
   selectMediaFiles,
   type SelectedFile,
   type TorrentFile,
 } from "./media-file-selection.ts";
-import type { TorrServerClient } from "./torrserver-client.ts";
+import { TorrServerError, type TorrServerClient } from "./torrserver-client.ts";
 
 // The primary source is index 0; extraSources follow in order. Composite file
 // ids encode this index (see media-file-selection.ts).
@@ -19,29 +21,73 @@ export function torrentSources(entry: LibraryEntry): SeriesSource[] {
     {
       magnetUri: entry.magnetUri,
       torrentFilePath: entry.torrentFilePath,
+      sourceHash: entry.sourceHash,
       fileOverrides: entry.fileOverrides,
+      searchImport: entry.searchImport,
     },
     ...(entry.extraSources ?? []),
   ];
 }
 
-function registerSource(
+export function registerSource(
   source: SeriesSource,
   torrServer: TorrServerClient,
   title: string,
+  signal?: AbortSignal,
 ) {
   return source.magnetUri
-    ? torrServer.addMagnet(source.magnetUri, title)
-    : torrServer.addTorrentFile(source.torrentFilePath!, title);
+    ? signal
+      ? torrServer.addMagnet(source.magnetUri, title, signal)
+      : torrServer.addMagnet(source.magnetUri, title)
+    : signal
+      ? torrServer.addTorrentFile(source.torrentFilePath!, title, signal)
+      : torrServer.addTorrentFile(source.torrentFilePath!, title);
+}
+
+export function selectReviewedMediaFiles(
+  type: LibraryEntry["type"],
+  hash: string,
+  files: TorrentFile[],
+  source: SeriesSource,
+  preferredFileIndex?: number,
+  reviewed: SearchImport | undefined = source.searchImport,
+): SelectedFile[] {
+  let selectable = files;
+  if (
+    reviewed?.filmPath &&
+    preferredFileIndex === undefined &&
+    !source.fileOverrides?.length
+  ) {
+    selectable = files.filter((file) => {
+      const path = file.path.replaceAll("\\", "/");
+      return (
+        file.length === reviewed.filmSizeBytes &&
+        (path === reviewed.filmPath || path.endsWith(`/${reviewed.filmPath}`))
+      );
+    });
+    if (hash.toLowerCase() !== reviewed.hash || selectable.length !== 1)
+      throw new MediaSelectionError(
+        "The reviewed film file was not found uniquely. Review the source and select files explicitly.",
+      );
+  }
+  return selectMediaFiles(
+    type,
+    selectable,
+    preferredFileIndex,
+    source.fileOverrides,
+    source.seasonHint,
+  );
 }
 
 export async function inspectEntry(
   entry: LibraryEntry,
   torrServer: TorrServerClient,
   library?: Library,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ) {
   if (entry.localFilePath || entry.localFolderPath) {
     const local = await inspectLocalEntry(entry);
+    options.signal?.throwIfAborted();
     return {
       hash: "",
       name: entry.name,
@@ -59,39 +105,56 @@ export async function inspectEntry(
   // Sequential on purpose: adds are rare and TorrServer handles them better
   // one at a time.
   for (const [index, source] of sources.entries()) {
+    options.signal?.throwIfAborted();
     markInspectActivity(entry.id);
-    const registered = await registerSource(source, torrServer, entry.name);
-    const status = await torrServer.waitForFiles(registered.hash);
+    const registered = await registerSource(
+      source,
+      torrServer,
+      entry.name,
+      options.signal,
+    );
+    const status =
+      options.signal || options.timeoutMs
+        ? await torrServer.waitForFiles(
+            registered.hash,
+            options.timeoutMs ?? 30_000,
+            options.signal,
+          )
+        : await torrServer.waitForFiles(registered.hash);
     markInspectActivity(entry.id);
     inspected.push({
       hash: status.hash,
       name: status.name ?? status.title,
       files: status.file_stats,
-      selectedFiles: selectMediaFiles(
+      selectedFiles: selectReviewedMediaFiles(
         entry.type,
+        status.hash,
         status.file_stats,
+        source,
         index === 0 ? entry.preferredFileIndex : undefined,
-        source.fileOverrides,
-        source.seasonHint,
       ),
     });
   }
   const primary = inspected[0]!;
   const selectedFiles = mergeSelectedFiles(inspected);
+  options.signal?.throwIfAborted();
   if (library && selectedFiles.length) {
     await library
-      .setInspectionCache(entry.id, {
-        hash: primary.hash,
-        selectedFiles,
-        inspectedAt: new Date().toISOString(),
-      })
-      .catch((error: unknown) =>
+      .setInspectionCache(
+        entry.id,
+        {
+          hash: primary.hash,
+          selectedFiles,
+          inspectedAt: new Date().toISOString(),
+        },
+        entrySourceRevision(entry),
+      )
+      .catch(() =>
         console.error(
           JSON.stringify({
             level: "warn",
             event: "inspection_cache_write_failed",
             entryId: entry.id,
-            error: error instanceof Error ? error.message : String(error),
           }),
         ),
       );
@@ -142,7 +205,11 @@ export async function resolveStreamSource(
     }
     if (!needed.size) needed.set(hash, sources[0]!);
     for (const [sourceHash, source] of needed) {
-      const known = await torrServer.get(sourceHash).catch(() => undefined);
+      const known = await torrServer.get(sourceHash).catch((error: unknown) => {
+        if (error instanceof TorrServerError && error.code === "not_found")
+          return undefined;
+        throw error;
+      });
       if (!known) await registerSource(source, torrServer, entry.name);
     }
     return { hash, selectedFiles };
@@ -170,7 +237,10 @@ export function warmStreamSource(
           level: "warn",
           event: "stream_prewarm_failed",
           entryId: entry.id,
-          error: error instanceof Error ? error.message : String(error),
+          code:
+            error instanceof TorrServerError
+              ? error.code
+              : "source_unavailable",
         }),
       ),
     )

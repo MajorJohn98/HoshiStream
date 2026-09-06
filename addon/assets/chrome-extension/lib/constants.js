@@ -1,0 +1,13 @@
+export const NATIVE_HOST = "com.hoshistream.chrome";
+export const PROTOCOL_VERSION = 1;
+export const STATE_VERSION = 1;
+export const MAX_TORRENT_BYTES = 1_000_000;
+export const MAX_TORRENT_BASE64_LENGTH = Math.ceil(MAX_TORRENT_BYTES / 3) * 4;
+export const MAX_CAPTURE_CANDIDATES = 48;
+export const PANEL_STATE_KEY = "hoshistream.panelState";
+export const PENDING_COMMITS_KEY = "hoshistream.pendingCommits";
+export const PANEL_UPDATE_MESSAGE = "hoshistream:panel-state-updated";
+export const ACTIVE_CHECK_PHASES = new Set(["queued", "inspecting", "probing"]);
+export const TRANSIENT_DRAFT_STATUSES = new Set(["preparing", "discarding"]);
+export const TRANSIENT_PREVIEW_STATUSES = new Set(["loading", "discarding"]);
+export const TRANSIENT_SAVE_STATUSES = new Set(["saving"]);
