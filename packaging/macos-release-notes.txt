@@ -22,4 +22,13 @@ LOCAL-ONLY images have not passed that gate and must not be shared.
 No automatic update or data migration/downgrade compatibility is promised.
 Retain the previous approved image and its matching stopped-state backup.
 Do not run an older artifact on newer state without a compatibility decision.
+Recovery, privacy and support procedures are in hoshistream_docs/guides/:
+backup-restore-updates.md, privacy-and-network.md, closed-beta-acceptance.md
+and closed-beta-support.md. The release owner is MajorJohn98; the selected
+private feedback repository HoshiStream-beta-feedback is still pending.
+Documentation: https://github.com/MajorJohn98/HoshiStream/tree/main/hoshistream_docs/guides
+Use the revision in release-info.json for the candidate's matching documentation.
+Startup measures download speed using Cloudflare. TorrServer administration
+requires the trusted-LAN boundary; the add-on token does not protect it.
+Backups contain credentials. Never attach them or raw logs/private URLs to reports.
 No publication or invitation is authorized by generating this image.

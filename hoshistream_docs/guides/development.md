@@ -89,6 +89,10 @@ configuration/credentials and uses `MEDIA_DIR` for linked local media.
 
 Linked originals stay in their selected folders. Custom roots can change these
 paths; this table describes the defaults, not a full backup inventory.
+For backups, include the checkout `.env`, `native-data/` and `data/` as separate
+stopped-copy locations, plus linked originals/storage roots separately. The
+[installed-app restore block](backup-restore-updates.md) does not cover this
+split layout by itself.
 Terminal mode does not create a native tray, Finder file-picker bridge or Chrome
 companion registration. The Windows desktop shell is a separate .NET project;
 see [setup-native-windows.md](setup-native-windows.md).
@@ -144,6 +148,12 @@ PATH=/usr/bin:/bin:/usr/sbin:/sbin "$RUNTIME/bin/node" \
 The harness creates temporary state and alternate ports and leaves installed
 state untouched. It downloads no media and does not establish real-device or
 sustained playback acceptance.
+
+Use [the candidate acceptance runbook](closed-beta-acceptance.md) to record
+artifact identity and distinguish this local evidence from recipient results.
+The [recovery procedure](backup-restore-updates.md) is exercised directly by
+`tests/recovery-workflow.test.ts` on macOS; no private state or media downloads
+are used.
 
 ## Working agreement (AGENTS.md)
 

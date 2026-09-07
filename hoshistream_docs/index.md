@@ -38,6 +38,10 @@
 
 ## Guides
 
+- [guides/backup-restore-updates.md](guides/backup-restore-updates.md) — Resolved-path stopped backups, same-path restore, manual upgrades, rollback limits and non-destructive uninstall.
+- [guides/privacy-and-network.md](guides/privacy-and-network.md) — Credentials, trusted-LAN administration, automatic Cloudflare measurement, torrent traffic and explicit pointer/network contacts.
+- [guides/closed-beta-acceptance.md](guides/closed-beta-acceptance.md) — Candidate-bound acceptance runbook, local evidence and outstanding recipient/player/service gates.
+- [guides/closed-beta-support.md](guides/closed-beta-support.md) — Named owner, pending private feedback channel, sanitized report template, voluntary milestones and rollout stop conditions.
 - [guides/getting-started.md](guides/getting-started.md) — First-launch setup: add a title, connect Nuvio or Stremio, skip and resume privately.
 - [guides/chrome-companion.md](guides/chrome-companion.md) — Companion workflow, native registration, local testing, packaging and publication requirements.
 
@@ -87,7 +91,7 @@
 
 ## Changelog
 
-- [changelog/closed-beta-identity-and-pointer.md](changelog/closed-beta-identity-and-pointer.md) — Phase 1-4 candidate identity, pointer setup, gated macOS distribution, rewritten quick starts and remaining release blockers.
+- [changelog/closed-beta-identity-and-pointer.md](changelog/closed-beta-identity-and-pointer.md) — Phase 1-7 repository implementation: identity, pointer, distribution, quick starts, recovery, privacy and gated cohort operations.
 
 - [changelog/windows-desktop.md](changelog/windows-desktop.md) — Windows tray, native integrations, playback, storage, lifecycle and packaging implementation.
 

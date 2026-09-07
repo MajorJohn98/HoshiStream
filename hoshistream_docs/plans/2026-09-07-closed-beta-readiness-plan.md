@@ -1,14 +1,88 @@
 # Closed beta readiness
 
 Date: 2026-09-07
-Status: phase 1-4 code/documentation implemented; phase 3 redistribution exit remains blocked; phases 5-7, deployed-service and recipient acceptance remain outstanding
+Status: phase 1-7 repository implementation prepared; phase 3 redistribution, recipient/player/deployed-service acceptance and provisioned cohort support remain release blockers
+
+## Approved phase 5-7 implementation (2026-09-07)
+
+The user authorized the remaining phases and direct commits to `main`, starting
+with the full phase 3-4 checkpoint `7493bc9`. This supersedes the earlier
+phase-limited implementation instructions below, not the release gates.
+
+1. Document resolved-path, stopped-state backup, same-path restore, manual
+   upgrade, conservative rollback and non-destructive uninstall. Exercise the
+   procedures against disposable representative state with existing tooling.
+2. Document actual outbound networking and credential boundaries, then prepare
+   a candidate-bound acceptance runbook and record locally observable evidence
+   separately from recipient/player/deployed-service acceptance.
+3. Establish the support contract, private report template, voluntary success
+   measures and stop conditions. MajorJohn98 is the release/support owner;
+   `MajorJohn98/HoshiStream-beta-feedback` is the selected private channel.
+   GitHub could not resolve that repository with the current account. The user
+   chose to leave its creation/access pending; do not create it or invite users.
+4. Update linked guides and release notes, run existing validation and commit
+   the implementation. Do not publish, deploy, change live recipient state,
+   contact the pointer for registration, or fabricate hardware acceptance.
+
+Phases 5-7 repository work is authorized again. The unresolved phase 3 materials,
+real-recipient acceptance and provisioned private support channel still block
+distribution/invitations. No previous binary is approved for reading newer
+state merely because its package version matches.
+
+Implementation:
+
+- [Recovery and updates](../guides/backup-restore-updates.md) define the complete
+  resolved-path inventory, stopped copies, guarded same-path staging restore,
+  credential/media preservation, app-only uninstall and rollback with a matching
+  pre-update snapshot. No arbitrary older-reader compatibility is approved.
+- `addon/tests/recovery-workflow.test.ts` executes the actual documented macOS
+  copy/restore blocks against synthetic disposable state. Coverage includes
+  refusing a live runtime lock, existing backup/staging paths and incomplete
+  backups; restoring hidden credentials, managed bytes, movie/series records,
+  tags, onboarding, pointer identity and volume markers; and preserving both
+  the replaced state and linked originals. App removal/reinstall is a filesystem
+  fixture, not recipient Finder/Gatekeeper acceptance.
+- [Privacy and networking](../guides/privacy-and-network.md) document actual
+  automatic Cloudflare measurement, LAN/TorrServer administration, BitTorrent,
+  mDNS and explicit pointer contacts without claiming offline behavior.
+- [Candidate acceptance](../guides/closed-beta-acceptance.md) separates local
+  artifact evidence from required hardware/client/operator outcomes.
+- [Cohort support](../guides/closed-beta-support.md) names MajorJohn98, supplies
+  a sanitized private report template, voluntary milestones, triage and stop
+  conditions. The selected feedback repository remains pending by user choice.
+
+Local evidence:
+
+- Isolated candidate
+  `0.14.0-7493bc90360a-dirty-20260907162959559-015b5b2d` was built under
+  `build/phase-5-7-validation`, leaving the installed app and prior builds intact.
+  Both candidate-owned shutdown modes passed with private empty state and
+  OS-only PATH. The local-only DMG retains its payload/identity/checksum evidence.
+- The smoke harness now rejects source-mode packaged acceptance, uses the
+  candidate's Node/control helpers, strips inherited credentials/player paths,
+  withholds raw diagnostics and reports ownership/TCP/state cleanup explicitly.
+- Integrated add-on typecheck, lint, format and build passed; **793 tests passed**
+  with two opt-in tests skipped. Pointer typecheck and **24 tests passed**.
+  Separately enabling the specified packaged predecessor/candidate reader pair
+  with the recovery/smoke suites passed **17 tests**. The
+  [acceptance record](../guides/closed-beta-acceptance.md) identifies both exact
+  artifacts and distinguishes synthetic copy/reader evidence from an installed
+  upgrade or real media/database restore.
+- Local tools were Node v26.7.0 and bundled v26.3.1 on macOS 26.6.2; minimum
+  Node 22.18 and recipient macOS 13.5/client versions remain unexercised.
+
+**Not completed by repository work:** recipient installation and sustained
+playback, exact accepted browser/Nuvio/Stremio versions, independent deployed
+pointer claims, recipient upgrade/restore acceptance, a usable private feedback
+channel, invitations or return-use feedback. No deployment, publication,
+invitation, token rotation or private-library operation was performed.
 
 ## Deferred blocker register (2026-09-07)
 
-The user chose to record these blockers and revisit them later. Resolution work
-is paused; **deferred does not mean resolved or waived**. No target date is set.
-The existing redistribution gate and beta invitation/publication holds remain
-in place. Resume the relevant work only when requested.
+The original deferral remains in force for unresolved materials and external
+acceptance. The new approval above resumed phase 5-7 repository implementation;
+**deferred does not mean resolved or waived**. No target date is set. The
+redistribution gate and beta invitation/publication holds remain in place.
 
 | Blocker | Status / phase | What is needed when revisited |
 |---|---|---|
@@ -17,8 +91,8 @@ in place. Resume the relevant work only when requested.
 | TorrServer corresponding source | Deferred; phase 3 release blocker | Complete Go dependency and embedded-web source/license coverage, account for generated files, and establish the actual build inputs and instructions. |
 | npm license-notice provenance | Deferred; phase 3 release blocker | Resolve applicable historical notices for `tr46 0.0.3` and `uint8-util 2.3.2`; preserve the remaining package/browser notices. Do not invent missing text or assume a current upstream license applies retrospectively. |
 | Recipient, player and deployed pointer acceptance | Deferred; phases 2 and 6 acceptance gates | Exercise the installed candidate on recipient Macs, record exact browser/Nuvio/Stremio versions and sustained playback, and establish independent live pointer registration/update/removal and client routing. |
-| Updates, backup, restore and rollback | Deferred; phase 5 release blocker | Establish and exercise the stopped-state backup, restore and upgrade procedures, credential/media preservation, and explicit downgrade compatibility. |
-| Cohort support readiness | Deferred; phase 7 invitation blocker | Name the release/support owner, choose a private reporting channel, and establish report requirements, success criteria and stop conditions. |
+| Updates, backup, restore and rollback | Procedures and disposable coverage implemented; recipient acceptance pending | Exercise the exact installed candidate and matching snapshot on recipient hardware. No older published binary is approved to read newer state; rollback requires its own matching snapshot. |
+| Cohort support readiness | Contract prepared; channel/access pending; phase 7 invitation blocker | MajorJohn98 owns release/support. Provision and verify the selected private `MajorJohn98/HoshiStream-beta-feedback` channel; creation was explicitly deferred. |
 | Developer ID signing and notarization | Conditional; deferred | May remain deferred for an explicitly assisted technical beta. Required before claiming frictionless self-service installation for nontechnical users. |
 
 Node's exact-archive notice retention has been addressed; it is not an
@@ -160,9 +234,9 @@ recovery, and native lifecycle management. The remaining work is release
 packaging, installed-app configuration, real-device acceptance, documentation,
 and support.
 
-This document records work to perform; it does not certify an existing
-artifact or authorize deployment, publication, credential changes, or broader
-feature implementation. Implement one agreed phase at a time.
+This document records implementation and remaining work; it does not certify
+an artifact or authorize deployment, publication, credential changes, or broader
+feature implementation. Follow the latest approved phase scope above.
 
 ## Baseline and release blockers
 
@@ -464,5 +538,9 @@ scope explicitly, or hold that part of the rollout.
 - [Windows distribution](../guides/distributing-windows-app.md)
 - [Chrome companion](../guides/chrome-companion.md)
 - [Pointer setup](../guides/pointer-server-vercel.md)
+- [Backup, restore and updates](../guides/backup-restore-updates.md)
+- [Privacy and network boundary](../guides/privacy-and-network.md)
+- [Candidate acceptance](../guides/closed-beta-acceptance.md)
+- [Private cohort support](../guides/closed-beta-support.md)
 - [Multi-tenant pointer decision](../decisions/0013-multi-tenant-pointer-server.md)
 - [File-scoped readiness decision](../decisions/0023-file-scoped-readiness-evidence.md)

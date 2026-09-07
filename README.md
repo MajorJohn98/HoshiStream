@@ -47,6 +47,11 @@ Optional: [pointer setup](hoshistream_docs/guides/pointer-server-vercel.md)
 [Getting started](hoshistream_docs/guides/getting-started.md) |
 [Troubleshooting](hoshistream_docs/guides/troubleshooting.md)
 
+Before updating, follow [backup and recovery](hoshistream_docs/guides/backup-restore-updates.md).
+Read [privacy/network contacts](hoshistream_docs/guides/privacy-and-network.md)
+and [private beta support](hoshistream_docs/guides/closed-beta-support.md).
+Invitations remain on hold until recipient acceptance and the private channel are ready.
+
 ## 2. Run from the codebase in a terminal - optional
 
 On an Apple Silicon Mac, install **Git, Node 22.18+ and npm**. Stop any other

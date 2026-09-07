@@ -60,3 +60,9 @@ different player clears its previous confirmation.
 Magnet-link defaults, Start at Login, and the Chrome companion are optional and
 are never enabled automatically by onboarding. An incoming magnet on first launch
 takes priority over opening the welcome page.
+
+Before an update, use the [stopped backup procedure](backup-restore-updates.md).
+Review [privacy and network contacts](privacy-and-network.md): startup performs
+a Cloudflare speed measurement, and local-first does not mean offline.
+Use [sanitized private beta reports](closed-beta-support.md) for feedback once
+the designated channel is provisioned; never share your private URL or `.env`.

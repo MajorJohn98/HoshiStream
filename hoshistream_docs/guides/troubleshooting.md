@@ -83,14 +83,33 @@ do not disable system-wide protections.
 
 ## Corrupt library JSON
 
-The library store can quarantine corrupt JSON and restore its last-known-good
-`.bak` automatically. If recovery fails, stop HoshiStream and preserve the
-damaged files before seeking help; do not overwrite them with an empty library.
+The library store can recover from its last-known-good `.bak` automatically and
+attempt to quarantine corrupt JSON. If recovery fails, stop HoshiStream and
+preserve the damaged files before seeking help; do not overwrite them with an
+empty library. A missing primary file can also recover from `.bak`; if both
+are absent, the store treats the library as new. Unexpectedly empty state after
+an update therefore requires checking the resolved paths before adding anything.
 Default library paths are
 `~/Library/Application Support/HoshiStream/library.json` for the installed Mac
 app and `<checkout>/native-data/library.json` for the foreground whole stack,
 not the old `data/library.json`. A `.bak` or browser JSON export is not a full
-backup. The phase 5 backup/restore procedure remains a separate acceptance gate.
+backup. Follow the [stopped backup and same-path restore procedure](backup-restore-updates.md).
+Do not run an older app against newer state or remove a stale lock merely to
+make backup commands proceed.
+
+## Updating, uninstalling or reporting a problem
+
+Quit the whole app before replacing its bundle. Keep the previous artifact
+and a matching full stopped backup; app-only uninstall preserves the library,
+credentials and linked originals. See [updates and rollback](backup-restore-updates.md).
+After sleep or a LAN change, reconnect to the trusted network, restart the
+server and manually update a configured pointer if needed; a pointer is not
+remote access.
+
+Use the [private report template](closed-beta-support.md), never a raw log,
+`.env`, private URL, magnet or whole library. The chosen feedback repository
+is still pending, so do not use public issues as a substitute.
+See [privacy and network contacts](privacy-and-network.md) before joining.
 
 ## Local media path rejected
 

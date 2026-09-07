@@ -206,3 +206,18 @@ page's Play action does not invoke it. See the
 Pointer participation remains explicit and updates manual; use
 [pointer setup](pointer-server-vercel.md). A pointer does not expose LAN media
 remotely. See [troubleshooting](troubleshooting.md) for firewall and LAN issues.
+
+## Updates and cohort release gate
+
+Ship the [backup, restore and update procedure](backup-restore-updates.md),
+[privacy/network statement](privacy-and-network.md), and
+[private support instructions](closed-beta-support.md) with the release links.
+Record exact artifact/client results in the
+[candidate acceptance record](closed-beta-acceptance.md). No older published
+artifact is currently approved to read this candidate's newer state.
+
+Repository implementation of phases 5-7 does not waive recipient installation,
+sustained playback, live pointer, recovery/upgrade or private-channel acceptance.
+The selected feedback repository remains unprovisioned/unverified at the owner's
+request. Keep distribution and invitations on hold while these gates or exact
+third-party materials are outstanding.

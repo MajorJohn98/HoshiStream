@@ -1,8 +1,8 @@
-# Closed beta identity, pointer and distribution
+# Closed beta identity, distribution and operations
 
 Date: 2026-09-07
 
-Implements the phase 1-4 code/documentation slices of the
+Implements the phase 1-7 repository slices of the
 [closed beta plan](../plans/2026-09-07-closed-beta-readiness-plan.md), not a
 release approval. Version remains `0.14.0`; exact recipient browser and
 Nuvio/Stremio versions still require acceptance. The agreed contract is
@@ -10,6 +10,39 @@ Apple Silicon, macOS 13.5+, trusted LAN, one direct-play stream, and H.264/AAC
 in MP4 as the baseline browser media. The approved macOS path is browser-first:
 mpv remains an optional external installation, not a bundled prerequisite.
 Redistribution approval and publication remain blocked.
+
+## Phase 5-7: recovery, acceptance and support
+
+- Added a resolved-path backup inventory and executable macOS stopped-copy/
+  same-path restore procedure. Restore stages separately, retains the replaced
+  state and does not reactivate old runtime control records. Managed media,
+  linked originals and external-volume markers have distinct preservation
+  expectations. No new data format or automatic migration is introduced.
+- Added disposable data-lifecycle coverage that executes the published shell
+  blocks, checks backup privacy, refuses live locks/incomplete or reused paths,
+  and preserves credentials, library records, pointer state and original bytes.
+  App-only uninstall is non-destructive; older-code rollback requires its
+  matching pre-update full snapshot, not an assumed downgrade.
+- Published a short credential/network statement, including automatic
+  Cloudflare download measurement, the unprotected-by-addon-token TorrServer
+  admin boundary and explicit pointer participation. Local-first is not offline.
+- Added candidate-bound acceptance instructions and evidence with hardware,
+  playback, live-service and recipient upgrade results explicitly separate.
+- Named MajorJohn98 as release/support owner and prepared the sanitized report
+  template, voluntary cohort milestones and mandatory rollout stop conditions.
+  The chosen private `MajorJohn98/HoshiStream-beta-feedback` repository could
+  not be resolved; the owner deferred provisioning. No invites or public-report
+  fallback were created.
+- Linked recovery/privacy/support from the README, getting started, native
+  setup, distribution, development and troubleshooting. Corrected the Mac
+  shell's state-root override guidance and documented owned Chrome-bridge
+  unregistration during uninstall.
+
+These are operational implementation deliverables, not a running cohort.
+Exact third-party materials, recipient installation/playback, deployed pointer
+acceptance, recipient data lifecycle and an accessible private support channel
+still hold release approval. See the
+[acceptance record](../guides/closed-beta-acceptance.md) for candidate evidence.
 
 ## Phase 3-4: macOS distribution and quick start
 
@@ -34,7 +67,7 @@ developer PATH entries. The normal release path still blocks because the exact
 reviewed redistribution bundle is absent. The
 [distribution guide](../guides/distributing-macos-app.md) records outstanding
 materials; the [plan](../plans/2026-09-07-closed-beta-readiness-plan.md) separates
-observed local outcomes from still-required recipient/client and phase 5-7 work.
+observed local outcomes from still-required recipient/client and cohort gates.
 
 ## Installed pointer diagnosis
 

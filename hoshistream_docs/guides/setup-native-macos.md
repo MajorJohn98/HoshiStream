@@ -28,7 +28,8 @@ node packaging/fetch-ffmpeg.mjs
 
 Quit an existing instance, then copy `build/HoshiStream.app` to Applications
 with Finder and open it. Preserve the previous app and state when replacing it;
-do not assume old versions can read new state.
+do not assume old versions can read new state. Follow the
+[stopped backup, update and rollback procedure](backup-restore-updates.md).
 
 Runtime downloads are pinned by `packaging/node-lock.json`,
 `packaging/torrserver-lock.json` and `packaging/ffmpeg-lock.json`. The current
@@ -89,12 +90,16 @@ Installed users should let first launch generate `.env`, then edit it privately
 at `~/Library/Application Support/HoshiStream/.env` if needed and choose
 **Restart Server**. Checkout `.env` is separate. The native app reads
 `ACCESS_TOKEN`, `MEDIA_DIR`,
-`HOSHISTREAM_STATE_DIR`, `ADDON_PORT`, `HOME_SPEED_MBPS`, `PLAYER_PATH`, `LAN_REDIRECT`,
+`ADDON_PORT`, `HOME_SPEED_MBPS`, `PLAYER_PATH`, `LAN_REDIRECT`,
 `TRANSCODE_ENABLED`, and `TRANSCODE_MAX_SESSIONS`,
 and derives the rest — including `TORRSERVER_INTERNAL_URL`, the public URLs, and the
 vendored ffmpeg/ffprobe paths — from the detected LAN address and install layout. The
 remaining variables in `.env.example` only apply when running the add-on directly with
 `npm start`.
+
+The Mac shell uses its resolved project root for state; a `.env`
+`HOSHISTREAM_STATE_DIR` does not redirect it. That environment override belongs
+to the terminal start script. Record actual roots before backup or recovery.
 
 Stream repair (ADR 0010) is off by default; set `TRANSCODE_ENABLED=true` to offer
 "Compatible" streams for media the TV cannot direct-play. LAN discovery
@@ -119,6 +124,10 @@ outside the config file:
 Keep the add-on port (7000/7001) and TorrServer's web port (8090) on the trusted LAN only —
 no router forwarding, no UPnP, no public exposure. See
 [ADR 0004](../decisions/0004-token-in-path-and-bearer-security-model.md).
+
+TorrServer administration is not guarded by the add-on token. Startup also
+downloads speed-measurement data from Cloudflare; local-first is not offline.
+Read the short [privacy/network statement](privacy-and-network.md).
 
 Port 32001 carries BitTorrent peer traffic, not management or add-on requests.
 Keep router/public exposure outside this beta; `DisableUPNP` stays `true`.

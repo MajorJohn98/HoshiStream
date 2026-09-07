@@ -84,6 +84,29 @@ native host allowlist matches. Do not tell normal users to use Developer mode as
 the finished distribution flow. Store publication/review is separate from
 building the extension zip.
 
+## Remove the macOS companion during uninstall
+
+Remove the extension from `chrome://extensions` and close its panel. Quit
+HoshiStream first so the supervisor cannot re-register the bridge. Before
+moving the app to Trash, unregister only the native host owned by this
+installation (default installed paths shown):
+
+```bash
+RUNTIME="/Applications/HoshiStream.app/Contents/Resources/runtime"
+STATE="$HOME/Library/Application Support/HoshiStream"
+"$RUNTIME/bin/node" "$RUNTIME/scripts/register-browser-bridge.mjs" \
+  --unregister --runtime-root="$RUNTIME" \
+  --project-root="$STATE" --state-dir="$STATE"
+```
+
+The command reports `removed: true` when it removes the matching Chrome
+manifest. `removed: false` means no matching owned registration was removed;
+do not manually delete another installation's manifest. It preserves private
+bridge configuration, library and media. Reopening the installed app
+re-registers its helper, so leave it stopped when uninstalling.
+For a checkout/custom installation, supply its actual project/state/runtime
+roots instead. See [app-only uninstall](backup-restore-updates.md#uninstall-without-deleting-the-library).
+
 ## Troubleshooting
 
 - **Helper not found:** open/update HoshiStream, then retry. For development, run
