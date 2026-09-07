@@ -5,6 +5,9 @@ Add your own authorized videos, magnets or `.torrent` files, then watch in your
 browser or a player on the same **trusted home LAN**. No torrent discovery,
 accounts or containers.
 
+**[Setup & configuration guide](https://majorjohn98.github.io/HoshiStream/)** —
+installation, players, settings, storage, optional integrations and recovery.
+
 The **0.14.0 closed-beta candidate** targets Apple Silicon, macOS 13.5+, and
 one direct-play stream. Browser baseline: **MP4 with H.264 video and AAC audio**.
 Exact browser/Nuvio/Stremio versions and recipient playback are still awaiting

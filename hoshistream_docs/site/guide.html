@@ -1,0 +1,2500 @@
+<section
+  id="before-you-start"
+  class="guide-section"
+  aria-labelledby="before-you-start-title"
+>
+  <h2 id="before-you-start-title">Your library, served from your computer</h2>
+  <p>
+    HoshiStream keeps a personal media library on your computer and makes it
+    available in your browser, Nuvio, or Stremio. Add a video you already have,
+    or manually add a torrent you are authorized to access. The native app runs
+    the library server and TorrServer, the torrent engine, together. Your
+    computer must remain on and reachable while another device watches.
+  </p>
+  <aside class="callout warning">
+    <strong
+      >0.14.0 is a local-validation candidate, not an approved download</strong
+    >
+    <p>
+      This guide reflects the repository on September 7, 2026. Binary sharing
+      and beta invitations remain blocked pending exact third-party notices and
+      corresponding-source materials, recipient/player acceptance, recovery and
+      service checks, and a working private support channel. A
+      <code>LOCAL-ONLY</code> image must not be shared. Windows rollout is
+      deferred. Publishing this documentation does not approve a binary release;
+      the older 0.8.2 download is not a compatible substitute or an approved
+      downgrade.
+    </p>
+  </aside>
+  <h3>Choose the right starting point</h3>
+  <ul>
+    <li>
+      <strong>Installed Mac users:</strong> follow
+      <a href="#install-macos">macOS installation</a> if you have an
+      appropriately approved build, or are validating your own local build. No
+      developer tools are needed to run the packaged app.
+    </li>
+    <li>
+      <strong>Windows users and developers:</strong> see
+      <a href="#windows-and-source">Windows and source operation</a>. A running
+      Node server is not the same as an installed native desktop app.
+    </li>
+    <li>
+      <strong>Existing users:</strong> take a
+      <a href="#backups-and-updates">stopped, complete backup</a> before
+      replacing an app or changing where its data lives.
+    </li>
+  </ul>
+  <h3>What to have ready</h3>
+  <ul>
+    <li>
+      For the macOS candidate: an Apple Silicon Mac with macOS 13.5 or newer, a
+      browser, and enough free space for the app, torrent cache, and any media
+      you choose to upload or keep.
+    </li>
+    <li>
+      A trusted home network. Put the host and player on the same non-guest
+      network; use Ethernet for the host when practical.
+    </li>
+    <li>
+      An authorized test video. H.264 video with AAC audio in an MP4 container
+      is the initial browser baseline, not a promise for every browser or file.
+      Exact browser/client versions and sustained playback still need
+      acceptance.
+    </li>
+    <li>
+      Optionally, Nuvio or Stremio on the device where you want to watch. Start
+      with one direct-play stream. Remote streaming, broader codecs, advanced
+      storage, and companion rollout have separate acceptance requirements.
+    </li>
+  </ul>
+  <h3>Privacy and network use</h3>
+  <p>
+    There are no HoshiStream accounts, automatic beta analytics, or in-app
+    reporting service. Library and configuration files stay on your computer.
+    <strong>Local-first does not mean offline or anonymous.</strong> Only use
+    media you own, public-domain media, or material you have permission to
+    access. There is no in-app torrent search, indexer setup, or automatic
+    discovery of media.
+  </p>
+  <div
+    class="table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Network contacts"
+  >
+    <table>
+      <caption>
+        What can leave your computer
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">When</th>
+          <th scope="col">Network contact</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Startup and Check Speed</th>
+          <td>
+            An automatic download measurement contacts
+            <code>speed.cloudflare.com</code>. It requests a 1 MB warm-up and up
+            to 50 MB of test data, with an approximately eight-second
+            measurement window and a 20-second overall timeout. Cloudflare sees
+            normal connection metadata, including your public IP.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Torrent checks, playback, and disk copies</th>
+          <td>
+            TorrServer can contact trackers, DHT/PEX peers, and web seeds. Peers
+            can observe your IP and torrent identity. Uploading is enabled in
+            the supplied settings.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">LAN discovery</th>
+          <td>
+            mDNS advertises the local service and port, not its access token. It
+            is on by default and can be disabled in configuration.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Remote pointer, if configured</th>
+          <td>
+            Explicit registration, check, update, and removal actions contact
+            your chosen service. Clients using its private URL also contact it.
+            Saving setup or launching HoshiStream does not contact the pointer.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Artwork and other remote resources</th>
+          <td>
+            Your browser/player may request entered poster or background URLs.
+            Torrent resources and player software can make their own network
+            requests.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    There is no supported switch for entirely offline startup.
+    <code>HOME_SPEED_MBPS</code> is a fallback, not a speed-test opt-out;
+    <code>LAN_REDIRECT=off</code> does not disable measurement. Private add-on
+    and management URLs are credentials. Keep them out of screenshots, public
+    issues, shared clipboards, and online URL checkers. Plain HTTP on the LAN is
+    not end-to-end encrypted.
+  </p>
+  <p>
+    Further detail:
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/privacy-and-network.md"
+      >privacy and network boundary</a
+    >
+    and
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/closed-beta-acceptance.md"
+      >candidate acceptance requirements</a
+    >.
+  </p>
+</section>
+
+<section
+  id="install-macos"
+  class="guide-section"
+  aria-labelledby="install-macos-title"
+>
+  <h2 id="install-macos-title">
+    Install the app, not a development environment
+  </h2>
+  <p>
+    The packaged Mac app includes Node, TorrServer, FFmpeg, and ffprobe. It does
+    not include mpv. Compatible browser playback needs neither Homebrew nor a
+    separately installed player. These instructions describe installation; they
+    do not lift the candidate's distribution hold.
+  </p>
+  <ol>
+    <li>
+      <strong>Check the build's origin.</strong> Use the exact app/image and
+      release information approved for your test. Keep its build ID, checksum,
+      and notes. A checksum confirms matching bytes, not publisher identity.
+    </li>
+    <li>
+      <strong>If replacing an app, stop first.</strong> Close playback, disable
+      Start at Login, take a stopped backup, and choose
+      <strong>Quit HoshiStream</strong>. Preserve the previous app; do not
+      replace a running bundle.
+    </li>
+    <li>
+      <strong>Open the disk image and copy HoshiStream to Applications.</strong>
+      Launch the copy in Applications, not the app inside the mounted image. A
+      locally built app can likewise be copied from its build folder with
+      Finder.
+    </li>
+    <li>
+      <strong>Find HoshiStream in the menu bar.</strong> It does not keep a Dock
+      window open. Wait for the services to become ready; a fresh installation
+      opens Get started in your default browser.
+    </li>
+    <li>
+      <strong>Allow only trusted-LAN access when prompted.</strong> The firewall
+      may identify the bundled Node or TorrServer executable. Keep macOS
+      protections enabled. Do not forward application ports on your router.
+    </li>
+  </ol>
+  <details>
+    <summary>Optional: verify a disk-image checksum in Terminal</summary>
+    <p>
+      Put the image and its matching checksum file together in Downloads.
+      Replace the example filename with the actual approved filename. The
+      expected result is <code>OK</code>; stop on a mismatch.
+    </p>
+    <pre><code>cd "$HOME/Downloads"
+shasum -a 256 -c 'HoshiStream-BUILD-ID-darwin-arm64.dmg.sha256'</code></pre>
+  </details>
+  <h3>If macOS blocks the app</h3>
+  <p>
+    The current candidate is ad-hoc signed, not Developer ID signed or
+    notarized. Depending on macOS and device policy, a downloaded copy can be
+    described as unverified or damaged even when its checksum matches. After
+    attempting to open a trusted copy, look in
+    <strong>System Settings &gt; Privacy &amp; Security</strong> and use
+    <strong>Open Anyway</strong> only if offered and permitted.
+  </p>
+  <aside class="callout warning">
+    <strong>Do not turn off Gatekeeper or bypass a managed policy</strong>
+    <p>
+      If the origin or checksum is uncertain, or no permitted override appears,
+      stop and seek assistance. App-scoped quarantine handling is an
+      assisted-tester procedure, not a requirement to disable system-wide
+      security. A successful local launch does not establish acceptance on
+      another Mac.
+    </p>
+  </aside>
+  <p>
+    For local build prerequisites, see
+    <a href="#windows-and-source">source workflows</a>. Packaging, provenance,
+    and assisted installation are documented in the
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/distributing-macos-app.md"
+      >macOS distribution guide</a
+    >.
+  </p>
+</section>
+
+<section id="first-run" class="guide-section" aria-labelledby="first-run-title">
+  <h2 id="first-run-title">Add one title and choose where to watch</h2>
+  <p>
+    First launch creates your private configuration, a unique access token and
+    pointer push secret, and the app's state folders. You do not need to paste
+    credentials into a setup form. The default Mac state folder is
+    <code>~/Library/Application Support/HoshiStream</code>; the local media
+    folder defaults to <code>~/Movies</code>.
+  </p>
+  <ol>
+    <li>
+      In <strong>Get started</strong>, choose <strong>Add media</strong> and add
+      an authorized title. This step completes only when an entry is actually
+      saved, not when a form opens.
+    </li>
+    <li>
+      Open the title and choose <strong>Play</strong> to watch in the browser,
+      or choose a file from its <strong>Files</strong> tab. A source check is
+      separate from saving and playback.
+    </li>
+    <li>
+      To connect a separate device, choose Nuvio or Stremio, copy the private
+      add-on URL, and install it in that player. Follow
+      <a href="#connect-players">the player connection steps</a>.
+    </li>
+    <li>
+      Return and choose <strong>I can see HoshiStream</strong> only after it
+      appears in the player's add-ons. Copying the URL is not confirmation.
+      Recent recognized catalog activity is reported separately.
+    </li>
+    <li>
+      Choose <strong>Finish setup</strong> once a title is added and player
+      setup is confirmed. For browser-only use, choose
+      <strong>Skip for now</strong>; no TV-player confirmation is needed to
+      leave onboarding.
+    </li>
+  </ol>
+  <p>
+    Skipping does not remove media or change settings. Reopen the guide from
+    <strong>Get Started</strong> in the menu bar or
+    <strong>Get started</strong> in the sidebar. Progress is stored locally in
+    <code>onboarding.json</code>. Changing the selected player clears its
+    earlier confirmation. Existing installations are not forced through a new
+    welcome window.
+  </p>
+  <h3>Know the everyday controls</h3>
+  <dl>
+    <dt>Library</dt>
+    <dd>
+      Add titles, filter by tags, open an entry, and select playback files.
+    </dd>
+    <dt>Status</dt>
+    <dd>
+      Review service health, build identity, resources, and the speed
+      measurement.
+    </dd>
+    <dt>Activity</dt>
+    <dd>Review connected-client activity and optional remote pointer setup.</dd>
+    <dt>Storage</dt>
+    <dd>
+      Manage registered storage folders, disk-copy work, and its download
+      window.
+    </dd>
+    <dt>Menu bar</dt>
+    <dd>
+      Open HoshiStream, copy URLs, Restart Server, Check Speed, Show Logs, or
+      Quit HoshiStream. Start at Login and magnet-link handling are separate
+      opt-ins; onboarding does not enable them.
+    </dd>
+  </dl>
+  <p>
+    Closing the browser does not quit HoshiStream. Keep the host awake and
+    connected while watching; closing a laptop lid or deliberately sleeping it
+    can interrupt service despite the app's sleep-prevention requests.
+  </p>
+</section>
+
+<section id="add-media" class="guide-section" aria-labelledby="add-media-title">
+  <h2 id="add-media-title">Save the source, then check the selected file</h2>
+  <p>
+    In Library, choose <strong>+ Add Media</strong>. Select the source type,
+    review the title and movie/series type, add optional tags, and choose
+    <strong>Add to library</strong>. HoshiStream does not find or scrape
+    torrents for you.
+  </p>
+  <div
+    class="table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Ways to add authorized media"
+  >
+    <table>
+      <caption>
+        Choose how the media enters your library
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Source</th>
+          <th scope="col">What to do</th>
+          <th scope="col">What is stored</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Magnet link</th>
+          <td>
+            Paste a valid BitTorrent v1 magnet and review the suggested name.
+          </td>
+          <td>
+            A source reference. Checking or playing it can contact peers and
+            fetch data.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">.torrent file</th>
+          <td>
+            Choose a file obtained through an authorized source. Imported
+            metadata is limited to 1,000,000 bytes; malformed or unsupported
+            metadata is rejected.
+          </td>
+          <td>
+            Browser imports retain a managed metadata file. A native linked
+            source remains at its original path.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Local file or folder, native picker</th>
+          <td>
+            Use <strong>Choose with Finder</strong> on macOS. The native desktop
+            picker links the selected file or folder in place.
+          </td>
+          <td>A reference to the original, not a second media copy.</td>
+        </tr>
+        <tr>
+          <th scope="row">Browser upload</th>
+          <td>
+            Use the upload fallback if no native picker is available. Allow
+            enough space for another full copy.
+          </td>
+          <td>Copied media inside HoshiStream's managed upload folder.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    Recognized video extensions are <code>.mp4</code>, <code>.mkv</code>,
+    <code>.webm</code>, <code>.avi</code>, <code>.mov</code>, and
+    <code>.m4v</code>. Recognition makes a file selectable; it does not mean
+    your browser can decode it. Use the native picker instead of typing an
+    arbitrary path. Browser-entered local paths must be absolute and inside the
+    configured media or managed-storage roots.
+  </p>
+  <h3>Understand the result, not just the badge</h3>
+  <p>
+    <strong>Inspect and check after saving</strong> is enabled by default for
+    interactive adding, with a per-add opt-out. Saving happens first; metadata
+    inspection and a bounded ffprobe sample run afterward. If a check fails, the
+    entry remains saved. Retry its check instead of adding the same title again.
+  </p>
+  <div
+    class="table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Source check results"
+  >
+    <table>
+      <caption>
+        What the source-check states actually establish
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">State</th>
+          <th scope="col">Meaning and next action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Queued / Inspecting / Checking</th>
+          <td>
+            A separate background attempt is waiting, finding metadata, or
+            sampling one file. You can cancel it without removing the entry.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Metadata found</th>
+          <td>
+            A file listing was obtained. Media bytes and playback have not been
+            verified.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Sample read</th>
+          <td>
+            At least one video frame was decoded on the host from one selected
+            file. Other episodes, later seeks, sustained playback, and browser
+            support remain untested.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Sample unverified</th>
+          <td>
+            There is no recorded decoded-frame evidence. Technical details alone
+            are not a successful media sample.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Check inconclusive</th>
+          <td>
+            The attempt reached its limits without enough evidence. It does not
+            prove the source is dead. Retry later, explicitly retry for longer,
+            or try direct playback.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Check unavailable / Invalid source</th>
+          <td>
+            Review source details, file access, and engine availability. The
+            saved entry remains available for correction.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Check cancelled / Check interrupted</th>
+          <td>
+            The attempt stopped. Restarted or source-changed work is not
+            automatically resumed; retry when ready.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    A basic automatic check has a 60-second overall deadline and a 20-second
+    probe limit. An explicit longer retry allows up to 180 seconds overall and
+    is never started automatically. These are time limits, not strict network
+    byte caps: TorrServer may read ahead. Results carry a file/source identity
+    and observation time. An earlier success is historical evidence, not a
+    current availability guarantee.
+  </p>
+  <h3>Series, file selection, and tags</h3>
+  <ul>
+    <li>
+      A linked folder becomes one series. Filenames such as
+      <code>S01E02</code> or <code>1x02</code> provide episode numbers;
+      otherwise files become season 1 in filename order.
+    </li>
+    <li>
+      Use the entry's <strong>Files</strong> tab to review the actual episode or
+      video before playback. Correct selection or episode overrides if automatic
+      identification chooses a sample, extra, or wrong episode.
+    </li>
+    <li>
+      A torrent-backed series can have several sources. Use
+      <strong>+ Add another torrent</strong> when adding magnets, or its
+      <strong>Source</strong> tab afterward, then re-inspect. Filename numbering
+      takes precedence over a season hint. The newest source wins overlapping
+      episodes, so review before replacing coverage.
+    </li>
+    <li>
+      Tags can be selected or created when adding/editing a title. Library tag
+      filters require every selected tag. The <strong>Tags</strong> page
+      renames/deletes labels across affected titles; Stremio exposes them as
+      catalog genres.
+    </li>
+    <li>
+      After moving linked media, use <strong>Relink in Finder</strong> in the
+      entry's Source controls. Deleting a linked entry does not delete its
+      original file. Managed uploads and explicitly requested disk-copy
+      deletions have different ownership rules.
+    </li>
+  </ul>
+  <p>
+    Browser JSON export is useful for portable metadata, not full recovery: it
+    omits local paths and does not embed .torrent files or media. Keep library
+    state and managed files together in a
+    <a href="#backups-and-updates">complete backup</a>. See the
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/adding-media.md"
+      >media-adding reference</a
+    >
+    for additional API and series details.
+  </p>
+</section>
+
+<section
+  id="connect-players"
+  class="guide-section"
+  aria-labelledby="connect-players-title"
+>
+  <h2 id="connect-players-title">
+    Watch here, or connect a player on your LAN
+  </h2>
+  <h3>In the management browser</h3>
+  <p>
+    Open a title and choose <strong>Play</strong>, or choose a file from
+    <strong>Files</strong>. This opens HoshiStream's browser player, not mpv.
+    Start with authorized H.264/AAC MP4 media. Browser codec/container support,
+    source reachability, and available bandwidth remain separate questions.
+  </p>
+  <p>
+    If autoplay is blocked, use the player's play control. Slow startup and
+    buffering do not automatically switch quality or format; wait, retry, or
+    explicitly select another offered rendition.
+    <strong>Open direct stream</strong>
+    opens the raw media URL. It is not a playback test and may still fail in the
+    same browser.
+  </p>
+  <h3>In Nuvio or Stremio</h3>
+  <ol>
+    <li>
+      Connect the player device and host computer to the same trusted LAN. Keep
+      HoshiStream running and the host awake.
+    </li>
+    <li>
+      In <strong>Get started</strong>, select your player and copy the private
+      add-on URL. Prefer <strong>Copy direct LAN URL</strong> for initial setup.
+      The Mac menu also provides <strong>Copy Direct LAN URL</strong>.
+    </li>
+    <li>
+      In <strong>Nuvio</strong>, open Addons, choose Add Addon, and paste the
+      URL. In <strong>Stremio</strong>, open Add-ons, paste the URL into the
+      add-on search field, and install HoshiStream. Client wording may vary.
+    </li>
+    <li>
+      Confirm HoshiStream appears in the installed add-ons, open its catalog,
+      and try your authorized title. Then confirm the connection in Get started.
+    </li>
+  </ol>
+  <p>
+    If copying is unavailable, expand <strong>Show private URL</strong> and copy
+    locally. Do not send it to someone else to test. The following are URL
+    shapes only: <code>PRIVATE_TOKEN</code> is a placeholder, and
+    <code>192.168.1.50</code> must be replaced with your host's address.
+  </p>
+  <pre><code>Local management, on the host:
+http://127.0.0.1:7001/manage/PRIVATE_TOKEN
+
+Private add-on, for another LAN device:
+http://192.168.1.50:7001/addon/PRIVATE_TOKEN/manifest.json</code></pre>
+  <p>
+    <code>127.0.0.1</code> and <code>localhost</code> mean the device opening
+    the URL, not your Mac when entered on a TV. Native mode detects a LAN
+    address; if it reports a computer-only address, reconnect to the trusted
+    network and restart. After an address change, copy/reinstall the updated
+    direct URL. A router DHCP reservation can help keep a LAN address stable
+    without exposing any port.
+  </p>
+  <h3>Firewall and reachability</h3>
+  <div
+    class="table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Local network ports"
+  >
+    <table>
+      <caption>
+        Default ports and their boundaries
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Port</th>
+          <th scope="col">Purpose</th>
+          <th scope="col">Access boundary</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">TCP 7001</th>
+          <td>Native add-on, management page, and local/managed media</td>
+          <td>Trusted LAN only; native default is configurable.</td>
+        </tr>
+        <tr>
+          <th scope="row">TCP 8090</th>
+          <td>TorrServer web/admin and ordinary direct torrent streams</td>
+          <td>Trusted LAN only; not protected by the HoshiStream token.</td>
+        </tr>
+        <tr>
+          <th scope="row">UDP 5353</th>
+          <td>mDNS service discovery</td>
+          <td>Local multicast; optional, no access token advertised.</td>
+        </tr>
+        <tr>
+          <th scope="row">TCP/UDP 32001</th>
+          <td>BitTorrent peer traffic</td>
+          <td>
+            Not a management port. Router forwarding is outside the initial
+            workflow; UPnP is disabled.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    A working catalog does not prove that direct torrent media on port 8090 is
+    reachable. Avoid guest networks, client isolation, or VPN adapters that
+    select an unreachable interface. Approve the relevant app executables in the
+    host firewall for the trusted network only; do not disable the firewall.
+    Approval can need renewal after replacing a Mac app bundle.
+  </p>
+  <h3>Optional host player: a different path</h3>
+  <p>
+    The advanced host-player API can control mpv through IPC or hand off to an
+    installed IINA, VLC, or system handler. On macOS, install the player
+    separately and configure an absolute <code>PLAYER_PATH</code> for mpv; a
+    menu-bar app may not inherit your shell's PATH. A generic handoff does not
+    provide HoshiStream's playback controls or prove codec compatibility. The
+    Windows desktop payload is designed to bundle mpv, but its rollout is still
+    deferred. Neither changes what the management page's Play button does.
+  </p>
+  <p>
+    See the
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/api/management-api-reference.md"
+      >management API reference</a
+    >
+    for the advanced host-player interface, and
+    <a href="#remote-access">remote access</a> for the distinction between a
+    stable pointer URL and actual off-LAN streaming.
+  </p>
+</section>
+
+<section
+  id="configuration"
+  class="guide-section"
+  aria-labelledby="configuration-title"
+>
+  <h2 id="configuration-title">
+    Change the settings your launch mode actually reads
+  </h2>
+  <p>
+    Most installed users can keep the generated defaults. Use the management
+    page for library metadata, tags, disk-copy selections, download windows, and
+    remote pointer setup. Use the private <code>.env</code> file for startup
+    configuration. Editing a checkout's file does not configure an installed
+    app.
+  </p>
+  <h3>Find the active configuration</h3>
+  <div
+    class="table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Configuration and state locations by launch mode"
+  >
+    <table>
+      <caption>
+        Default roots; resolve overrides before editing or backing up
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Launch mode</th>
+          <th scope="col">Configuration</th>
+          <th scope="col">State and managed uploads</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Installed macOS app</th>
+          <td><code>~/Library/Application Support/HoshiStream/.env</code></td>
+          <td>
+            JSON state in the same folder; uploads in
+            <code>data/media/</code> beneath it.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Windows desktop app</th>
+          <td><code>%LOCALAPPDATA%\HoshiStream\.env</code></td>
+          <td>
+            JSON state in the same folder; uploads in
+            <code>data\media\</code> beneath it.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Foreground/watch whole-stack checkout</th>
+          <td><code>&lt;checkout&gt;/.env</code></td>
+          <td>
+            State in <code>&lt;checkout&gt;/native-data/</code>; uploads in
+            <code>&lt;checkout&gt;/data/media/</code>.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">start-native.sh / start-native.ps1</th>
+          <td>The installed-state <code>.env</code> by default</td>
+          <td>
+            Shares the installed app's state and identity, unless launch
+            arguments/environment select other roots.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Add-on only</th>
+          <td>
+            Environment supplied to Node; <code>npm run dev</code> loads the
+            checkout <code>.env</code>.
+          </td>
+          <td>
+            Each path below is configurable independently.
+            <code>npm start</code> does not load <code>.env</code> for you.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <ol>
+    <li>
+      Record the active build and paths. Back up before changing credentials,
+      ports, or storage roots. For a simple setting change, stop playback first.
+    </li>
+    <li>
+      Open <code>.env</code> in a local plain-text editor. In Finder, use
+      <strong>Go &gt; Go to Folder</strong> to open the state folder and
+      <strong>Command-Shift-Period</strong> if you need to reveal hidden files.
+      Do not upload the file to an online editor.
+    </li>
+    <li>
+      Use one <code>KEY=value</code> per line, with the key at the start and no
+      spaces around <code>=</code>. Keep comments on their own lines starting
+      with <code>#</code>. Avoid duplicate keys, shell <code>export</code>
+      statements, and inline comments.
+    </li>
+    <li>
+      Use absolute media paths. Native parsing does not expand
+      <code>~</code>, <code>$HOME</code>, or <code>%LOCALAPPDATA%</code> inside
+      values. Double quotes can surround a path with spaces; do not use shell
+      single-quote syntax. Keep generated tokens and numeric ports unquoted for
+      the native menu's reader.
+    </li>
+    <li>
+      Save as plain text without adding a <code>.txt</code> suffix, then choose
+      <strong>Restart Server</strong>. For a state-root migration, quit the
+      entire app and use the recovery procedure instead. UI pointer and storage
+      settings apply without this restart.
+    </li>
+  </ol>
+  <p>
+    This example changes no credentials. Replace the media path with an existing
+    folder you own; do not replace your generated file wholesale.
+  </p>
+  <pre><code>ADDON_PORT=7001
+MEDIA_DIR="/Users/your-name/Movies"
+HOME_SPEED_MBPS=10
+LAN_REDIRECT=auto
+MDNS_ENABLED=true
+TRANSCODE_ENABLED=false</code></pre>
+  <h3>Native app and whole-stack startup settings</h3>
+  <p>
+    These values are read from the resolved project <code>.env</code> by
+    <code>scripts/native-server.mjs</code>. A fresh native installation
+    generates missing credentials; add-on-only mode does not.
+  </p>
+  <div
+    class="table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Native application settings"
+  >
+    <table>
+      <caption>
+        Common persistent settings
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Setting</th>
+          <th scope="col">Default / allowed values</th>
+          <th scope="col">Effect</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row"><code>ADDON_PORT</code></th>
+          <td>Native: <code>7001</code>; integer 1-65535</td>
+          <td>
+            Must differ from TorrServer's port. A change requires restart and
+            updated direct client URLs.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>ACCESS_TOKEN</code></th>
+          <td>Generated per install; at least 20 characters</td>
+          <td>
+            Protects management/add-on access. Preserve it; changing it changes
+            private URLs and pointer identity.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>MEDIA_DIR</code></th>
+          <td>
+            Fresh Mac: user's Movies folder; fresh Windows: user's Videos folder
+          </td>
+          <td>
+            Native launcher's local-media root. Existing saved paths are not
+            migrated merely by changing this value.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>HOME_SPEED_MBPS</code></th>
+          <td><code>10</code>; positive number, Mbps</td>
+          <td>
+            Fallback for bitrate guidance. A measured result takes precedence.
+            It is not a LAN throughput test, swarm measurement, remote upload
+            limit, or playback guarantee.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>LAN_REDIRECT</code></th>
+          <td>
+            <code>auto</code> or <code>off</code>; default <code>auto</code>
+          </td>
+          <td>
+            Controls the public-IP-based LAN shortcut for advanced tunnel
+            requests. Use <code>off</code> if CGNAT makes shared-public-IP
+            detection unsuitable.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>MDNS_ENABLED</code></th>
+          <td><code>true</code></td>
+          <td>
+            Advertises <code>_hoshistream._tcp</code> on the LAN. Disabling
+            discovery does not stop the server or its other network contacts.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>PLAYER</code></th>
+          <td>
+            <code>auto</code>, <code>mpv</code>, <code>iina</code>,
+            <code>vlc</code>, <code>system</code>; default <code>auto</code>
+          </td>
+          <td>
+            Advanced host-player selection, not browser playback. IINA is a
+            macOS option; handoffs depend on installed OS handlers.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>PLAYER_PATH</code></th>
+          <td>Unset</td>
+          <td>
+            Explicit mpv executable override for auto/mpv mode, then bundled mpv
+            or PATH lookup when no override is supplied. macOS does not bundle
+            mpv.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>POINTER_URL</code></th>
+          <td>Unset</td>
+          <td>
+            Optional initial service origin, for example
+            <code>https://pointer.example.com</code>. Explicit saved UI
+            settings, including disabled, take precedence.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>POINTER_PUSH_SECRET</code></th>
+          <td>Generated per install; at least 20 characters when configured</td>
+          <td>
+            Authenticates manual pointer operations. It is not a deployment-wide
+            Vercel/Redis/Blob credential. Preserve the original claim secret.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>TRANSCODE_ENABLED</code></th>
+          <td><code>false</code></td>
+          <td>
+            Existing opt-in stream repair; leave off for the initial direct-play
+            workflow. A source check does not enable it.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row"><code>TRANSCODE_MAX_SESSIONS</code></th>
+          <td><code>2</code>; integer 1-8</td>
+          <td>
+            Maximum concurrent existing repair sessions when repair is enabled,
+            not a promise of hardware capacity.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    For <code>MDNS_ENABLED</code> and <code>TRANSCODE_ENABLED</code>, only the
+    exact strings <code>true</code> or <code>1</code> enable the option. Other
+    supplied strings evaluate false. Prefer explicit
+    <code>true</code>/<code>false</code>, not <code>yes</code>, <code>on</code>,
+    or uppercase variants. Other enums are likewise case-sensitive. Omit
+    optional values rather than leaving invalid empty URLs or numbers.
+  </p>
+  <h3>Settings saved through the interface</h3>
+  <div
+    class="table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Persistent interface settings"
+  >
+    <table>
+      <caption>
+        Use the UI rather than hand-editing these stores
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Setting</th>
+          <th scope="col">Where to change it</th>
+          <th scope="col">Persistence</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">
+            Title metadata, tags, file choices, sources, disk-copy intent
+          </th>
+          <td>Library entry controls</td>
+          <td>
+            <code>library.json</code>; registry-wide tags also use
+            <code>tags.json</code>.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Setup progress and player confirmation</th>
+          <td>Get started</td>
+          <td><code>onboarding.json</code>; skipping is nondestructive.</td>
+        </tr>
+        <tr>
+          <th scope="row">Friendly client names</th>
+          <td>Activity's device controls</td>
+          <td>
+            <code>device-names.json</code>; these can contain private network
+            context.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Pointer enabled state and endpoint</th>
+          <td>Activity &gt; Remote pointer</td>
+          <td>
+            <code>pointer-settings.json</code>; manual operation evidence in
+            <code>pointer-state.json</code>.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Storage volumes and archiving window</th>
+          <td>Storage</td>
+          <td>
+            <code>volumes.json</code>, <code>disk-schedule.json</code>, and
+            deferred deletion records in <code>disk-cleanup.json</code>.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Start at Login and magnet default</th>
+          <td>Native menu/tray and OS settings</td>
+          <td>
+            Per-user operating-system settings; not restored by copying library
+            JSON.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <details>
+    <summary>
+      Advanced: direct-add-on network, player, and repair configuration
+    </summary>
+    <p>
+      <code>addon/src/config.ts</code> loads
+      <code>addon/src/config-schema.ts</code>. The defaults below describe that
+      schema, not the native launcher's overrides. The native launcher sets
+      internal/public URLs, state paths, ffmpeg/ffprobe paths, and
+      <code>LOG_LEVEL=info</code> itself. Putting these derived values in its
+      <code>.env</code> does not override them.
+    </p>
+    <div
+      class="table-wrap"
+      tabindex="0"
+      role="region"
+      aria-label="Advanced direct addon settings"
+    >
+      <table>
+        <caption>
+          Additional add-on-only environment settings
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Setting</th>
+            <th scope="col">Schema default / constraint</th>
+            <th scope="col">Operator notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row"><code>ADDON_PORT</code></th>
+            <td><code>7000</code>; integer 1-65535</td>
+            <td>
+              The example file uses 7001; specify it to avoid macOS AirPlay's
+              possible 7000 conflict.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>TORRSERVER_INTERNAL_URL</code></th>
+            <td>Required HTTP(S) URL</td>
+            <td>
+              Server-to-engine endpoint, usually
+              <code>http://127.0.0.1:8090</code>. Add-on-only mode does not
+              start TorrServer.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>PUBLIC_TORRSERVER_URL</code></th>
+            <td>Required HTTP(S) URL</td>
+            <td>
+              Client-reachable engine base, for example
+              <code>http://192.168.1.50:8090</code>. Request host handling also
+              affects generated streams.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>PUBLIC_ADDON_URL</code></th>
+            <td>Required HTTP(S) URL</td>
+            <td>
+              Client-reachable add-on base, for example
+              <code>http://192.168.1.50:7001</code>. Do not use retired
+              container hostnames.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>LOG_LEVEL</code></th>
+            <td><code>info</code>; debug, info, warn, error</td>
+            <td>
+              Accepted configuration field; do not assume it suppresses every
+              structured log. Native mode forces info.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>FFMPEG_PATH</code></th>
+            <td><code>ffmpeg</code></td>
+            <td>
+              Executable for existing optional repair. Native mode chooses its
+              vendored tool, with PATH fallback for development; packaged Mac
+              validation requires the bundled binary.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>FFPROBE_PATH</code></th>
+            <td><code>ffprobe</code></td>
+            <td>
+              Read directly by the probe module, outside the schema. Native mode
+              derives it. Needed for technical/sample checks even when repair is
+              off.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>TRANSCODE_VIDEO_BITRATE_MBPS</code></th>
+            <td><code>8</code>; number 1-40 Mbps</td>
+            <td>
+              Existing hardware-video/lower-bitrate target. The native launcher
+              does not forward this key from its .env; it is not an
+              installed-app file setting.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>ONBOARDING_FIRST_RUN</code></th>
+            <td><code>false</code>; exactly true or false</td>
+            <td>
+              Initialization hint. The native launcher derives it from first-run
+              provisioning, not a user switch for resetting setup.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Existing repair may remux, repair audio, or offer hardware video
+      conversion when a supported encoder exists. It is not limited to
+      audio-only work, is off by default, and is outside the initial accepted
+      workload. No universal codec or performance guarantee follows from
+      enabling it.
+    </p>
+  </details>
+  <details>
+    <summary>Advanced: every add-on state-path override</summary>
+    <p>
+      In this table, <code>STATE</code> means the schema's per-user root:
+      <code>~/Library/Application Support/HoshiStream</code> on macOS,
+      <code>%LOCALAPPDATA%\HoshiStream</code> on Windows, or
+      <code>$XDG_DATA_HOME/hoshistream</code> on other platforms, falling back
+      there to <code>~/.local/share/hoshistream</code>. These are descriptions,
+      not variables expanded inside <code>.env</code>. Linux schema defaults do
+      not establish a supported Linux desktop release.
+    </p>
+    <div
+      class="table-wrap"
+      tabindex="0"
+      role="region"
+      aria-label="Direct addon filesystem overrides"
+    >
+      <table>
+        <caption>
+          Use absolute paths and include every resolved store in backups
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Setting</th>
+            <th scope="col">Add-on schema default</th>
+            <th scope="col">Native launcher behavior</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row"><code>LIBRARY_PATH</code></th>
+            <td><code>STATE/library.json</code></td>
+            <td>Selected state root, same filename.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>ONBOARDING_PATH</code></th>
+            <td><code>STATE/onboarding.json</code></td>
+            <td>Selected state root, same filename.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>MEDIA_ROOT</code></th>
+            <td>User's <code>Movies</code> folder</td>
+            <td>
+              Derived from <code>MEDIA_DIR</code> or <code>--media-root</code>.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>UPLOAD_ROOT</code></th>
+            <td><code>STATE/media</code></td>
+            <td>
+              <code>PROJECT/data/media</code>, not <code>STATE/media</code>.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>NATIVE_PICKER_SOCKET</code></th>
+            <td><code>STATE/run/supervisor.sock</code></td>
+            <td>
+              Derived private native endpoint, or endpoint supplied by the
+              desktop process. Do not repoint it to a network service.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>TRANSCODE_DIR</code></th>
+            <td><code>STATE/transcode</code></td>
+            <td>Selected state root's <code>transcode</code> folder.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>TORRSERVER_CACHE_DIR</code></th>
+            <td><code>STATE/torrserver/torrents</code></td>
+            <td>
+              Actual native TorrServer torrent/cache directory. In add-on-only
+              mode this reports the directory; it does not configure the engine.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>POINTER_STATE_PATH</code></th>
+            <td><code>STATE/pointer-state.json</code></td>
+            <td>Selected state root, same filename.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>POINTER_SETTINGS_PATH</code></th>
+            <td>
+              Unset; pointer client uses
+              <code>pointer-settings.json</code> beside its state file
+            </td>
+            <td>Explicitly pinned beneath the selected state root.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>DEVICE_NAMES_PATH</code></th>
+            <td><code>STATE/device-names.json</code></td>
+            <td>Selected state root, same filename.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>TAGS_PATH</code></th>
+            <td><code>STATE/tags.json</code></td>
+            <td>Selected state root, same filename.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>VOLUMES_PATH</code></th>
+            <td><code>STATE/volumes.json</code></td>
+            <td>Selected state root, same filename.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>DISK_CLEANUP_PATH</code></th>
+            <td><code>STATE/disk-cleanup.json</code></td>
+            <td>Selected state root, same filename.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>DISK_SCHEDULE_PATH</code></th>
+            <td><code>STATE/disk-schedule.json</code></td>
+            <td>Selected state root, same filename.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      <strong>Set MEDIA_ROOT explicitly for add-on-only operation.</strong>
+      The current local-media module reads it directly from the process
+      environment and otherwise falls back to the legacy <code>/media</code>
+      path, unlike the schema's Movies default. Likewise,
+      <code>MEDIA_DIR</code> alone is a launcher setting, not an add-on-only
+      substitute. Native mode supplies the resolved value and avoids this
+      mismatch.
+    </p>
+    <p>
+      Changing only <code>LIBRARY_PATH</code> does not relocate all other JSON
+      stores. The add-on does not use <code>HOSHISTREAM_STATE_DIR</code> to
+      rewrite these schema defaults. Keep state on a private local filesystem
+      with the permissions and atomic operations the native runtime requires.
+    </p>
+  </details>
+  <details>
+    <summary>Advanced: launcher overrides and TorrServer defaults</summary>
+    <p>
+      The foreground native launcher accepts
+      <code>--project-root</code> (configuration and managed data),
+      <code>--state-dir</code> (runtime/JSON state), <code>--addon-port</code>,
+      <code>--torrserver-port</code>, and <code>--media-root</code>. Command
+      arguments take precedence for those values. Without overrides, a checkout
+      uses its root and <code>native-data</code>. These are operator settings,
+      not native UI preferences.
+    </p>
+    <p>
+      <code>HOSHISTREAM_STATE_DIR</code> in the launching process selects the
+      state root for the terminal start scripts and Windows desktop shell.
+      Putting it inside the Mac app's <code>.env</code> does not move Mac state.
+      A custom Mac build can instead embed
+      <code>HoshiStreamProjectRoot</code> through the build-time
+      <code>HOSHISTREAM_PROJECT_ROOT</code> override; that checkout-pinned app
+      is not a portable distribution. Inspect its Info.plist when resolving
+      custom paths.
+    </p>
+    <p>
+      Native startup seeds
+      <code>STATE/torrserver/config/settings.json</code> only when absent and
+      updates its torrent-save path. Existing tuning is retained. These are the
+      current supplied defaults, not the older 2 GiB cache mentioned in
+      historical documents.
+    </p>
+    <div
+      class="table-wrap"
+      tabindex="0"
+      role="region"
+      aria-label="Supplied TorrServer tuning"
+    >
+      <table>
+        <caption>
+          Current packaging settings; advanced operators should edit only while
+          stopped
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Setting</th>
+            <th scope="col">Supplied value</th>
+            <th scope="col">Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row"><code>UseDisk / CacheSize</code></th>
+            <td><code>true / 4294967296</code></td>
+            <td>
+              Disk cache configured to 4 GiB; this is not an archive or a total
+              limit on managed media.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>ConnectionsLimit</code></th>
+            <td><code>200</code></td>
+            <td>Engine connection setting.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>PreloadCache / ReaderReadAHead</code></th>
+            <td><code>40 / 75</code></td>
+            <td>
+              Supplied preloading/read-ahead tuning; sampling may fetch extra
+              data.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>PeersListenPort</code></th>
+            <td><code>32001</code></td>
+            <td>Peer traffic, not web/admin traffic.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>DisableUPNP</code></th>
+            <td><code>true</code></td>
+            <td>No automatic router port mapping.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>DisableUpload</code></th>
+            <td><code>false</code></td>
+            <td>Uploading to peers is enabled.</td>
+          </tr>
+          <tr>
+            <th scope="row">
+              <code>DownloadRateLimit / UploadRateLimit</code>
+            </th>
+            <td><code>0 / 0</code></td>
+            <td>No configured rate cap in the supplied engine settings.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>DisableDHT / DisablePEX</code></th>
+            <td><code>false / false</code></td>
+            <td>
+              Peer-discovery mechanisms are enabled; these are not in-app media
+              discovery.
+            </td>
+          </tr>
+          <tr>
+            <th scope="row"><code>RemoveCacheOnDrop</code></th>
+            <td><code>true</code></td>
+            <td>
+              Engine cache is disposable, unlike an explicitly kept disk copy.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Do not expose TorrServer's administrative interface to tune it remotely,
+      substitute an unpinned engine, or enable the retired search integrations.
+      Existing repair and all advanced tuning remain separate from the
+      direct-play candidate promise.
+    </p>
+  </details>
+</section>
+
+<section id="storage" class="guide-section" aria-labelledby="storage-title">
+  <h2 id="storage-title">Know which files are yours and which are managed</h2>
+  <p>
+    HoshiStream has three different storage roles: linked originals stay where
+    you selected them; browser uploads are copied into managed storage; torrent
+    cache is temporary engine data. <strong>Keep on disk</strong> is an
+    additional, explicit copy of selected torrent media to a registered drive or
+    folder. It is not required to watch a local file or stream a torrent.
+  </p>
+  <h3>Keep an authorized torrent on a drive</h3>
+  <ol>
+    <li>
+      With the native desktop app running, open <strong>Storage</strong> and
+      choose <strong>+ Add drive or folder</strong>. Select a writable local
+      folder on the intended drive. Server-only mode has no desktop folder
+      picker.
+    </li>
+    <li>
+      Confirm the volume is <strong>Online</strong> and has enough free space.
+      HoshiStream creates a small <code>.hoshistream-volume.json</code> identity
+      marker in that storage root. Keep it with the copied media.
+    </li>
+    <li>
+      Open a torrent-backed title's <strong>Keep on disk</strong> tab, select
+      the registered volume, and choose <strong>Keep on disk</strong>.
+      Inspection may be needed first. Local-file/folder entries are not eligible
+      for this torrent archiving feature.
+    </li>
+    <li>
+      Review series file selection and apply the files you want to keep. The
+      default scope keeps all selected media from the inspected entry; a
+      selected-file scope preserves your explicit inclusion choices.
+    </li>
+    <li>
+      Follow <strong>Storage &gt; Downloads</strong>. One title copies at a
+      time. Use <strong>Pause</strong> or <strong>Resume</strong> explicitly; a
+      manually paused job stays paused across restarts.
+    </li>
+  </ol>
+  <h3>Disconnecting, reconnecting, and moving drives</h3>
+  <p>
+    Pause copies and stop playback from the drive before ejecting it through the
+    operating system. A disconnected drive becomes Offline and its copying
+    waits. HoshiStream identifies registered storage by its marker rather than
+    trusting a volume name or Windows drive letter. A renamed/remounted drive
+    can be found again; a different drive with the same name is not silently
+    substituted.
+  </p>
+  <p>
+    Complete, valid disk files are preferred while available. If a selected copy
+    is unavailable, the stable media route can fall back to its torrent. That
+    fallback still needs a reachable source and network; it is not a
+    seamless-playback or offline guarantee. Wrong-size or invalid copies need
+    review and an explicit retry before replacement.
+  </p>
+  <div
+    class="table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Storage states and actions"
+  >
+    <table>
+      <caption>
+        Handle drive state without losing files
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">State or action</th>
+          <th scope="col">What it means</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Offline</th>
+          <td>
+            Reconnect the original drive and check its mount and permissions. Do
+            not create an empty look-alike directory to impersonate it.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Two drives carry this volume</th>
+          <td>
+            Duplicate markers are ambiguous. Disconnect the clone; do not attach
+            a restored duplicate beside its original or manually invent new
+            registry identities.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Not readable</th>
+          <td>
+            Restore access to the selected folder using normal OS permissions.
+            Do not grant broad disk access or disable protections as a shortcut.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Retry missing files</th>
+          <td>
+            Rechecks missing/invalid copies and approves replacement of invalid
+            data. Review the affected destination before confirming.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Forget</th>
+          <td>
+            Removes the volume registration, not its marker or files. Associated
+            entries lose disk playback until appropriately registered again.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Delete files</th>
+          <td>
+            Explicitly removes that entry's copied files. If the drive is
+            offline, deletion is queued and can run when it reconnects. The
+            library title and torrent source remain.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Download windows</h3>
+  <p>
+    In <strong>Storage &gt; Download window</strong>, set start and end times
+    and choose <strong>Enable window</strong> or <strong>Update window</strong>.
+    Times use the host's local clock; overnight windows such as
+    <code>23:00-06:00</code> work. Equal start/end times allow the whole day. By
+    default, downloads run anytime.
+  </p>
+  <p>
+    A file already copying finishes when a window closes; new work waits.
+    Playback and torrent fallback are never restricted by this schedule. Use
+    <strong>Download anytime</strong> to remove the window. Space used by full
+    disk copies and browser uploads is additional to TorrServer's 4 GiB cache
+    configuration.
+  </p>
+  <p>
+    Back up the volume marker, copied media, library, volume registry, cleanup
+    records, and schedule together. External-drive recovery remains outside
+    first-cohort acceptance and should be assisted. See
+    <a href="#backups-and-updates">backups and recovery</a> before cloning or
+    moving a registered storage root.
+  </p>
+</section>
+
+<section
+  id="remote-access"
+  class="guide-section"
+  aria-labelledby="remote-access-title"
+>
+  <h2 id="remote-access-title">A stable URL is not a tunnel to your media</h2>
+  <p>
+    Normal setup is trusted-LAN only. A <strong>remote pointer</strong> can keep
+    an add-on address stable while directing clients to your last-registered LAN
+    address. A <strong>tunnel</strong> instead exposes selected local services
+    through an external hostname. These solve different problems. Neither
+    removes the need for an awake host, reachable media, appropriate client
+    support, and private credentials.
+  </p>
+  <h3>Optional: configure a remote pointer</h3>
+  <p>
+    Use only a pointer operator you trust with authentication requests and
+    network metadata. This guide does not endorse or enroll you in a service.
+    The UI can suggest an endpoint and identify its operator; review those
+    details or enter your own service origin, such as
+    <code>https://pointer.example.com</code>.
+  </p>
+  <ol>
+    <li>
+      Choose <strong>Remote Pointer Settings</strong> in the Mac menu, or open
+      <strong>Activity &gt; Remote pointer</strong>.
+    </li>
+    <li>
+      Enter a trusted HTTPS origin without a path, query, fragment, or embedded
+      credentials. HTTP is allowed only for loopback development. A Vercel
+      deployment token or storage credential is not a service URL.
+    </li>
+    <li>
+      Choose <strong>Save and enable</strong>. This saves local setup only,
+      sends nothing to the service, and needs no restart. Existing enabled setup
+      uses the <strong>Save endpoint</strong> label.
+    </li>
+    <li>
+      Choose <strong>Register / update</strong> to deliberately send this
+      installation's manifest, current LAN base address, and authentication to
+      the service. The first successful push claims this token using the
+      per-install push secret.
+    </li>
+    <li>
+      After a successful current registration, choose
+      <strong>Copy private pointer URL</strong> and install it in a compatible
+      client. Its shape is
+      <code>https://pointer.example.com/addon/PRIVATE_TOKEN/manifest.json</code
+      >.
+    </li>
+  </ol>
+  <p>
+    The Mac menu's <strong>Copy Stremio URL</strong> uses the pointer only when
+    local state reports it usable; otherwise it uses the direct LAN URL.
+    <strong>Copy Direct LAN URL</strong> remains a recovery path. A pointer
+    serves the stored manifest, then redirects other add-on requests to the
+    last-pushed address. Media bytes do not pass through the pointer service. A
+    device outside that LAN cannot reach its private address just because the
+    pointer's manifest loads.
+  </p>
+  <h3>Updates, expiry, and removal are deliberate</h3>
+  <ul>
+    <li>
+      After a LAN-address change, reconnect and restart the native server, then
+      use <strong>Register / update</strong> or
+      <strong>Update Remote Pointer</strong>. There is no automatic IP tracking.
+    </li>
+    <li>
+      Records expire after 90 days without a push in the supplied pointer
+      implementation. Register/update again when appropriate. Local status is
+      evidence of the last operation, not continuous service monitoring.
+    </li>
+    <li>
+      <strong>Check service</strong> is another explicit network request. An
+      unreachable or rate-limited service does not stop direct-LAN use.
+    </li>
+    <li>
+      <strong>Remove remote record</strong> requests service-side deletion.
+      Check for acknowledged success; a failure or ambiguous response is not
+      proof of deletion. Remove a remembered record before changing services.
+    </li>
+    <li>
+      <strong>Disable locally</strong> prevents pointer use but keeps the
+      credentials and any remote record. Re-enable before requesting removal.
+      Uninstalling the app does not delete a pointer record.
+    </li>
+  </ul>
+  <p>
+    Preserve both <code>ACCESS_TOKEN</code> and <code>POINTER_PUSH_SECRET</code>
+    in your private backup. A new random push secret cannot update an existing
+    claim. If pointer history exists and configuration is lost, startup or
+    pointer setup may stop rather than invent a new identity. Restore the
+    original credentials while stopped, or arrange deliberate claim recovery
+    privately with the service operator. Never send the secret to the operator
+    as a support step.
+  </p>
+  <p>
+    The supplied service stores token/secret hashes, manifest, LAN base URL, and
+    timestamps in its application records, not your library or media. Requests
+    still carry credentials, and the operator/hosting platform can process them.
+    Browser clients may block HTTPS-to-HTTP-LAN redirects through mixed-content
+    or private-network rules. Use the direct LAN URL when that happens;
+    acceptance depends on the exact client/version.
+  </p>
+  <h3>Advanced: an actual off-LAN connection</h3>
+  <aside class="callout warning">
+    <strong>Remote streaming is outside the current candidate workflow</strong>
+    <p>
+      Do not forward ports 7001 or 8090, expose the management page through a
+      public proxy, or assume a tunnel makes TorrServer administration safe. The
+      app binds on the LAN, and TorrServer is not protected by its token. Remote
+      deployment requires a separate access-boundary and player review.
+    </p>
+  </aside>
+  <p>
+    For a separately reviewed setup, Cloudflare Tunnel uses a connector making
+    an outbound connection to a Cloudflare account/domain. The connector and its
+    service credentials are separate from HoshiStream; neither desktop package
+    automatically provisions that tunnel. A public hostname such as
+    <code>hoshi.example.com</code> needs carefully restricted routing, TLS,
+    client-compatible access controls, and verification of every returned media
+    URL, not just the manifest.
+  </p>
+  <p>
+    The repository's older tunnel walkthrough is not a turnkey remote-playback
+    guarantee. Ordinary torrent streams can point directly to TorrServer's port,
+    while local files use add-on routes. Current request-host URL construction
+    also uses HTTP rather than treating a TLS tunnel hostname as sufficient.
+    Routing only port 7001 therefore does not establish a working, private,
+    HTTPS media path. Do not solve that by publishing raw port 8090.
+  </p>
+  <p>
+    The existing <code>LAN_REDIRECT=auto</code> shortcut compares a tunnel
+    request's Cloudflare client-IP header with a public-IP lookup at
+    <code>www.cloudflare.com/cdn-cgi/trace</code>, cached for five minutes after
+    success. A match can select configured LAN URLs. This is a routing hint, not
+    authentication; CGNAT or unsuitable proxy/header handling can make it wrong.
+    <code>LAN_REDIRECT=off</code> disables the shortcut, not startup measurement
+    or the need for correct public stream URLs.
+  </p>
+  <p>
+    Before any remote-media experiment, verify the chosen provider's current
+    video-traffic terms and limits, home upload capacity, TLS/range-request
+    behavior, and exact client compatibility. Do not paste tunnel credentials
+    into shared command history or reports. For operator background, consult the
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/pointer-server-vercel.md"
+      >pointer deployment guide</a
+    >
+    and the
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/remote-access-cloudflare-tunnel.md"
+      >historical tunnel walkthrough</a
+    >, subject to the current limitations above.
+  </p>
+</section>
+
+<section
+  id="chrome-companion"
+  class="guide-section"
+  aria-labelledby="chrome-companion-title"
+>
+  <h2 id="chrome-companion-title">Capture a source, then review it yourself</h2>
+  <h3>Chrome companion</h3>
+  <p>
+    The companion is an optional same-computer bridge, not a search engine or
+    remote-library client. It has no Chrome Web Store release at present. Local
+    testing uses a matching unpacked extension; that is not the finished
+    distribution experience. The desktop app's native helper registration and
+    installation of the extension in Chrome are separate steps.
+  </p>
+  <ol>
+    <li>
+      Install the current app in its final location and open it once so it
+      registers its native helper. For a source checkout, use the explicit
+      registration workflow below.
+    </li>
+    <li>
+      For local testing, open <code>chrome://extensions</code>, enable Developer
+      mode, and use <strong>Load unpacked</strong> on the matching extracted
+      companion folder. Pin it if desired. Do not load an extension from an
+      unknown source or change its identity independently of the helper.
+    </li>
+    <li>
+      Browse normally. Right-click a selected magnet and choose
+      <strong>Add to HoshiStream</strong>, or open the companion's side panel.
+      Reading source links from the active page requires your explicit action.
+    </li>
+    <li>
+      Choose the intended source if several are present. Review name, type,
+      tags, and destination, then confirm adding. Follow the separate source
+      check or open the saved entry.
+    </li>
+  </ol>
+  <p>
+    For a protected .torrent link, download it normally in the browser, then
+    choose/drop that file in the companion. No cookies or browsing history are
+    exported. No server address or access token needs to be entered in the
+    extension. A duplicate offers the existing entry; a lost response can be
+    retried without deliberately adding another copy.
+  </p>
+  <h4>Add to an existing series</h4>
+  <p>
+    Choose <strong>Add to existing series</strong>, select an inspected
+    torrent-backed series, and request an episode preview. That explicit preview
+    can contact peers but does not add the source yet. Review new episodes and
+    overlaps, then approve replacements before confirming. Filename numbering
+    overrides an optional season hint; the newly appended source wins approved
+    overlaps. Local-file/folder series are not eligible. An expired preview or
+    changed target requires fresh review.
+  </p>
+  <details>
+    <summary>
+      macOS checkout: build and register the development companion
+    </summary>
+    <p>
+      Run from the repository root after installing the add-on dependencies.
+      These commands point the helper at the checkout's configuration and
+      library, not the installed app's state. Start the checkout server
+      separately using the source workflow.
+    </p>
+    <pre><code>cd addon
+npm run build
+cd ..
+node scripts/register-browser-bridge.mjs \
+  --runtime-root="$PWD" \
+  --project-root="$PWD" \
+  --state-dir="$PWD/native-data"
+node packaging/build-chrome-extension.mjs</code></pre>
+    <p>
+      Load <code>addon/assets/chrome-extension</code> unpacked. Packaging also
+      produces <code>build/HoshiStream-Chrome-Companion.zip</code>, containing
+      extension assets, not server credentials or the native helper. The native
+      host is <code>com.hoshistream.chrome</code>. Opening the installed app
+      registers its own connection again.
+    </p>
+  </details>
+  <h3>Native magnet links, without Chrome</h3>
+  <p>
+    On macOS, choose <strong>Use HoshiStream for Magnet Links</strong> in the
+    menu bar only if you want to change your default handler. Accept your
+    browser's <strong>Open HoshiStream</strong> prompt when appropriate. A
+    clicked magnet can start the app and open Add Media with a suggested
+    source/name. You must still review and choose
+    <strong>Add to library</strong>; clicking alone does not save a title or
+    download torrent data.
+  </p>
+  <p>
+    The private handoff expires after ten minutes or an app restart. Click the
+    original link again or choose <strong>Enter manually</strong> if it expires.
+    To switch away later, use the other application's association setting.
+    Windows' desktop implementation makes HoshiStream an available handler;
+    selecting a protected default remains your choice in Windows settings.
+  </p>
+  <h3>If the helper will not connect</h3>
+  <p>
+    Open the matching desktop app and retry. A Node-only server does not install
+    the Windows native helper, tray, or pickers. A checkout helper also needs
+    its server started manually. If macOS blocks Chrome's helper from a checkout
+    in Documents, prefer the installed Applications copy; do not disable
+    protections or grant broad disk access to make the development path work. Be
+    aware that switching registrations switches which local library you see.
+  </p>
+  <p>
+    See the
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/chrome-companion.md"
+      >companion installation and removal reference</a
+    >
+    for native-host ownership and packaging requirements.
+  </p>
+</section>
+
+<section
+  id="windows-and-source"
+  class="guide-section"
+  aria-labelledby="windows-and-source-title"
+>
+  <h2 id="windows-and-source-title">
+    Separate a desktop candidate from a source server
+  </h2>
+  <h3>Windows status and packaged behavior</h3>
+  <p>
+    Windows 11 x64 is the desktop target; rollout remains deferred pending exact
+    redistribution materials and real Windows-machine acceptance.
+    Cross-compilation and automated tests are not proof of tray, dialogs,
+    SmartScreen, Chrome, sleep, drive, or player behavior on recipient hardware.
+  </p>
+  <p>
+    The implemented installer is per-user, with program files under
+    <code>%LOCALAPPDATA%\Programs\HoshiStream</code> and private state under
+    <code>%LOCALAPPDATA%\HoshiStream</code>. A portable build must be extracted
+    as a complete tree to a stable folder; copying only
+    <code>HoshiStream.exe</code> is insufficient. The desktop payload includes
+    .NET, Node, TorrServer, mpv, ffmpeg, and ffprobe, so recipients do not need
+    those development tools separately.
+  </p>
+  <ul>
+    <li>
+      Launch from the Start Menu or <code>HoshiStream.exe</code>. The
+      notification-area icon may be hidden under the overflow arrow. The browser
+      is the management interface; closing it does not quit the tray.
+    </li>
+    <li>
+      The tray offers library/setup, copied URLs, Restart Server, Check Speed,
+      pointer actions, logs, login/default-handler controls, and Quit. Start at
+      Login is optional and starts the current-user tray after sign-in, not a
+      service before login.
+    </li>
+    <li>
+      Unsigned builds can trigger SmartScreen or unknown-publisher warnings.
+      Verify origin and checksum; do not disable Defender or circumvent an
+      organization policy.
+    </li>
+    <li>
+      Permit LAN traffic only on a trusted <strong>Private</strong> network. The
+      app does not silently create firewall rules. Prompts may name bundled
+      <code>node.exe</code> or <code>TorrServer.exe</code>.
+    </li>
+    <li>
+      Native selection links files in place. The helper and magnet integrations
+      need the desktop build, not just the Node process. Sleep prevention is
+      best effort; deliberate sleep, lid behavior, and power policy take
+      precedence.
+    </li>
+  </ul>
+  <p>
+    Windows startup configuration is edited in the state folder's
+    <code>.env</code>, then applied with Restart Server. For example,
+    <code>MEDIA_DIR=C:\Users\your-name\Videos</code> must name an actual folder.
+    Keep state on private local NTFS, not a network share. Logs live under the
+    state's <code>logs</code> directory.
+  </p>
+  <h3>Run the whole stack from source</h3>
+  <p>
+    Developers need repository access, Git, and Node 22.18 or newer with npm.
+    Node strips TypeScript types directly in source mode. This is distinct from
+    the independently pinned packaged runtime, currently Node v26.3.1. No
+    container or database is required.
+  </p>
+  <p>
+    Quit any installed or terminal HoshiStream first: service ports and the peer
+    port must not conflict. If you do not have a checkout yet, open Terminal or
+    PowerShell in the folder where you keep projects, then run:
+  </p>
+  <pre><code>git clone https://github.com/MajorJohn98/HoshiStream.git
+cd HoshiStream</code></pre>
+  <p>From the repository root, on macOS or Windows x64:</p>
+  <pre><code>cd addon
+npm ci
+cd ..
+node packaging/fetch-torrserver.mjs
+node packaging/fetch-ffmpeg.mjs
+node scripts/native-server.mjs --dev</code></pre>
+  <p>
+    The fetchers obtain the host platform's pinned tools; the FFmpeg fetch
+    includes ffprobe. Current TorrServer packaging is pinned to
+    <code>MatriX.141</code>. The foreground server reads or creates the checkout
+    <code>.env</code>, stores JSON state in <code>native-data/</code>, and
+    stores managed uploads in <code>data/media/</code>. Correct any inherited
+    example paths before use. View credentials only in a private editor and open
+    the local management URL shape shown under
+    <a href="#connect-players">players</a>, using the generated token and
+    configured port.
+  </p>
+  <p>
+    Keep the terminal open and press <strong>Ctrl+C</strong> to stop. For a
+    watch/restart loop, run <code>npm run dev:native</code> from
+    <code>addon/</code>. Server-only mode has no menu bar, native file picker,
+    or automatic companion registration. Management assets are served from disk,
+    so UI asset changes need a browser refresh.
+  </p>
+  <h3>Operate the installed state without the desktop shell</h3>
+  <p>
+    The start scripts are a drop-in for the installed app, not an isolated
+    development library. They use its state folder and identity by default. Quit
+    the desktop app first; do not run both against the same state. From the
+    repository root:
+  </p>
+  <h4>macOS shell</h4>
+  <pre><code>./scripts/start-native.sh --dev
+
+# Later, stop this terminal-launched stack:
+./scripts/stop-native.sh</code></pre>
+  <h4>Windows PowerShell</h4>
+  <pre><code>.\scripts\start-native.ps1 --dev
+
+# Later, stop this terminal-launched stack:
+.\scripts\stop-native.ps1</code></pre>
+  <p>
+    Follow your machine's script policy; use foreground Node mode if scripts are
+    not permitted rather than disabling security policy. Without
+    <code>--dev</code>, checkout start scripts build the add-on first. Their
+    start/stop controls verify the owned runtime and readiness rather than
+    trusting a PID alone. A launched Windows connector or other service does not
+    start this per-user app before sign-in.
+  </p>
+  <details>
+    <summary>
+      Add-on only: supply configuration and run TorrServer separately
+    </summary>
+    <p>
+      This is an advanced split-service mode. It does not generate first-run
+      credentials or supervise TorrServer. Set a strong private
+      <code>ACCESS_TOKEN</code>, all three HTTP(S) URLs, and explicit
+      <code>MEDIA_ROOT</code>/<code>UPLOAD_ROOT</code> values in a new private
+      checkout <code>.env</code>. Inventory the independent state paths. Do not
+      overwrite an existing configuration with the example file.
+    </p>
+    <p>
+      For TypeScript source with automatic restart, run
+      <code>npm run dev</code> from <code>addon/</code>; it loads
+      <code>../.env</code>. For a built add-on with the same explicit file:
+    </p>
+    <pre><code>cd addon
+npm run build
+node --env-file=../.env dist/index.js</code></pre>
+    <p>
+      Bare <code>npm start</code> is just <code>node dist/index.js</code>; its
+      required environment must already be supplied. Ports 7000/7001 and old
+      Compose hostnames in historical examples are not interchangeable. See
+      <a href="#configuration">the configuration tables</a>.
+    </p>
+  </details>
+  <details>
+    <summary>Build a local macOS app candidate</summary>
+    <p>
+      In addition to Git and Node/npm, install Apple's Command Line Tools or
+      Xcode. From the repository root, with no checkout-pinning override:
+    </p>
+    <pre><code>cd addon
+npm ci
+cd ..
+node packaging/fetch-node-runtime.mjs
+node packaging/fetch-torrserver.mjs
+node packaging/fetch-ffmpeg.mjs
+./packaging/build-macos-app.sh</code></pre>
+    <p>
+      The default app output is <code>build/HoshiStream.app</code>. Use an
+      unused <code>HOSHISTREAM_BUILD_DIR</code> for a separate candidate if
+      existing build evidence must be preserved. Missing/stale provenance
+      requires rerunning the named fetcher, not substituting tools from PATH.
+      <code>./packaging/build-macos-dmg.sh --stage-only</code> makes a
+      local-validation image, not a shareable release. Preserve prior app/state
+      before any local replacement.
+    </p>
+  </details>
+  <details>
+    <summary>Build a local Windows desktop staging tree</summary>
+    <p>
+      The desktop build additionally needs the pinned .NET SDK, currently
+      10.0.103; shipped self-contained runtime patch 10.0.11 is a separate pin.
+      Use Windows x64 for installer compilation. After <code>npm ci</code> in
+      <code>addon/</code>, run from the repository root in PowerShell:
+    </p>
+    <pre><code>$env:HOSHISTREAM_TARGET = "win32-x64"
+node packaging/fetch-node-runtime.mjs
+node packaging/fetch-torrserver.mjs
+node packaging/fetch-ffmpeg.mjs
+node packaging/fetch-mpv.mjs
+node packaging/build-windows-app.mjs --stage-only</code></pre>
+    <p>
+      Output is <code>build/windows-stage/HoshiStream/</code>. Keep the complete
+      tree for your own validation. Normal installer/ZIP distribution requires
+      reviewed exact third-party materials and Windows acceptance; do not bypass
+      the gate or share stage-only output.
+    </p>
+  </details>
+  <p>
+    Before submitting source changes, use the existing checks from
+    <code>addon/</code>: <code>npm run typecheck</code>, <code>npm test</code>,
+    <code>npm run lint</code>, and <code>npm run format:check</code>. The
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/development.md"
+      >development guide</a
+    >,
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/setup-native-windows.md"
+      >Windows setup reference</a
+    >, and
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/distributing-windows-app.md"
+      >Windows packaging guide</a
+    >
+    describe the fuller operator workflows.
+  </p>
+</section>
+
+<section
+  id="backups-and-updates"
+  class="guide-section"
+  aria-labelledby="backups-and-updates-title"
+>
+  <h2 id="backups-and-updates-title">
+    Stop first. Back up the complete, resolved state.
+  </h2>
+  <p>
+    There is no automatic updater or universal downgrade guarantee.
+    <code>library.json.bak</code> and a browser JSON export are not full
+    backups. A usable snapshot includes configuration, credentials, managed
+    source files, and the state that describes them. Store it privately on an
+    encrypted, access-controlled destination, separate from your only live copy.
+  </p>
+  <h3>Inventory before copying</h3>
+  <ol>
+    <li>
+      Record <strong>About HoshiStream</strong>'s exact build ID, not just
+      <code>0.14.0</code>. Retain its app/image, checksum, and compatibility
+      notes.
+    </li>
+    <li>
+      Resolve the actual project/configuration, state, and managed-data roots
+      using <a href="#configuration">the launch-mode table</a>. Custom Mac
+      builds, terminal overrides, and add-on-only paths can differ from the
+      installed defaults.
+    </li>
+    <li>
+      Copy the <strong>entire state directory</strong>, including hidden files,
+      library backups/quarantines, all auxiliary JSON stores, TorrServer config
+      and cache, and existing transcode data. For split checkout layouts, also
+      capture the project <code>.env</code> and entire <code>data/</code> tree.
+    </li>
+    <li>
+      Back up linked originals and registered disk-library roots separately.
+      Preserve each drive's marker and media along with volume/cleanup/schedule
+      state. Record original absolute paths. Do not mount two copies of one
+      volume identity together.
+    </li>
+  </ol>
+  <p>
+    Runtime state belongs on a private local filesystem. Do not move the live
+    state directory into a public/shared sync folder. Backups contain the same
+    powerful credentials as the live app; copying files does not encrypt them.
+    Logs can help private incident diagnosis but are not needed to restore.
+    Browser/player history, OS login/default-handler settings, and external
+    Chrome registration are separate.
+  </p>
+  <h3>Stop all writers</h3>
+  <p>
+    Turn off <strong>Start at Login</strong>, close player sessions and the
+    companion, and choose <strong>Quit HoshiStream</strong>, not Restart Server.
+    Stop foreground/watch servers with Ctrl+C or terminal-launched instances
+    with their matching stop script. Wait for the owned Node and TorrServer
+    processes to exit.
+  </p>
+  <p>
+    Check the configured service ports in Activity Monitor/Task Manager or with
+    the read-only commands below on macOS. No output from a port query means no
+    matching listener was found, not proof that every possible writer has
+    stopped. A remaining runtime lock or supervisor socket blocks backup; do not
+    delete a lock or kill an unidentified process to get past it.
+  </p>
+  <pre><code>lsof -nP -iTCP:7001 -sTCP:LISTEN
+lsof -nP -iTCP:8090 -sTCP:LISTEN</code></pre>
+  <details>
+    <summary>Guarded backup for the default installed Mac app</summary>
+    <p>
+      Use this only after verifying the default paths and stopping all writers.
+      Select a new backup name outside the live state. Stop on any failure. This
+      copies the full tree, including hidden files; <code>COMPLETE</code>
+      is created only after the copied tree compares equal.
+    </p>
+    <pre><code>STATE="$HOME/Library/Application Support/HoshiStream"
+BACKUP="$HOME/HoshiStream Backups/2026-09-07-before-update"
+
+umask 077
+test -d "$STATE" &amp;&amp; test -f "$STATE/.env" &amp;&amp;
+test ! -e "$STATE/run/runtime.lock" &amp;&amp;
+test ! -S "$STATE/run/supervisor.sock" &amp;&amp;
+mkdir -p "$HOME/HoshiStream Backups" &amp;&amp;
+mkdir "$BACKUP" &amp;&amp;
+/usr/bin/ditto "$STATE" "$BACKUP/state" &amp;&amp;
+/usr/bin/diff -qr "$STATE" "$BACKUP/state" &amp;&amp;
+touch "$BACKUP/COMPLETE"</code></pre>
+    <p>
+      An incomplete copy without the marker is not a verified snapshot. The
+      block does not include linked originals or external archive roots, and
+      does not cover a split checkout/custom layout by itself.
+    </p>
+  </details>
+  <h3>Update without changing your identity</h3>
+  <ol>
+    <li>
+      Obtain an owner-approved compatible build, verify its origin/checksum, and
+      complete the stopped backup.
+    </li>
+    <li>
+      Preserve the prior app. Replace only the app/program files using the
+      intended install procedure; do not replace state with installer contents.
+    </li>
+    <li>
+      Launch once at the same location and confirm the exact build ID, library,
+      tags, setup progress, linked originals, managed media, and client
+      playback.
+    </li>
+    <li>
+      Verify private client URLs and pointer credentials are unchanged.
+      Restarting or saving setup must not silently register a pointer.
+    </li>
+    <li>
+      If the LAN address changed, recopy the direct URL or manually update a
+      configured pointer. Re-approve trusted firewall access if prompted.
+    </li>
+    <li>
+      Restore Start at Login only after a successful session. If data is
+      unexpectedly missing, stop and preserve both states before adding or
+      changing anything.
+    </li>
+  </ol>
+  <h3>Restore at the same paths</h3>
+  <p>
+    Use the artifact that created the backup or an explicitly accepted forward
+    reader. Stop all writers again. Verify the snapshot is complete. Restore it
+    into a new sibling staging directory and compare it with the snapshot, then
+    preserve the current state under a separate unused name before swapping the
+    restored directory into its original path. Do not merge old/new library
+    trees or overwrite the only current copy.
+  </p>
+  <p>
+    Do not reactivate backed-up runtime locks, sockets, control credentials, or
+    PID files; preserve those records separately while the app recreates live
+    runtime metadata. Keep the backup and held current state after the first
+    successful launch. Do not run a restored clone alongside another
+    installation with the same pointer credentials. Any failed staging/swap step
+    is a reason to stop, not repeatedly launch.
+  </p>
+  <p>
+    Absolute file paths mean that another Mac, user account, mount point, or
+    storage root needs assisted relinking/migration. Rolling back after a new
+    app has written state requires <strong>both</strong> the old artifact and
+    its matching pre-update snapshot. Newer changes do not move backward
+    automatically. Never open current state with 0.8.2 or another unapproved
+    older reader; unknown fields may be lost when it writes.
+  </p>
+  <h3>Uninstall the app without deleting your library</h3>
+  <ol>
+    <li>
+      While the app works, use <strong>Remove remote record</strong> if you want
+      pointer data removed. Confirm success and retain credentials until removal
+      is settled.
+    </li>
+    <li>
+      Turn off Start at Login, choose another magnet handler if desired, remove
+      the extension in Chrome, quit the app, and take a final stopped backup.
+    </li>
+    <li>
+      On macOS, unregister this installation's native helper while its tools are
+      still available, using the
+      <a
+        href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/chrome-companion.md#remove-the-macos-companion-during-uninstall"
+        >ownership-aware companion removal procedure</a
+      >. Reopening the app registers the helper again.
+    </li>
+    <li>
+      Move only <code>HoshiStream.app</code> to Trash on macOS, or use the
+      Windows installer's uninstall entry for an installed Windows build. The
+      Windows implementation preserves state and removes only its owned
+      integrations.
+    </li>
+    <li>
+      Leave state, logs, backups, managed files, linked originals, and volume
+      markers intact. Do not use a cleanup utility that erases Application
+      Support or shared media. Permanent data erasure is a separate explicit
+      decision.
+    </li>
+  </ol>
+  <p>
+    The
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/backup-restore-updates.md"
+      >backup, same-path restore, and rollback runbook</a
+    >
+    contains the guarded Mac restore commands and full inventory. Use assisted
+    recovery rather than adapting those commands blindly to Windows or a custom
+    layout.
+  </p>
+</section>
+
+<section
+  id="troubleshooting"
+  class="guide-section"
+  aria-labelledby="troubleshooting-title"
+>
+  <h2 id="troubleshooting-title">Start with the symptom, not a reset</h2>
+  <p>
+    Use <strong>Status</strong> and the native <strong>Show Logs</strong>
+    action. Keep diagnostics local. The Mac app writes
+    <code>~/Library/Logs/HoshiStream/server.log</code>; terminal launchers and
+    Windows use the resolved state folder's <code>logs</code> directory. Logs
+    can contain media names, paths, and network context even when tokens are
+    intentionally redacted.
+  </p>
+  <div
+    class="table-wrap"
+    tabindex="0"
+    role="region"
+    aria-label="Troubleshooting symptoms and recovery"
+  >
+    <table>
+      <caption>
+        Common symptoms and safe next steps
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Symptom</th>
+          <th scope="col">Likely distinction</th>
+          <th scope="col">What to do</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Mac app blocked or reported damaged</th>
+          <td>
+            Quarantine, signing expectations, or policy may block this ad-hoc
+            candidate.
+          </td>
+          <td>
+            Verify origin/checksum and use the permitted app-specific Open
+            Anyway flow. If unavailable, stop; do not disable Gatekeeper.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Browser closed, but app still running</th>
+          <td>The native menu/tray owns the services.</td>
+          <td>
+            Use Open HoshiStream to return, or Quit HoshiStream to stop both
+            services.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Port 7000 returns AirTunes or HTTP 403</th>
+          <td>
+            macOS AirPlay Receiver may own 7000; it may not be HoshiStream
+            responding.
+          </td>
+          <td>
+            Prefer an unused ADDON_PORT such as native default 7001 and restart.
+            Update direct client URLs. Do not stop an unrelated process blindly.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Configuration change has no effect</th>
+          <td>Wrong .env, no restart, or a launcher-derived setting.</td>
+          <td>
+            Check launch mode and resolved root. Mac installed state differs
+            from checkout state. Public URLs and tool paths are derived in
+            native mode; the bitrate setting is not forwarded from native .env.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Invalid environment / app fails at startup</th>
+          <td>
+            A port, enum, path, URL, or credential may be missing/invalid.
+          </td>
+          <td>
+            Review only the changed lines privately. Use absolute paths and
+            documented values. Restore original pointer credentials rather than
+            generating a new identity.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Works on the host, not on the TV</th>
+          <td>
+            Loopback URL, wrong interface, firewall, or network isolation.
+          </td>
+          <td>
+            Use the copied direct LAN URL, reconnect/restart after network
+            changes, check host firewall, and leave guest Wi-Fi/client
+            isolation. Never forward management ports.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">
+            Loopback health works; LAN address gives an empty reply
+          </th>
+          <td>
+            The application firewall may block bundled Node after an app
+            replacement.
+          </td>
+          <td>
+            Re-approve the current bundled executable for the trusted LAN in
+            firewall settings. Keep the firewall enabled.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Catalog works, torrent playback fails</th>
+          <td>
+            Direct TorrServer media can use port 8090 independently of the
+            add-on port.
+          </td>
+          <td>
+            Check trusted-LAN reachability of the engine, source availability,
+            and the selected file. A working manifest or tunnel hostname is
+            insufficient.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">TorrServer unavailable / not ready</th>
+          <td>The engine did not start or respond.</td>
+          <td>
+            Check /ready and local logs. Confirm the pinned binary exists and
+            service ports are free. Do not expose the engine's web
+            administration to troubleshoot remotely.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">
+            Recovering repeatedly / database lock / state already owned
+          </th>
+          <td>
+            Another app/runtime may still own the state or TorrServer database.
+          </td>
+          <td>
+            Stop known desktop/terminal instances using their normal controls.
+            Preserve logs and request assistance if ownership remains unclear.
+            Do not delete locks or kill a guessed PID.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Saved title says check failed or inconclusive</th>
+          <td>
+            Saving succeeded; the bounded check did not establish availability.
+          </td>
+          <td>
+            Open the existing entry, review file/source, and retry or explicitly
+            allow a longer check. Do not create a duplicate.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">No playable files / wrong episode</th>
+          <td>
+            Metadata is missing, extensions are unsupported, or
+            selection/numbering is wrong.
+          </td>
+          <td>
+            Inspect and review Files. Choose the intended video or correct
+            overrides; re-inspect after source changes. One successful episode
+            check does not cover the series.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Sample read, but browser cannot play</th>
+          <td>Host sample decoding and browser support are different.</td>
+          <td>
+            Try the H.264/AAC MP4 baseline, handle autoplay prompts, and check
+            the actual file. The browser Play button does not launch mpv;
+            optional external playback is separate.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Playback stalls or stops after sleep</th>
+          <td>
+            Swarm speed, client Wi-Fi, host sleep, or codec issues can interrupt
+            playback.
+          </td>
+          <td>
+            Wake the host, reconnect, compare the selected media with
+            source/network conditions, and retry. Startup Internet-download
+            speed is not remote upload or TV Wi-Fi capacity.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Speed check fails</th>
+          <td>
+            Cloudflare measurement was unavailable; this is not a media-source
+            verdict.
+          </td>
+          <td>
+            Use the configured fallback and retry Check Speed later if desired.
+            Do not assume another setting disabled network contacts.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Local path rejected / linked file moved</th>
+          <td>
+            Typed paths are restricted; links retain their original locations.
+          </td>
+          <td>
+            Use the native picker or Relink in Finder. Add-on-only operators
+            must explicitly set MEDIA_ROOT; MEDIA_DIR alone is insufficient.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Drive offline / duplicate marker / invalid copy</th>
+          <td>Storage identity or file validation needs attention.</td>
+          <td>
+            Reconnect the original, disconnect duplicate clones, and review
+            permissions/space. Use Retry missing files only after reviewing what
+            may be replaced.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">
+            Pointer manifest loads; catalog says Failed to fetch
+          </th>
+          <td>
+            Stale LAN address, firewall, or HTTPS-to-HTTP/private-network
+            redirect restrictions.
+          </td>
+          <td>
+            Try the direct LAN URL. Manually update a configured pointer after
+            address changes; do not assume its manifest proves remote media
+            access.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">
+            Pointer authentication failed / configuration lost
+          </th>
+          <td>
+            The original claim secret is needed; status may not distinguish
+            missing records from wrong credentials.
+          </td>
+          <td>
+            Stop and restore the private configuration backup, or arrange
+            deliberate operator recovery. Do not use a shared deployment secret
+            or infer deletion from a 404.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Chrome helper missing or disconnects</th>
+          <td>
+            App registration, matching extension identity, source-server
+            startup, or OS folder permissions.
+          </td>
+          <td>
+            Open the matching installed app and retry. Prefer installed-app
+            operation over broad permissions for a Documents checkout. A Windows
+            Node-only run is not a native helper.
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">
+            Library corrupt or unexpectedly empty after an update
+          </th>
+          <td>
+            The store may recover from .bak; wrong paths or missing
+            primary/backup files can look like a new library.
+          </td>
+          <td>
+            Stop, preserve primary/.bak/quarantines, and resolve the actual
+            paths. Do not create an empty replacement, reimport everything, or
+            launch an older reader on current state.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Read-only checks without putting a token in a command</h3>
+  <p>
+    Use your configured port. <code>/health</code> checks the add-on process;
+    <code>/ready</code> also checks TorrServer. Run the LAN check from a
+    separate trusted-LAN device when possible, replacing the example address.
+    These checks do not validate a private catalog, codec, or sustained stream.
+  </p>
+  <h4>macOS shell</h4>
+  <pre><code>curl --fail --show-error http://127.0.0.1:7001/health
+curl --fail --show-error http://127.0.0.1:7001/ready
+curl --fail --show-error http://192.168.1.50:7001/health</code></pre>
+  <h4>Windows PowerShell</h4>
+  <pre><code>Invoke-RestMethod http://127.0.0.1:7001/health
+Invoke-RestMethod http://127.0.0.1:7001/ready
+Invoke-RestMethod http://192.168.1.50:7001/health</code></pre>
+  <h3>Report only the minimum, privately</h3>
+  <p>
+    The release/support owner is <strong>MajorJohn98</strong>. The designated
+    private feedback channel is not yet operational; do not substitute public
+    issues or unsolicited email for a private report. Once an approved channel
+    is provided, report the build ID, OS and exact player/browser versions,
+    source type, steps, expected/actual behavior, approximate time, and a
+    minimal sanitized error excerpt.
+  </p>
+  <p>
+    Do not attach .env, raw logs, authorization headers, private URLs, magnets,
+    .torrent files, library exports, backups, network captures, or screenshots
+    with address bars/media paths. Replace sensitive context locally with
+    <code>[redacted]</code> and inspect the whole report before sending. For
+    suspected data loss or credential exposure, stop the affected service and
+    preserve state privately. Removing a leaked message does not revoke
+    credentials; coordinate deliberate recovery and client-URL replacement.
+  </p>
+  <p>
+    Detailed references:
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/troubleshooting.md"
+      >troubleshooting</a
+    >,
+    <a
+      href="https://github.com/MajorJohn98/HoshiStream/blob/main/hoshistream_docs/guides/closed-beta-support.md"
+      >private support and incident handling</a
+    >, and <a href="#backups-and-updates">backup and recovery</a>.
+  </p>
+</section>

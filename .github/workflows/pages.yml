@@ -1,0 +1,60 @@
+name: Publish setup guide
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hoshistream_docs/site/**"
+      - "scripts/build-docs-site.mjs"
+      - "addon/package.json"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "hoshistream_docs/site/**"
+      - "scripts/build-docs-site.mjs"
+      - "addon/package.json"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.3.1"
+      - name: Build only public documentation assets
+        run: node scripts/build-docs-site.mjs
+      - uses: actions/upload-pages-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          path: build/docs-site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Publish guide
+        id: deployment
+        uses: actions/deploy-pages@v4

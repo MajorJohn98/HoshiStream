@@ -38,6 +38,8 @@
 
 ## Guides
 
+- [Public setup and configuration guide](https://majorjohn98.github.io/HoshiStream/) — Complete macOS-first installation, settings, players, storage, remote access, Windows, recovery and troubleshooting guide.
+- [guides/publishing-documentation.md](guides/publishing-documentation.md) — Public guide sources, dependency-free local build and documentation-only GitHub Pages deployment.
 - [guides/backup-restore-updates.md](guides/backup-restore-updates.md) — Resolved-path stopped backups, same-path restore, manual upgrades, rollback limits and non-destructive uninstall.
 - [guides/privacy-and-network.md](guides/privacy-and-network.md) — Credentials, trusted-LAN administration, automatic Cloudflare measurement, torrent traffic and explicit pointer/network contacts.
 - [guides/closed-beta-acceptance.md](guides/closed-beta-acceptance.md) — Candidate-bound acceptance runbook, local evidence and outstanding recipient/player/service gates.
@@ -64,6 +66,7 @@
 
 ## Plans
 
+- [plans/2026-09-07-public-setup-guide.md](plans/2026-09-07-public-setup-guide.md) — Approved static setup guide and documentation-only GitHub Pages publication plan.
 - [plans/2026-09-07-closed-beta-readiness-plan.md](plans/2026-09-07-closed-beta-readiness-plan.md) — macOS-first closed beta phases, deferred blocker register, installed pointer provisioning, quick starts, release acceptance, recovery and support.
 - [plans/2026-08-10-project-assessment.md](plans/2026-08-10-project-assessment.md) — Project health assessment: verified checks, risks, next steps.
 - [plans/2026-08-12-reliability-plan.md](plans/2026-08-12-reliability-plan.md) — Reliability findings and the seven fixes shipped in 0.3.0.

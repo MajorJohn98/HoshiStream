@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="The complete HoshiStream setup guide: install on macOS, add your media, connect Nuvio or Stremio, configure your library, and keep it private."
+    />
+    <meta name="referrer" content="no-referrer" />
+    <title>Setup &amp; configuration | HoshiStream</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./site.js" defer></script>
+  </head>
+  <body>
+    <!--
+    THESIS: A practical owner manual, not a product landing page.
+    OWN-WORLD: Existing HoshiStream dark surfaces, ember links, system type,
+    restrained rules, native disclosures and readable reference tables.
+    STORY: Install, add authorized media, connect a player, then configure.
+    FIRST VIEWPORT: Slim masthead, desktop contents rail, reading-column title,
+    version context, two task links and honest prerequisites.
+    FORM: User-approved static guide extending the established app identity.
+    -->
+    <a class="skip-link" href="#main">Skip to guide</a>
+    <header class="masthead">
+      <a class="brand" href="./" aria-label="HoshiStream guide home">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+          <path d="M12 2v20M2 12h20M5 5l14 14M5 19 19 5" />
+        </svg>
+        HoshiStream <span>Guide</span>
+      </a>
+      <div class="masthead-actions">
+        <button id="print-guide" type="button" hidden>Print guide</button>
+        <a href="https://github.com/MajorJohn98/HoshiStream">Repository</a>
+      </div>
+    </header>
+    <div class="page-layout">
+      <aside class="sidebar" aria-label="Guide navigation">
+        <details class="contents" open>
+          <summary>On this page</summary>
+          <nav aria-label="Table of contents">{{navigation}}</nav>
+        </details>
+        <p class="sidebar-note">
+          Your library stays on your computer.<br />
+          This website is documentation only.
+        </p>
+      </aside>
+      <main id="main" tabindex="-1">
+        <header class="page-intro">
+          <h1>Setup &amp;<br />configuration.</h1>
+          <p class="intro">
+            From a fresh install to your first stream. Set up your private
+            library, connect a player, and know which settings to leave alone.
+          </p>
+          <p class="edition">Version {{version}} · Updated September 7, 2026</p>
+          <div class="start-links">
+            <a class="primary-link" href="#install-macos">Start with macOS</a>
+            <a href="#configuration">Go to configuration</a>
+          </div>
+        </header>
+        {{guide}}
+        <footer class="guide-footer">
+          <p>
+            <strong>Your computer. Your library. Your private URL.</strong>
+            Keep the host running while you watch, and keep credentials out of
+            screenshots and support reports.
+          </p>
+          <div>
+            <a href="#main">Back to top</a>
+            <a
+              href="https://github.com/MajorJohn98/HoshiStream/tree/main/hoshistream_docs"
+              >Documentation source</a
+            >
+          </div>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
