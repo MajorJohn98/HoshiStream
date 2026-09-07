@@ -6,6 +6,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { writeAssetReceipt } from "./asset-receipt.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -43,6 +44,11 @@ if (targetPlatform === "darwin") {
     await chmod(join(outputDir, tool), 0o755);
     await rm(archive);
   }
+  await writeAssetReceipt(
+    outputDir,
+    { ffmpeg: pin.ffmpeg.sha256, ffprobe: pin.ffprobe.sha256 },
+    ["ffmpeg", "ffprobe"],
+  );
 } else {
   // BtbN bundles ffmpeg.exe and ffprobe.exe under <name>/bin/ in one zip.
   const archive = join(outputDir, pin.bundle.name);

@@ -1,118 +1,208 @@
-# Distributing the macOS App
+# Distributing the macOS app
 
-How to hand HoshiStream to someone else's Mac. For building on your own machine see
-[setup-native-macos.md](setup-native-macos.md).
+The browser-first candidate targets **Apple Silicon, macOS 13.5+, a trusted
+home LAN and one direct-play stream**. Browser baseline media is H.264/AAC MP4.
+It bundles Node, TorrServer, FFmpeg and ffprobe, **not mpv**. Installed users
+need a browser but no developer tools. The current release download remains
+the older 0.8.2 artifact; no 0.14.0 release is approved by this guide.
 
-## Build the disk image
+## Build for local validation
+
+Install Git, Node 22.18+ with npm, and Apple's Command Line Tools (or Xcode).
+From the repository root, with `HOSHISTREAM_PROJECT_ROOT` unset:
 
 ```bash
+cd addon
+npm ci
+cd ..
 node packaging/fetch-node-runtime.mjs
 node packaging/fetch-torrserver.mjs
 node packaging/fetch-ffmpeg.mjs
+export HOSHISTREAM_BUILD_DIR="$PWD/build/macos-candidate"
 ./packaging/build-macos-app.sh
+./packaging/build-macos-dmg.sh --stage-only
+```
+
+The app build fails before replacing an existing build if downloaded runtime
+provenance is missing or stale. Re-run the fetcher named in the error, not a
+PATH-installed substitute. It preserves Node's upstream notices, installs only
+production npm dependencies, and requires both media-analysis tools even when
+stream repair is disabled. It checks executable permissions, arm64 architecture,
+system-only dynamic libraries, deployment targets and tool startup under an
+OS-only PATH. These checks do not establish real-recipient playback acceptance.
+
+Build identity comes from `addon/package.json`, the actual Git revision, dirty
+state and a unique stamp. The runtime, plist, **About HoshiStream**, **Status**
+and artifact names share it. A post-signing `HoshiStream.app.payload.json`
+inventory sits beside the app and binds the final payload bytes;
+packaging rejects changed payloads, missing files, developer/private state and
+checkout-pinned apps. A local app may use `HOSHISTREAM_PROJECT_ROOT` for personal
+development, but it cannot be made into a portable DMG without rebuilding.
+
+The stage-only image is named
+`HoshiStream-<buildId>-darwin-arm64-LOCAL-ONLY.dmg`, with `.dmg.sha256`,
+`.release.json`, `.payload.json` and `.notes.txt` sidecars. It is **local validation only, not
+for sharing**. A DMG preserves app resources, executable permissions and the
+Applications link. Existing images are never overwritten; rebuild for a new ID.
+
+## Redistribution gate
+
+**Private sharing is redistribution too.** macOS now follows the same reviewed
+materials principle as [Windows](distributing-windows-app.md), without relaxing
+Windows' separate .NET/mpv requirements.
+
+Assemble exact notices, licenses, corresponding sources, dependency versions,
+patches and build instructions under `vendor/macos-redistribution/`. The
+`manifest.json` schema is in `packaging/macos-third-party.txt`. It binds each
+reviewed file's SHA-256 to the Node, TorrServer, FFmpeg and npm lockfiles included
+in the actual app, not whichever locks happen to be in a later checkout.
+Any pin change requires a new review. Reviewed browser-asset attribution/source
+inventory also belongs in those materials.
+
+No attestation is checked in. A few license texts, upstream links or a filled-in
+manifest are not evidence that all corresponding-source obligations are met.
+The technical gate catches stale/missing materials, not legal completeness.
+Do not mark `completeCorrespondingSource` true until the exact materials have
+actually been assembled and reviewed.
+
+Once the materials are complete, the normal command includes them beside the
+app in the disk image:
+
+```bash
 ./packaging/build-macos-dmg.sh
 ```
 
-The second script prints the path to `build/HoshiStream-<buildId>-darwin-arm64.dmg`, containing the app,
-a symlink to `/Applications`, and `READ ME FIRST.txt` with the install steps below.
-The package version comes from `addon/package.json`. A single stamp records the
-actual source revision, dirty flag, timestamp, and unique build ID in the app's
-`Contents/Resources/runtime/addon/release.json`. The native plist and DMG use the
-same identity; a matching `.release.json` support sidecar is also written.
-**About HoshiStream**, **Status**, and authenticated `GET /api/status` show build
-information. Substitute the full candidate filename in the examples below.
-Unstamped source builds explicitly report `source`, not an accepted candidate.
+It emits `HoshiStream-<buildId>-darwin-arm64.dmg` with matching checksum, identity
+and notes. **Do not publish it yet:** recipient/client acceptance, deployed
+pointer behavior, updates/recovery and support readiness in the
+[beta plan](../plans/2026-09-07-closed-beta-readiness-plan.md) remain separate
+gates. Neither packaging command deploys, publishes or invites testers.
 
-Set `HOSHISTREAM_BUILD_DIR` to a separate directory for both scripts when
-checking a candidate without replacing an existing local app or DMG.
-For a build intended for another Mac,
-leave `HOSHISTREAM_PROJECT_ROOT` unset so it creates that Mac's own private state.
+Retain the previous approved DMG, checksum, notes and its compatible stopped-state
+backup. The existing 0.8.2 download is not a proven downgrade target for 0.14.0
+state. Do not replace the only approved artifact or claim data compatibility
+without the phase 5 decision and recovery exercise.
 
-## Why a `.dmg` and not a `.zip`
+### Exact-component review findings (2026-09-07)
 
-A disk image preserves symlinks, permissions, and the executable bit on the vendored
-`node`, `TorrServer`, `ffmpeg`, and `ffprobe` binaries. Zip archives round-tripped through
-Finder, email, or chat apps routinely lose them, which surfaces as a "damaged" app. The DMG
-is also the artifact a notarization ticket is stapled to once a Developer ID exists.
+**Deferred for later follow-up at the user's request (2026-09-07).** The
+[beta plan's blocker register](../plans/2026-09-07-closed-beta-readiness-plan.md#deferred-blocker-register-2026-09-07)
+tracks these source/notice gaps together with recipient acceptance, recovery,
+support and conditional signing work. Deferral does not waive the distribution
+gate or authorize sharing local-only artifacts.
 
-## What the recipient does
+**Review is incomplete, not an assertion that redistribution is prohibited.**
+Published upstream digests match the locked macOS artifacts. Their identity and
+system-only dynamic dependencies do not establish corresponding-source
+completeness for statically incorporated code.
 
-Because this build carries an ad-hoc signature rather than an Apple Developer ID, macOS
-quarantines it. Dragging it into Applications and double-clicking is blocked: macOS 15 and
-later report "Apple could not verify HoshiStream is free of malware", earlier versions
-report that the app is damaged.
+| Component | Established evidence | Outstanding release material |
+|---|---|---|
+| Node v26.3.1 | Official archive digest matches; the complete upstream `LICENSE`, including third-party notices, is now retained from that archive. | Include and review those notices in the release materials; no GPL-style Node source-distribution obligation was identified. |
+| TorrServer MatriX.141 | GPLv3; source revision `d266990face0a530880a19a3e39666d21931aed9` matches the binary's Go metadata. | Complete Go dependency and embedded-web source/license coverage, generated files and build instructions. The binary reports Go 1.26.0 and `vcs.modified=true`; generated web/docs may explain the flag, but a pristine tag alone is not proven complete. |
+| FFmpeg/ffprobe 9.0.1, Riedl build `1787073674_9.0.1` | Build-specific configuration enables GPL/version3 and static external libraries, selecting GPLv3-or-later. Core source and a matching candidate build recipe were located. | Exact x264 snapshot, all incorporated dependency sources/notices, build adjustments and a demonstrated mapping from the recipe/inputs to the locked ZIPs. The report says only x264 `0.165.x`; the recipe downloads mutable `master`. Today's master is not a valid substitute. |
+| Production npm packages | Existing package notices are preserved, including licenses embedded in README files. | `tr46 0.0.3` and `uint8-util 2.3.2` have MIT metadata but their exact integrity-matched registry archives lack license/notice documents. Resolve historical notice provenance; do not invent copyright text or assume today's upstream license applies. Review browser-asset notices too. |
 
-Clear the quarantine flag **before** the app reaches `/Applications`:
+Primary evidence and located materials:
+
+- Node: [official checksums](https://nodejs.org/dist/v26.3.1/SHASUMS256.txt),
+  [versioned license](https://github.com/nodejs/node/blob/v26.3.1/LICENSE) and
+  [build documentation](https://github.com/nodejs/node/blob/v26.3.1/BUILDING.md).
+- TorrServer: [exact source archive](https://github.com/YouROK/TorrServer/archive/d266990face0a530880a19a3e39666d21931aed9.tar.gz),
+  [release recipe](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/.github/workflows/ts_release.yml),
+  [Go dependencies](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/server/go.mod)
+  and [web dependency lock](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/web/yarn.lock).
+  The release recipe uses Go `stable` and `swag@latest`; account for the actual
+  generator/toolchain versions, not just these moving selectors.
+- FFmpeg: [exact build report](https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1/versions.txt),
+  [core source](https://ffmpeg.org/releases/ffmpeg-9.0.1.tar.bz2),
+  [license details](https://github.com/FFmpeg/FFmpeg/blob/n9.0.1/LICENSE.md)
+  and [candidate Riedl recipe archive](https://git.martin-riedl.de/ffmpeg/build-script/archive/f63b8aab8f5ce1a067da86ba69e34a36a7e217e5.tar.gz).
+  That recipe is not an upstream binary-to-source attestation. Include its
+  dependency adjustments and rav1e's Rust source closure as applicable.
+- Missing npm notices: [tr46 source revision](https://github.com/Sebmaster/tr46.js/tree/a8009f9ce80ff5dbe71dd71e203afe4e4c878d28)
+  also lacks a license document; [uint8-util upstream](https://github.com/ThaUnknown/uint8-util)
+  has no established matching tag or registry `gitHead` for the locked version.
+  These are unresolved provenance gaps, not automatic findings of infringement.
+
+FFmpeg also calls for an Independent JPEG Group acknowledgement, now included
+in the packaged notice. OpenSSL 3.x is compatible with FFmpeg's recorded GPLv3
+configuration; its presence does not by itself make this build nonfree. Patent
+clearance, including any assumptions about independently built OpenH264, has
+not been established by this review.
+
+The selected GPL source-access arrangement must keep complete corresponding
+source and controlling build scripts available alongside the binary, with clear
+directions and continuing availability. Upstream homepage links alone do not
+satisfy this release's reviewed-materials gate. No source-completeness
+attestation has been generated, and no binary has been published.
+
+## Install an approved image
+
+Use only a trusted, approved image and independently obtained release checksum.
+In Downloads, replace the example filename with the actual approved filename:
 
 ```bash
-hdiutil attach ~/Downloads/HoshiStream-<buildId>-darwin-arm64.dmg
-ditto /Volumes/HoshiStream/HoshiStream.app ~/Downloads/HoshiStream.app
-xattr -dr com.apple.quarantine ~/Downloads/HoshiStream.app
-mv ~/Downloads/HoshiStream.app /Applications/
-hdiutil detach /Volumes/HoshiStream
+cd ~/Downloads
+shasum -a 256 -c 'HoshiStream-<buildId>-darwin-arm64.dmg.sha256'
+```
+
+An `OK` result identifies matching bytes; it is not proof of publisher trust.
+Open the DMG, copy the app to Applications and open that copy. Quit an existing
+HoshiStream instance before any replacement; do not delete its state.
+
+### Ad-hoc signing and assisted installation
+
+This candidate has an **ad-hoc signature, not a Developer ID signature or
+notarization ticket**. Download quarantine may block launch; wording and
+available override controls vary by macOS version and device policy. It may
+report an unverified developer or a damaged app. A valid ad-hoc signature does
+not imply Gatekeeper acceptance.
+
+After trying to open a trusted copy, use **System Settings > Privacy & Security >
+Open Anyway** if offered. Never turn off Gatekeeper, Defender or organization
+policy. If no override is available, stop and request assistance.
+
+For an explicitly assisted technical tester who has verified the origin and
+checksum, an app-scoped quarantine removal is an alternative. Mount the image,
+ensure there is no existing Downloads or Applications copy, then:
+
+```bash
+test ! -e "$HOME/Downloads/HoshiStream.app" &&
+test ! -e "/Applications/HoshiStream.app" &&
+ditto /Volumes/HoshiStream/HoshiStream.app "$HOME/Downloads/HoshiStream.app" &&
+xattr -dr com.apple.quarantine "$HOME/Downloads/HoshiStream.app" &&
+mv "$HOME/Downloads/HoshiStream.app" /Applications/ &&
 open /Applications/HoshiStream.app
 ```
 
-The order is not incidental. Running `xattr` against an app already inside `/Applications`
-fails with "Operation not permitted" on every file it touches, because macOS Sonoma and
-later require the App Management permission to modify an installed bundle. The command
-appears to run, changes nothing, and the app still refuses to launch. Granting Terminal
-App Management under **System Settings → Privacy & Security** also works, but asking a
-tester to hand a terminal that privilege is a worse trade than staging the copy.
+This intentionally removes quarantine only from that trusted app, not from the
+whole disk or system. Staging in Downloads avoids permissions/App Management
+restrictions that can affect an already installed bundle. Failure stops the
+sequence; do not bypass a managed policy. For upgrades, retain the existing app
+and follow an approved update procedure rather than deleting it to satisfy
+these fresh-install guards.
 
-The `-r` flag matters as well: it clears the flag from the bundled `node`, `TorrServer`,
-and `ffmpeg` binaries rather than only the outer bundle. On a fresh copy this clears
-around ten thousand files.
+Developer ID signing, hardened-runtime compatibility, notarization and ticket
+stapling are required before claiming frictionless nontechnical installation.
+They are not implemented by the ad-hoc build.
 
-Without a Terminal, drag the app to Applications, double-click it, dismiss the warning,
-then approve it under **System Settings → Privacy & Security → Open Anyway**.
+## First run and player prerequisites
 
-Installing to `/Applications` also avoids Gatekeeper path randomization, which runs a
-quarantined app from a read-only temporary location where it cannot see its own resources.
+HoshiStream appears in the menu bar, not the Dock. Allow incoming connections
+on the trusted LAN when prompted. First launch creates recipient-owned
+`~/Library/Application Support/HoshiStream` with private `.env`, unique access
+and pointer credentials, library and managed runtime state. It does not ship
+a developer `.env` or require editing configuration before launch.
 
-Note that `spctl --assess` continues to report `rejected` after the flag is cleared. That
-is expected: the assessment reflects the missing Developer ID signature, not a launch
-block. Without the quarantine flag, Gatekeeper does not consult it.
+Follow [Get started](getting-started.md): manually add a title, then choose
+**Play** to watch in the browser or install the private add-on URL in Nuvio or
+Stremio. Exact browser/client versions and sustained playback still need
+acceptance; source checks do not guarantee successful playback.
 
-## First run
-
-The app is portable across Macs: it resolves its state directory at runtime rather than at
-build time. On first launch it creates
-
-```
-~/Library/Application Support/HoshiStream
-```
-
-with a `.env` (mode `0600`) holding a freshly generated `ACCESS_TOKEN`, a `MEDIA_DIR`
-defaulting to `~/Movies`, an empty `library.json`, and TorrServer's data directories. No
-manual configuration is needed before the first launch.
-
-It also generates a distinct private pointer push secret. Pointer participation
-is off until explicitly configured in **Remote Pointer Settings...** or
-**Activity > Remote pointer**. Review the suggested service, save locally, then
-register manually; no Vercel deployment credentials belong in a recipient app.
-See [pointer setup and recovery](pointer-server-vercel.md).
-
-To use a different media folder, edit `MEDIA_DIR` in that `.env` and choose **Restart
-Server** from the menu bar.
-
-A development build can point at a checkout instead:
-
-```bash
-HOSHISTREAM_PROJECT_ROOT=/path/to/checkout ./packaging/build-macos-app.sh
-```
-
-## Known limitations
-
-- **Apple Silicon, macOS 13.5 or later.** The vendored `node`, `TorrServer`, and
-  `ffmpeg` binaries are `darwin-arm64`. The supervisor explicitly targets the
-  plist's minimum OS version instead of inheriting the build machine's newer
-  deployment target. The bundled Node runtime requires macOS 13.5. Intel Macs
-  are not supported by this artifact.
-- **No Developer ID signing or notarization.** The `xattr` step above is the workaround.
-  Removing it requires an Apple Developer Program membership, a hardened-runtime build, and
-  `notarytool` submission — after which the DMG opens with no terminal commands.
-- **Firewall prompt.** macOS asks to allow incoming connections on first launch. Accept it,
-  or other devices on the LAN cannot reach the add-on.
-- **Each install generates its own access token,** so tokenized add-on URLs are per-machine
-  and are not portable between installs.
+mpv is optional, external and not part of the macOS image. The management
+page's Play action does not invoke it. See the
+[advanced playback notes](setup-native-macos.md#playback-notes).
+Pointer participation remains explicit and updates manual; use
+[pointer setup](pointer-server-vercel.md). A pointer does not expose LAN media
+remotely. See [troubleshooting](troubleshooting.md) for firewall and LAN issues.

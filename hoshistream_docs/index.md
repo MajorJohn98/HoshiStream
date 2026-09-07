@@ -44,7 +44,7 @@
 - [guides/setup-native-macos.md](guides/setup-native-macos.md) — Build and install the native app, configure `.env`, tune TorrServer, and forward the peer port.
 - [guides/setup-native-windows.md](guides/setup-native-windows.md) — Windows 11 desktop installation, tray behavior, native media/Chrome integration and terminal operation.
 - [guides/distributing-windows-app.md](guides/distributing-windows-app.md) — Self-contained Windows staging, installer/ZIP commands, acceptance and redistribution gates.
-- [guides/distributing-macos-app.md](guides/distributing-macos-app.md) — Build a `.dmg`, the Gatekeeper quarantine workaround, first-run behavior, and signing limitations.
+- [guides/distributing-macos-app.md](guides/distributing-macos-app.md) — Browser-first macOS payload, pinned tools, reviewed redistribution gate, local-only DMGs, checksums and assisted Gatekeeper installation.
 - [guides/adding-media.md](guides/adding-media.md) — Add magnets, `.torrent` files, and local media; inspection and viability.
 - [guides/development.md](guides/development.md) — Dev commands, the no-build source-run loop (`npm run dev`, `start-native.sh --dev`), working agreement, and code conventions.
 - [guides/troubleshooting.md](guides/troubleshooting.md) — AirPlay port conflict, LAN reachability, stalls, corrupt library.
@@ -60,7 +60,7 @@
 
 ## Plans
 
-- [plans/2026-09-07-closed-beta-readiness-plan.md](plans/2026-09-07-closed-beta-readiness-plan.md) — macOS-first closed beta gates, installed pointer provisioning, simpler README workflows, release acceptance, recovery, and support.
+- [plans/2026-09-07-closed-beta-readiness-plan.md](plans/2026-09-07-closed-beta-readiness-plan.md) — macOS-first closed beta phases, deferred blocker register, installed pointer provisioning, quick starts, release acceptance, recovery and support.
 - [plans/2026-08-10-project-assessment.md](plans/2026-08-10-project-assessment.md) — Project health assessment: verified checks, risks, next steps.
 - [plans/2026-08-12-reliability-plan.md](plans/2026-08-12-reliability-plan.md) — Reliability findings and the seven fixes shipped in 0.3.0.
 - [plans/2026-08-12-management-ui-plan.md](plans/2026-08-12-management-ui-plan.md) — Library management & UI improvement plan shipped in 0.4.0.
@@ -87,7 +87,7 @@
 
 ## Changelog
 
-- [changelog/closed-beta-identity-and-pointer.md](changelog/closed-beta-identity-and-pointer.md) — Phase 1-2 candidate identity, explicit installed pointer setup, credential recovery, and remaining recipient acceptance gates.
+- [changelog/closed-beta-identity-and-pointer.md](changelog/closed-beta-identity-and-pointer.md) — Phase 1-4 candidate identity, pointer setup, gated macOS distribution, rewritten quick starts and remaining release blockers.
 
 - [changelog/windows-desktop.md](changelog/windows-desktop.md) — Windows tray, native integrations, playback, storage, lifecycle and packaging implementation.
 

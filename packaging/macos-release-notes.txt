@@ -1,0 +1,25 @@
+HoshiStream closed-beta candidate
+===============================
+
+Exact package version, revision and build ID: release-info.json in this image,
+the matching .release.json sidecar, and About HoshiStream in the app.
+
+Scope: Apple Silicon, macOS 13.5+, trusted home LAN, one direct-play stream.
+Use only media you own or are authorized to access. Host playback is browser
+first, with H.264 video and AAC audio in MP4 as the baseline. mpv is not bundled;
+an external player is optional. Node, TorrServer, FFmpeg and ffprobe are bundled.
+
+First launch creates private recipient-owned state. Pointer setup is optional
+and explicit, with manual updates; it does not enable remote media access.
+This app is ad-hoc signed, not Developer ID signed or notarized. See READ ME FIRST.
+
+HOLD: this is not a release approval. Exact browser/Nuvio/Stremio versions,
+recipient installation and sustained playback, update/restore compatibility,
+deployed pointer acceptance and support readiness remain separate gates.
+Redistribution requires reviewed exact third-party source and build materials.
+LOCAL-ONLY images have not passed that gate and must not be shared.
+
+No automatic update or data migration/downgrade compatibility is promised.
+Retain the previous approved image and its matching stopped-state backup.
+Do not run an older artifact on newer state without a compatibility decision.
+No publication or invitation is authorized by generating this image.

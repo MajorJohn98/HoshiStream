@@ -18,7 +18,9 @@ npm run build          # tsc → dist/
 
 The add-on runs straight from `src/` — Node strips the types at load time, so
 there is no build step in the loop ([ADR 0014](../decisions/0014-run-typescript-source-directly.md)).
-Node 22.18 or newer is required; the vendored runtime is far past that.
+Node 22.18 or newer is required for source mode. The independently pinned app
+runtime is currently Node v26.3.1 (`packaging/node-lock.json`); do not describe
+the shipped runtime as Node 22.
 
 Add-on only (TorrServer must already be running; uses the repo `.env`):
 
@@ -48,7 +50,8 @@ fetch also supplies ffprobe. Keep the terminal open and use Ctrl+C to request
 shutdown. A fresh checkout gets a generated root `.env`; existing values are
 preserved, so correct any media paths copied from another computer.
 Open `http://127.0.0.1:7001/manage/<ACCESS_TOKEN>` with its generated token and
-configured port. Do not share the tokenized management URL.
+configured port. Read `.env` privately in a local editor; do not print it into
+shared logs or publish the tokenized management URL.
 
 or, detached to the state directory like the packaged app does:
 
@@ -73,10 +76,21 @@ The two whole-stack commands differ in whose data they use:
   state in the gitignored `native-data/`, so experiments never touch the
   installed app's library.
 
-The same sandbox state applies to `node scripts/native-server.mjs --dev`.
+The same checkout state applies to `node scripts/native-server.mjs --dev`.
 The launcher now pins all JSON store paths there, including tags, devices,
-storage volumes and scheduling. Terminal mode does not create a native tray or
-file-picker bridge. The Windows desktop shell is a separate .NET project;
+storage volumes and scheduling. Browser-uploaded media is in the checkout's
+`data/media/`; it is not in `native-data/`. The checkout `.env` contains private
+configuration/credentials and uses `MEDIA_DIR` for linked local media.
+
+| Mode | Configuration | Library / JSON state | Managed uploads |
+|---|---|---|---|
+| Foreground / watch checkout | `<checkout>/.env` | `<checkout>/native-data/` | `<checkout>/data/media/` |
+| Installed macOS / `start-native.sh` | `~/Library/Application Support/HoshiStream/.env` | `~/Library/Application Support/HoshiStream/` | `~/Library/Application Support/HoshiStream/data/media/` |
+
+Linked originals stay in their selected folders. Custom roots can change these
+paths; this table describes the defaults, not a full backup inventory.
+Terminal mode does not create a native tray, Finder file-picker bridge or Chrome
+companion registration. The Windows desktop shell is a separate .NET project;
 see [setup-native-windows.md](setup-native-windows.md).
 
 Start scripts confirm the launched runtime's identity and actual readiness,
@@ -117,6 +131,19 @@ npm run build
 cd ..
 node scripts/smoke-native.mjs --control-stop
 ```
+
+For an isolated packaged-runtime check without copying a smoke harness into the
+release app, run from the repository root after building:
+
+```bash
+RUNTIME="$PWD/build/HoshiStream.app/Contents/Resources/runtime"
+PATH=/usr/bin:/bin:/usr/sbin:/sbin "$RUNTIME/bin/node" \
+  scripts/smoke-native.mjs --runtime-root="$RUNTIME" --control-stop
+```
+
+The harness creates temporary state and alternate ports and leaves installed
+state untouched. It downloads no media and does not establish real-device or
+sustained playback acceptance.
 
 ## Working agreement (AGENTS.md)
 

@@ -1,22 +1,40 @@
 # Setup: Native macOS App
 
-The menu-bar app bundles Node and TorrServer, preserves the library and tokenized URLs, and supervises both services. This is the only deployment mode — see [ADR 0003](../decisions/0003-native-menu-bar-app-no-electron.md) for the app design and [ADR 0009](../decisions/0009-native-only-deployment.md) for why Docker was removed.
+The menu-bar app bundles Node, TorrServer, FFmpeg and ffprobe, preserves the
+library and tokenized URLs, and supervises both services. The candidate is
+Apple Silicon, macOS 13.5+, browser-first H.264/AAC MP4 playback on a trusted LAN.
+mpv is optional and separately installed. Native deployment also supports a
+[foreground terminal stack](development.md), without a menu bar.
+See [ADR 0003](../decisions/0003-native-menu-bar-app-no-electron.md) for the
+app design and [ADR 0009](../decisions/0009-native-only-deployment.md) for why
+containers were removed.
 
 "Just the app" still means two supervised processes: the Node add-on (library, management UI, add-on protocol, local file serving) and TorrServer (the BitTorrent engine). The app starts and stops both.
 
 ## Build and install
 
+Use Git, Node 22.18+ with npm and Apple's Command Line Tools
+(`xcode-select --install`) or Xcode. From the repository root:
+
 ```bash
+cd addon
+npm ci
+cd ..
 node packaging/fetch-node-runtime.mjs
 node packaging/fetch-torrserver.mjs
 node packaging/fetch-ffmpeg.mjs
 ./packaging/build-macos-app.sh
-mkdir -p ~/Applications
-ditto build/HoshiStream.app ~/Applications/HoshiStream.app
-open ~/Applications/HoshiStream.app
 ```
 
-Runtime downloads are pinned by `packaging/node-lock.json` and `packaging/torrserver-lock.json`.
+Quit an existing instance, then copy `build/HoshiStream.app` to Applications
+with Finder and open it. Preserve the previous app and state when replacing it;
+do not assume old versions can read new state.
+
+Runtime downloads are pinned by `packaging/node-lock.json`,
+`packaging/torrserver-lock.json` and `packaging/ffmpeg-lock.json`. The current
+bundled Node is v26.3.1; Node 22.18+ is the source-mode minimum, not the shipped
+version. All four executables are required; a developer PATH cannot fill a gap.
+Re-run the corresponding fetch script if its provenance receipt is missing.
 
 To hand the app to another Mac, build a disk image instead — see
 [distributing-macos-app.md](distributing-macos-app.md).
@@ -54,7 +72,8 @@ HOSHISTREAM_PROJECT_ROOT=/path/to/checkout ./packaging/build-macos-app.sh
 
 | Path | Contents |
 |---|---|
-| `~/Library/Application Support/HoshiStream` | Library, settings, managed media |
+| `~/Library/Application Support/HoshiStream` | `.env`, `library.json`, auxiliary JSON stores, TorrServer state |
+| `~/Library/Application Support/HoshiStream/data/media` | Managed browser uploads |
 | `~/Library/Logs/HoshiStream/server.log` | Server logs |
 | `~/Library/Application Support/HoshiStream/onboarding.json` | Local setup progress and dismissal |
 
@@ -66,7 +85,9 @@ Deleting a Finder-linked entry never deletes its source file. The browser upload
 
 ## Configuration
 
-Copy `.env.example` to `.env` — or let the first launch generate one. The native app reads
+Installed users should let first launch generate `.env`, then edit it privately
+at `~/Library/Application Support/HoshiStream/.env` if needed and choose
+**Restart Server**. Checkout `.env` is separate. The native app reads
 `ACCESS_TOKEN`, `MEDIA_DIR`,
 `HOSHISTREAM_STATE_DIR`, `ADDON_PORT`, `HOME_SPEED_MBPS`, `PLAYER_PATH`, `LAN_REDIRECT`,
 `TRANSCODE_ENABLED`, and `TRANSCODE_MAX_SESSIONS`,
@@ -87,9 +108,9 @@ values live in `<state dir>/torrserver/config/settings.json`; the reasoning for 
 [changelog/0.6.0-performance.md](../changelog/0.6.0-performance.md). Two need action
 outside the config file:
 
-- **Peer port `32001`.** `PeersListenPort` is fixed so it can be forwarded. Without an
-  inbound path, TorrServer only reaches peers that are themselves unfirewalled, which caps
-  throughput badly. Forward TCP and UDP 32001 to this machine on your router.
+- **Peer port `32001`.** `PeersListenPort` is fixed. Inbound peer reachability can
+  affect torrent throughput; router changes are outside the initial beta
+  workflow and are not an installation prerequisite.
 - **Upload is enabled.** BitTorrent peers reciprocate, so a client that refuses to upload
   gets choked or deprioritized. Use `UploadRateLimit` to cap it rather than disabling it.
 
@@ -99,28 +120,27 @@ Keep the add-on port (7000/7001) and TorrServer's web port (8090) on the trusted
 no router forwarding, no UPnP, no public exposure. See
 [ADR 0004](../decisions/0004-token-in-path-and-bearer-security-model.md).
 
-Port 32001 is the exception and is a different kind of port: it carries BitTorrent peer
-traffic, not the management API or the add-on protocol, and exposes no HoshiStream surface.
-Forwarding it does not weaken that boundary. `DisableUPNP` stays `true` so the mapping is
-always explicit rather than negotiated automatically.
+Port 32001 carries BitTorrent peer traffic, not management or add-on requests.
+Keep router/public exposure outside this beta; `DisableUPNP` stays `true`.
 
 ## Playback notes
 
-Keep the Mac awake during playback (`caffeinate -dimsu`); closing the lid may suspend networking and stop playback.
+Keep the Mac awake; closing the lid may suspend networking and stop playback.
+Open an entry and choose **Play**, or select a file on **Files**, to open the
+**in-browser player**. No external player is needed for compatible H.264/AAC
+MP4 media. Codec/container support, source reachability and sustained playback
+still depend on the browser and file; a successful sample check is not a
+playback guarantee.
 
-To watch on this machine, open an entry and use **▶ Play on this Mac** in the detail
-header — no TV client needed.
+The legacy [host-player API](../api/management-api-reference.md#host-playback)
+remains an advanced optional path, not the management page's Play button.
+macOS does not bundle mpv. To use that API, install mpv separately and set
+`PLAYER_PATH` in the installed app's `.env` to the executable's absolute path
+(for example `/opt/homebrew/bin/mpv` for an Apple Silicon Homebrew installation),
+then restart the server. Do not assume a menu-bar app inherits your shell PATH.
+No Homebrew installation is required for the normal browser workflow.
 
-HoshiStream drives `mpv` directly when it can find one, which gives it play, pause, seek
-and resume control ([ADR 0008](../decisions/0008-bundled-mpv-player-over-json-ipc.md)). The
-binary is resolved from `PLAYER_PATH`, then a bundled copy, then `PATH`; `brew install mpv`
-is enough. Without it, playback is handed to an installed IINA, VLC or mpv application
-instead, which plays fine but cannot be controlled from HoshiStream.
-
-For a series, the header action plays the first episode, or resumes the one you last
-watched. To start somewhere specific, use the play button beside an episode on the **Files**
-tab. The rest of the season is queued behind whichever episode you start, so playback advances
-on its own — through mpv's playlist when it is driving, or through `iina-cli` when falling
-back to IINA. Position is remembered per episode, so the header action resumes the exact
-episode and timestamp you left. If playback stalls on a wireless link, check that before
-changing any settings — a 4K remux needs a sustained 60–100 Mbps.
+The API can control mpv over IPC or hand off to an installed IINA/VLC/system
+handler; handoff does not supply HoshiStream playback controls and does not
+establish codec compatibility. External-player and broader codec acceptance
+are outside the initial browser-first candidate promise.

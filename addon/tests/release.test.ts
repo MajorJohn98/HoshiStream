@@ -284,7 +284,7 @@ describe("macOS candidate packaging", () => {
     );
     expect(app.match(/release-identity\.mjs" create/g)).toHaveLength(1);
     expect(app).toContain('cp "$IDENTITY" "$RUNTIME/addon/release.json"');
-    expect(dmg).toContain('release-identity.mjs" verify-app "$APP"');
+    expect(dmg).toContain('macos-contract.mjs" verify "$APP"');
     expect(dmg).not.toContain('release-identity.mjs" create');
     expect(dmg).toContain('ARTIFACT="HoshiStream-$BUILD_ID-darwin-arm64"');
     expect(dmg).toContain('"$BUILD_DIR/$ARTIFACT.release.json"');

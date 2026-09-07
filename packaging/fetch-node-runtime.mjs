@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmod,
+  copyFile,
   mkdir,
   readFile,
   rename,
@@ -11,6 +12,7 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeAssetReceipt } from "./asset-receipt.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const lock = JSON.parse(
@@ -37,7 +39,8 @@ const extracted = isZip
 await mkdir(dirname(output), { recursive: true });
 
 const response = await fetch(asset.url, { redirect: "follow" });
-if (!response.ok) throw new Error(`Node.js download failed: ${response.status}`);
+if (!response.ok)
+  throw new Error(`Node.js download failed: ${response.status}`);
 const bytes = Buffer.from(await response.arrayBuffer());
 const digest = createHash("sha256").update(bytes).digest("hex");
 if (digest !== asset.sha256)
@@ -59,9 +62,17 @@ try {
   });
   await rename(extracted, output);
   await chmod(output, 0o755);
+  await copyFile(
+    join(dirname(output), unpacked, "LICENSE"),
+    join(dirname(output), "LICENSE"),
+  );
+  await writeAssetReceipt(dirname(output), { node: asset.sha256 }, [
+    binaryName,
+    "LICENSE",
+  ]);
 } finally {
   await unlink(archive).catch(() => undefined);
-  // The archive unpacks a full distribution; only the binary is kept.
+  // Keep the executable, upstream notices and receipt, not the build tools.
   await rm(join(dirname(output), unpacked), {
     recursive: true,
     force: true,

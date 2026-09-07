@@ -1,7 +1,95 @@
 # Closed beta readiness
 
 Date: 2026-09-07
-Status: phase 1-2 implementation complete; deployed-service and recipient acceptance remain outstanding; phases 3-7 not implemented in this slice
+Status: phase 1-4 code/documentation implemented; phase 3 redistribution exit remains blocked; phases 5-7, deployed-service and recipient acceptance remain outstanding
+
+## Deferred blocker register (2026-09-07)
+
+The user chose to record these blockers and revisit them later. Resolution work
+is paused; **deferred does not mean resolved or waived**. No target date is set.
+The existing redistribution gate and beta invitation/publication holds remain
+in place. Resume the relevant work only when requested.
+
+| Blocker | Status / phase | What is needed when revisited |
+|---|---|---|
+| Exact FFmpeg/x264 source inputs | Deferred; phase 3 release blocker | Obtain the exact x264 snapshot used in the pinned binaries and a supported binary-to-source mapping. Ask the current provider first; if unavailable, evaluate a source-complete replacement or a build from pinned inputs. |
+| Remaining FFmpeg corresponding source | Deferred; phase 3 release blocker | Assemble incorporated dependency sources, notices, patches and controlling build scripts. Resolving x264 alone does not complete this review. |
+| TorrServer corresponding source | Deferred; phase 3 release blocker | Complete Go dependency and embedded-web source/license coverage, account for generated files, and establish the actual build inputs and instructions. |
+| npm license-notice provenance | Deferred; phase 3 release blocker | Resolve applicable historical notices for `tr46 0.0.3` and `uint8-util 2.3.2`; preserve the remaining package/browser notices. Do not invent missing text or assume a current upstream license applies retrospectively. |
+| Recipient, player and deployed pointer acceptance | Deferred; phases 2 and 6 acceptance gates | Exercise the installed candidate on recipient Macs, record exact browser/Nuvio/Stremio versions and sustained playback, and establish independent live pointer registration/update/removal and client routing. |
+| Updates, backup, restore and rollback | Deferred; phase 5 release blocker | Establish and exercise the stopped-state backup, restore and upgrade procedures, credential/media preservation, and explicit downgrade compatibility. |
+| Cohort support readiness | Deferred; phase 7 invitation blocker | Name the release/support owner, choose a private reporting channel, and establish report requirements, success criteria and stop conditions. |
+| Developer ID signing and notarization | Conditional; deferred | May remain deferred for an explicitly assisted technical beta. Required before claiming frictionless self-service installation for nontechnical users. |
+
+Node's exact-archive notice retention has been addressed; it is not an
+outstanding missing-notice blocker. The corresponding-source and npm entries
+above describe missing materials/evidence, not confirmed playback defects or
+automatic findings of infringement. Before distribution, assemble and review
+the complete materials and establish the required source-access arrangement;
+do not fabricate an attestation to unblock packaging.
+
+The [exact-component review](../guides/distributing-macos-app.md#exact-component-review-findings-2026-09-07)
+retains the upstream evidence. Windows and Chrome companion rollout continue
+to have their separate conditional gates; neither is added to this first cohort.
+
+## Approved phase 3-4 slice (2026-09-07)
+
+Use **browser-first playback**, with separately installed mpv optional (approved
+by the user for this slice); do not
+bundle a new player or expand codec support. Implement only phases 3 and 4.
+
+1. Require pinned Node, TorrServer, FFmpeg and ffprobe in the macOS payload;
+   retain download provenance and Node notices, and reject missing tools,
+   nonportable dependencies and private/developer state.
+2. Apply the existing Windows-style reviewed-source gate to macOS without
+   weakening Windows. Keep local validation artifacts explicitly separate
+   from distributable DMGs; emit checksums and candidate notes, not releases.
+3. Replace the README with the three independent quick starts and align the
+   linked macOS, development and getting-started guides.
+4. Run existing automated checks and isolated packaging/runtime checks. Record
+   exact upstream review gaps honestly; do not fabricate an attestation or
+   publish before phases 5-7 and the remaining acceptance gates pass.
+
+Implementation evidence:
+
+- The macOS build now requires all four pinned runtime executables, verifies
+  fetched archive receipts and retained Node notices, checks arm64 deployment
+  targets/system-only libraries and launches analysis tools with an OS-only
+  PATH. Production dependencies and portable runtime state remain separate.
+- App signatures are finalized before a sidecar inventory records the bytes.
+  DMG generation checks identity, inventory, signature and portable plist state.
+  It writes SHA-256, identity, payload and concise-notes sidecars and refuses to
+  overwrite existing images.
+- The normal DMG path requires reviewed macOS redistribution materials bound to
+  the packaged lockfiles. The existing Windows gate is preserved. No review
+  attestation or source-completeness claim was fabricated. Stage-only images
+  are explicitly labeled `LOCAL-ONLY`, both in the name and inside the image.
+- README was replaced with installed-app, foreground-source and app-build quick
+  starts in that order. Linked guides now distinguish browser playback from the
+  optional external-player API, actual state paths and ad-hoc signing.
+- An isolated candidate app and local-only image were built under
+  `build/phase-3-4-validation`, without replacing the installed app or the
+  existing `build/HoshiStream.app`. Build ID:
+  `0.14.0-83f6becb0f5b-dirty-20260907155734975-b0cff1f8`.
+  The mounted image retained its signed payload and labels; packaged startup
+  and controlled shutdown succeeded with disposable state, separate ports and
+  no developer PATH or media downloads. The normal DMG command correctly
+  blocked on missing reviewed materials. This is not recipient acceptance.
+- Add-on typecheck, full tests (777 passed, one opt-in test skipped), lint,
+  format and isolated app compilation passed.
+  Checks used local Node 26; the packaged runtime is the unchanged v26.3.1 pin.
+  Minimum source Node 22.18 and a recipient Mac on macOS 13.5 were not exercised.
+
+**Remaining phase 3 exit:** assemble and review complete corresponding source,
+notices and build materials for the exact shipped components. See the
+[distribution review findings](../guides/distributing-macos-app.md#exact-component-review-findings-2026-09-07).
+The upstream review found an unidentified x264 snapshot in the Riedl FFmpeg
+build, incomplete TorrServer dependency/generated-web source coverage, and
+missing historical license-notice provenance for `tr46 0.0.3` and
+`uint8-util 2.3.2`. These are unresolved evidence/materials, not an assertion
+that redistribution is inherently prohibited. Keep publication,
+recipient/client acceptance, compatibility/rollback approval and invitations
+blocked; this slice does not implement phases 5-7.
 
 ## Approved implementation slice (2026-09-07)
 
@@ -121,7 +209,7 @@ used consistently in the app, release notes, README, and bug reports.
 | Host | Apple Silicon, macOS 13.5 or later. Intel and Windows are outside this initial cohort. |
 | Network/workload | Trusted home LAN, one simultaneous direct-play stream, authorized manually added media. No router/public exposure. |
 | Baseline media | MP4 with H.264 video and AAC audio; other containers/codecs are outside the initial acceptance promise. |
-| Host browser/player | Browser playback is the initial candidate path. Exact browser/version and sustained playback acceptance are still required. Native player bundling/prerequisites are phase 3. |
+| Host browser/player | Browser-first playback; macOS does not bundle mpv. A separately installed external player is optional through the advanced host-player API. Exact browser/version and sustained playback acceptance are still required. |
 | Nuvio / Stremio | Target LAN clients, not yet a tested version matrix. Record exact device, OS, client version, install method and playback outcome before invitations. |
 | Pointer | Explicitly enabled stable LAN add-on address, manual updates only. It does not provide remote media access. |
 | Other integrations | Windows and the Chrome companion retain their separate release gates. |

@@ -1,14 +1,40 @@
-# Closed beta identity and pointer setup
+# Closed beta identity, pointer and distribution
 
 Date: 2026-09-07
 
-Implements the phase 1-2 slice of the
+Implements the phase 1-4 code/documentation slices of the
 [closed beta plan](../plans/2026-09-07-closed-beta-readiness-plan.md), not a
 release approval. Version remains `0.14.0`; exact recipient browser and
 Nuvio/Stremio versions still require acceptance. The agreed contract is
 Apple Silicon, macOS 13.5+, trusted LAN, one direct-play stream, and H.264/AAC
-in MP4 as the baseline browser media. Native player bundling, redistribution,
-publication, and the README rewrite remain later phases.
+in MP4 as the baseline browser media. The approved macOS path is browser-first:
+mpv remains an optional external installation, not a bundled prerequisite.
+Redistribution approval and publication remain blocked.
+
+## Phase 3-4: macOS distribution and quick start
+
+- All four server/analysis executables are required. Download receipts bind
+  Node/FFmpeg binaries to verified archives; Node's complete upstream license
+  notices are retained. TorrServer is checked directly against its binary pin.
+- The app is checked for portable arm64/system-library dependencies, minimum
+  OS targets, executable tools and private/developer payload leaks. Its final
+  signed bytes are inventoried before the DMG is created.
+- Normal DMG creation requires reviewed macOS source/license/build materials;
+  pin changes invalidate reviews. Windows retains its separate existing gate.
+  A stage-only image is clearly labeled local-only, not distributable.
+- Images have SHA-256, build identity, payload inventory and release-notes
+  sidecars. Existing images are not overwritten. Nothing is published.
+- README is now three independent quick starts: install the Mac app, run the
+  whole stack in a foreground terminal, or build the Mac app. Linked guides
+  correct external-player promises, terminal/installed state paths, actual
+  runtime pins and the assisted ad-hoc Gatekeeper experience.
+
+An isolated app and image were exercised without using installed state or
+developer PATH entries. The normal release path still blocks because the exact
+reviewed redistribution bundle is absent. The
+[distribution guide](../guides/distributing-macos-app.md) records outstanding
+materials; the [plan](../plans/2026-09-07-closed-beta-readiness-plan.md) separates
+observed local outcomes from still-required recipient/client and phase 5-7 work.
 
 ## Installed pointer diagnosis
 

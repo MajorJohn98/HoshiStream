@@ -15,6 +15,17 @@ The first step completes when a title is actually in your library. Source checks
 remain separate: saving a title is not a promise that it will play. Open the
 entry to inspect its files, check the source, or investigate a playback problem.
 
+## Watch in the browser
+
+Open the saved title and choose **Play**, or select a file on its **Files** tab.
+The management page uses an in-browser player, not mpv. The initial macOS
+candidate baseline is H.264 video and AAC audio in MP4; exact browser/version
+and sustained playback acceptance remain outstanding. No separately installed
+player is required for this path. mpv is not bundled on macOS.
+
+If you only want browser playback, **Skip for now** leaves onboarding without
+requiring a TV-player confirmation. You can return to connect a player later.
+
 ## Connect Nuvio or Stremio
 
 Keep the player device on the same home network as the host computer. In Get started,

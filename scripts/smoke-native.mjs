@@ -4,13 +4,18 @@ import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { waitForRuntime, stopRuntime } from "./native-runtime.mjs";
 import { restrictAccess } from "./private-files.mjs";
 
-const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const runtimeArgument = process.argv
+  .slice(2)
+  .find((arg) => arg.startsWith("--runtime-root="));
+const root = runtimeArgument
+  ? resolve(runtimeArgument.slice("--runtime-root=".length))
+  : dirname(dirname(fileURLToPath(import.meta.url)));
 const state = await mkdtemp(join(tmpdir(), "hoshi-smoke-"));
 await restrictAccess(state, { directory: true });
 const reservations = [];

@@ -1,0 +1,50 @@
+HoshiStream macOS third-party software and redistribution requirements
+====================================================================
+
+Browser-first Apple Silicon candidate. No mpv is bundled. Separately installed
+players remain the user's responsibility. No media or private state is shipped.
+
+Node.js: exact runtime is in packaging/node-lock.json. node-LICENSE.txt is
+retained from the checksum-verified Node distribution, including its third-party
+notices. node-receipt.json records that archive and its extracted file hashes.
+
+TorrServer: exact MatriX binary is in packaging/torrserver-lock.json. Review the
+license, corresponding source, dependencies, patches and build materials for that
+binary, not a different release or container image.
+
+FFmpeg/ffprobe: the macOS Martin Riedl builds are pinned independently in
+packaging/ffmpeg-lock.json. ffmpeg-receipt.json records archive and extracted file
+hashes. These builds enable GPL/version3 and numerous linked codec libraries.
+Supply the exact applicable license texts, notices, corresponding source,
+dependency versions, patches and build instructions, not just an FFmpeg link.
+This software is based in part on the work of the Independent JPEG Group.
+
+npm: addon/package-lock.json fixes the production dependency graph. Package
+license files remain in addon/node_modules; audit the complete shipped graph,
+including vendored browser assets, for required notices and attribution.
+
+RELEASE GATE
+------------
+Private sharing is redistribution. A default DMG build requires a reviewed
+vendor/macos-redistribution/manifest.json and includes the reviewed materials
+beside the app. A personal app build or --stage-only DMG is local validation,
+not permission to redistribute. Do not invent a review to unblock packaging.
+
+The manifest uses version: 1, a nonempty reviewedBy, and components named node,
+torrserver, ffmpeg and npm. Each component has pinSha256 (SHA-256 of its exact
+packaging lockfile, or addon/package-lock.json for npm), plus a nonempty files
+array of {path, sha256}. TorrServer and FFmpeg also require
+completeCorrespondingSource: true. Paths are relative to the materials folder.
+No symlinks or special files are allowed. Review notices for browser assets too;
+attach their source/version inventory to the npm component's reviewed materials.
+
+This is a technical integrity/review gate, not an automatic legal conclusion.
+Changing a pin invalidates the review. No release attestation is supplied.
+Windows retains its separate, stricter component list including .NET and mpv;
+macOS review does not satisfy that gate. See the macOS distribution guide for
+the current review findings and outstanding materials.
+
+Current unresolved materials include the exact x264 snapshot used by the
+FFmpeg builds, complete TorrServer dependency/generated-web sources, and
+historical license-notice provenance for tr46 0.0.3 and uint8-util 2.3.2.
+Checksums, upstream homepages and an MIT metadata label do not resolve these.

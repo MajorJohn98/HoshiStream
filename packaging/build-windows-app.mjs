@@ -144,6 +144,17 @@ export async function validatePayload(bundle) {
 export async function validateRedistribution(
   directory,
   locksRoot = join(root, "packaging"),
+  {
+    platform = "windows",
+    locks = {
+      node: "node-lock.json",
+      dotnet: "windows-toolchain-lock.json",
+      torrserver: "torrserver-lock.json",
+      mpv: "mpv-lock.json",
+      ffmpeg: "ffmpeg-lock.json",
+    },
+    sourceRequired = ["torrserver", "mpv", "ffmpeg"],
+  } = {},
 ) {
   let manifest;
   try {
@@ -153,7 +164,7 @@ export async function validateRedistribution(
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
     throw new Error(
-      "Release blocked: reviewed vendor/windows-redistribution/manifest.json is missing. See packaging/windows-third-party.txt. Use --stage-only for local validation, not sharing.",
+      `Release blocked: reviewed vendor/${platform}-redistribution/manifest.json is missing. See packaging/${platform}-third-party.txt. Use --stage-only for local validation, not sharing.`,
     );
   }
   if (
@@ -162,20 +173,15 @@ export async function validateRedistribution(
     !manifest.reviewedBy.trim()
   )
     throw new Error("Redistribution review is missing");
-  for (const [name, lock] of Object.entries({
-    node: "node-lock.json",
-    dotnet: "windows-toolchain-lock.json",
-    torrserver: "torrserver-lock.json",
-    mpv: "mpv-lock.json",
-    ffmpeg: "ffmpeg-lock.json",
-  })) {
+  await regularFiles(directory);
+  for (const [name, lock] of Object.entries(locks)) {
     const component = manifest.components?.[name];
     if (
       !component ||
       component.pinSha256 !== sha256(await readFile(join(locksRoot, lock))) ||
       !Array.isArray(component.files) ||
       !component.files.length ||
-      (["torrserver", "mpv", "ffmpeg"].includes(name) &&
+      (sourceRequired.includes(name) &&
         component.completeCorrespondingSource !== true)
     )
       throw new Error(`Incomplete or stale redistribution review: ${name}`);
@@ -194,7 +200,6 @@ export async function validateRedistribution(
         throw new Error(`Redistribution checksum mismatch: ${name}`);
     }
   }
-  await regularFiles(directory);
 }
 
 async function verifyMpv() {

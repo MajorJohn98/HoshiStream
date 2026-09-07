@@ -1,0 +1,6 @@
+LOCAL VALIDATION ONLY - DO NOT SHARE
+
+This image was built with --stage-only. The exact third-party redistribution
+review is incomplete or was not requested. It is not a closed-beta release.
+The app may be exercised locally with disposable state. Its checksum identifies
+the bytes; it does not establish publisher trust, license compliance or acceptance.

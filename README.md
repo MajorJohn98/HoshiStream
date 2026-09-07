@@ -1,336 +1,122 @@
 # HoshiStream
 
-HoshiStream is a private, local-first Stremio-compatible add-on for Nuvio. It stores a small personal catalog, asks TorrServer to inspect authorized torrents, and gives Nuvio direct TorrServer playback URLs. The Node.js add-on never proxies video bytes and does no transcoding.
+A private, local-first media library and Stremio-compatible add-on for Nuvio.
+Add your own authorized videos, magnets or `.torrent` files, then watch in your
+browser or a player on the same **trusted home LAN**. No torrent discovery,
+accounts or containers.
 
-Use this software only with media you own, public-domain media, or media you are authorized to access. It provides no torrent search, index scraping, source lists, or bundled magnet links.
+The **0.14.0 closed-beta candidate** targets Apple Silicon, macOS 13.5+, and
+one direct-play stream. Browser baseline: **MP4 with H.264 video and AAC audio**.
+Exact browser/Nuvio/Stremio versions and recipient playback are still awaiting
+acceptance. Existing opt-in stream repair and remote access are outside this beta.
 
-Full project documentation lives in [`hoshistream_docs/`](hoshistream_docs/index.md) (architecture, decision records, guides, API references, plans, and changelog).
+## 1. Install the macOS app - recommended
 
-## Closed-beta candidate contract
+You need an Apple Silicon Mac running macOS 13.5 or later and a modern browser.
+**You do not need Node, npm, build tools or mpv.** The app bundles Node,
+TorrServer, FFmpeg and ffprobe; playback in the management page uses your browser.
 
-The candidate version is **0.14.0**, sourced only from `addon/package.json`;
-`231ae20` is the planning baseline, not an acceptance result. The closed-beta
-target is **Apple Silicon, macOS 13.5+, a trusted LAN, and one direct-play
-stream**. Browser baseline media is an authorized **H.264/AAC MP4**. Exact
-browser, Nuvio, and Stremio versions and recipient playback remain acceptance
-blockers; Windows, remote access, and broader codec support are not covered
-by this baseline. macOS mpv bundling belongs to a later phase.
+1. Open [release downloads](https://github.com/MajorJohn98/HoshiStream/releases).
+   **The latest published artifact is still 0.8.2, not this candidate.**
+   Wait for an approved 0.14.0 image, checksum and release notes; do not treat the
+   older download or a `LOCAL-ONLY` image as the closed beta.
+2. Download the approved DMG and matching `.sha256`, verify it using the
+   [installation guide](hoshistream_docs/guides/distributing-macos-app.md#install-an-approved-image),
+   open the image and copy HoshiStream to Applications. The candidate is
+   **ad-hoc signed, not notarized**: macOS may block it. Only for a build you
+   trust, use **System Settings > Privacy & Security > Open Anyway**, or follow
+   the guide's app-scoped assisted procedure. Never disable Gatekeeper globally.
+3. Open HoshiStream in Applications. Look in the **menu bar**, not the Dock.
+   Allow incoming connections for trusted-LAN playback when macOS prompts.
+4. In **Get started**, choose **Add media**, review an authorized title and save.
+   Open the title and choose **Play** for browser playback. To use Nuvio or
+   Stremio, copy the **private add-on URL** into that player's add-on settings.
+   Keep the Mac running and awake while watching.
 
-Packaging stamps the package version, actual Git revision, dirty flag, and
-unique build ID once into `addon/release.json` inside the runtime. The app
-plist and DMG use that same identity; a matching `.release.json` support
-sidecar accompanies the DMG. Unstamped source or plain TypeScript builds
-report `source` and an unknown dirty state, never a verified candidate.
-DMGs are named `HoshiStream-<buildId>-darwin-arm64.dmg`; substitute that
-filename in the installation examples below. To build without replacing an
-existing app, set `HOSHISTREAM_BUILD_DIR="$PWD/build/candidate-check"` for
-both macOS packaging scripts.
+First launch generates private configuration and state in
+`~/Library/Application Support/HoshiStream`; no developer credentials are needed.
+Private URLs grant access to your library: do not share them publicly.
+mpv is **optional and separately installed**, not required by the browser path;
+the [playback notes](hoshistream_docs/guides/setup-native-macos.md#playback-notes)
+explain the advanced external-player API.
 
-## Architecture
+Optional: [pointer setup](hoshistream_docs/guides/pointer-server-vercel.md)
+(manual, stable LAN address, not remote streaming),
+[Chrome companion](hoshistream_docs/guides/chrome-companion.md)
+(separately gated technical installation).
+[Getting started](hoshistream_docs/guides/getting-started.md) |
+[Troubleshooting](hoshistream_docs/guides/troubleshooting.md)
 
-```text
-Nuvio on Mac ───────┐
-                    ├── LAN ──> HoshiStream :7001 ──> TorrServer API
-Nuvio on webOS TV ──┘                  │
-                                      └── returns direct :8090/play/... URL
-                                                       │
-                                                       └── authorized peers
-```
+## 2. Run from the codebase in a terminal - optional
 
-## Current status
-
-The five MVP implementation phases are complete:
-
-- Native app supervising TorrServer and the add-on, with health checks.
-- Tokenized manifest, atomic JSON library, catalogs, search, pagination, metadata, and management API.
-- TorrServer magnet and `.torrent` registration, metadata polling, inspection, removal, and media-file selection.
-- Movie streams, series episode mapping, and public TorrServer URL rewriting.
-- Bounded disk cache, inactive cleanup, structured logs, tests, and documentation.
-
-No graphical dashboard, database, external metadata provider, torrent search, or transcoder is included.
-
-Live Mac/webOS playback still requires testing with media you are authorized to access. No test magnet is bundled.
-
-## Prerequisites
-
-- Apple Silicon Mac, or Windows 11 x64 for the Windows desktop candidate
-- Mac and playback devices on the same trusted LAN
-- Nuvio on the LG webOS TV, or nothing at all to watch on the Mac itself
-
-Node.js 22 and TorrServer are vendored into the app bundle; a host Node installation is only needed for local development or to build from source.
-
-## Install
-
-### Windows desktop
-
-The Windows desktop target uses a native system-tray shell and bundles its
-.NET/Node runtimes, TorrServer, mpv and media-analysis tools. Its installer is
-per-user and unsigned for private sharing. Windows-machine acceptance is still
-required before treating a candidate as release-ready.
-
-See [Windows setup](hoshistream_docs/guides/setup-native-windows.md) and the
-[Windows build/distribution guide](hoshistream_docs/guides/distributing-windows-app.md).
-To run just the server from a checkout, install Node 22.18+ and npm, run
-`npm ci` in `addon/`, fetch the platform TorrServer/ffmpeg binaries, then run
-`node scripts/native-server.mjs --dev` from the repository root. This source
-mode needs no application build but does not create a tray icon.
-
-### From a disk image
-
-The released `.dmg` is the normal way to install, on your own Mac or someone else's.
-
-Because the build carries an ad-hoc signature rather than an Apple Developer ID, macOS quarantines it. Dragging it straight into Applications and double-clicking is blocked: macOS 15 and later report "Apple could not verify HoshiStream is free of malware", and earlier versions report that the app is damaged.
-
-Clear the quarantine flag **before** the app reaches `/Applications`:
+On an Apple Silicon Mac, install **Git, Node 22.18+ and npm**. Stop any other
+HoshiStream instance first; the app and terminal stack use the same default
+service and peer ports.
 
 ```bash
-hdiutil attach ~/Downloads/HoshiStream-<version>.dmg
-ditto /Volumes/HoshiStream/HoshiStream.app ~/Downloads/HoshiStream.app
-xattr -dr com.apple.quarantine ~/Downloads/HoshiStream.app
-mv ~/Downloads/HoshiStream.app /Applications/
-hdiutil detach /Volumes/HoshiStream
-open /Applications/HoshiStream.app
+git clone https://github.com/MajorJohn98/HoshiStream.git
+cd HoshiStream
+cd addon
+npm ci
+cd ..
+node packaging/fetch-torrserver.mjs
+node packaging/fetch-ffmpeg.mjs
+node scripts/native-server.mjs --dev
 ```
 
-The order matters. Running `xattr` on an app already inside `/Applications` fails with "Operation not permitted" on every file, because macOS Sonoma and later require the App Management permission to modify an installed bundle — so the flag stays and the app still refuses to launch. The `-r` matters too: it clears the flag from the bundled `node`, `TorrServer`, and `ffmpeg` binaries, not just the outer bundle.
+This runs **both TorrServer and the add-on in the foreground**, directly from
+TypeScript. It does not build or install a menu-bar app. Keep the terminal open;
+**Ctrl+C** stops the stack.
 
-Without a Terminal, drag the app to Applications, double-click it, dismiss the warning, then approve it under **System Settings → Privacy & Security → Open Anyway**.
+First run generates `.env` in the checkout. Open that file privately in a local
+editor and use its `ACCESS_TOKEN` in
+`http://127.0.0.1:7001/manage/<ACCESS_TOKEN>` (use your `ADDON_PORT` if changed).
+Do not paste the token or private URL into logs, issues or screenshots. Add media
+and watch as above; browser uploads work, but **native Finder pickers and
+companion registration are not provided by this command**.
 
-The app appears in the menu bar, not the Dock. No configuration is needed first: the first launch creates `~/Library/Application Support/HoshiStream` containing a `.env` (mode `0600`) with a freshly generated `ACCESS_TOKEN`, a `MEDIA_DIR` defaulting to `~/Movies`, an empty library, and TorrServer's data directories.
+This mode uses checkout `.env`, `native-data/` and `data/media/`, not the installed
+app's library. See [development and exact state paths](hoshistream_docs/guides/development.md)
+for watch mode, add-on-only `npm run dev`, and the advanced installed-state
+`start-native.sh` / `stop-native.sh` alternatives.
 
-See [guides/distributing-macos-app.md](hoshistream_docs/guides/distributing-macos-app.md) for building a disk image and the signing limitations.
+## 3. Build the macOS app from source - optional
 
-### From source
+Use an Apple Silicon Mac, **Git, Node 22.18+, npm and Apple's Command Line Tools**
+(`xcode-select --install`; a full Xcode also works). From a fresh checkout:
 
 ```bash
-cd addon && npm ci && cd ..
+git clone https://github.com/MajorJohn98/HoshiStream.git
+cd HoshiStream
+cd addon
+npm ci
+cd ..
 node packaging/fetch-node-runtime.mjs
 node packaging/fetch-torrserver.mjs
 node packaging/fetch-ffmpeg.mjs
 ./packaging/build-macos-app.sh
-ditto build/HoshiStream.app /Applications/HoshiStream.app
-open /Applications/HoshiStream.app
+./packaging/build-macos-dmg.sh --stage-only
 ```
 
-Runtime downloads are SHA-256 pinned by the lockfiles in `packaging/`. To produce a disk image for other Macs, run `./packaging/build-macos-dmg.sh` afterwards; it prints the path to `build/HoshiStream-<version>.dmg`.
-
-A build normally resolves its state directory at runtime, which is what makes the bundle portable. To pin a development build to a checkout instead:
-
-```bash
-HOSHISTREAM_PROJECT_ROOT=/path/to/checkout ./packaging/build-macos-app.sh
-```
-
-### Using the app
-
-Use the menu-bar icon to open HoshiStream, copy the Stremio URL, restart the
-server, reveal logs, enable Start at Login, or quit cleanly. Mutable state is
-stored in `~/Library/Application Support/HoshiStream`; logs are written to
-`~/Library/Logs/HoshiStream/server.log`.
-
-The menu-bar app keeps the Mac awake automatically while a stream is active.
-Closing the MacBook lid may still suspend networking and stop playback.
-
-To watch on the Mac itself, use **Play on this computer** on an entry's playback
-tab. HoshiStream drives mpv directly, so no TV client is needed locally
-([ADR 0008](hoshistream_docs/decisions/0008-bundled-mpv-player-over-json-ipc.md)).
-
-## Configure
-
-The app generates its own `.env` on first launch, so this is only for changing defaults. Edit `~/Library/Application Support/HoshiStream/.env` and choose **Restart Server** from the menu bar:
-
-```env
-ADDON_PORT=7001
-ACCESS_TOKEN=generated-on-first-launch
-MEDIA_DIR=/Users/your-name/Movies
-HOME_SPEED_MBPS=10
-```
-
-The app derives everything else — `TORRSERVER_INTERNAL_URL`, the public LAN URLs, the library path, and the vendored ffmpeg paths — from the detected LAN address and install layout. The remaining variables in `.env.example` apply only when running the add-on directly with `npm start`. To confirm the LAN address the app will advertise, run `./scripts/find-lan-ip.sh`.
-
-## Add media
-
-Every management request requires `Authorization: Bearer`:
-
-For a local web interface, open:
-
-```text
-http://127.0.0.1:7001/manage/ACCESS_TOKEN
-```
-
-Set `MEDIA_DIR` in `.env` to the Mac folder containing your videos. Restart
-the app, open the management page, and choose a compatible file from the
-**Local file** menu. Files are streamed directly without copying or
-transcoding.
-
-When the menu-bar app is running, the Finder file and folder controls keep
-selected media in its original location without copying it. A folder is added
-as one series; filenames such as `S01E02` or `1x02` supply episode numbers,
-otherwise files become season 1 in filename order. Use **Edit → Relink in
-Finder** after moving or renaming local media.
-
-The browser upload fallback still copies selected videos into managed
-HoshiStream storage. Deleting a Finder-linked entry never deletes its source.
-
-```bash
-export ACCESS_TOKEN='the-value-from-your-.env'
-
-curl -H "Authorization: Bearer $ACCESS_TOKEN" \
-  http://127.0.0.1:7001/api/library
-
-curl -X POST \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"type":"movie","name":"Authorized Movie","magnetUri":"magnet:?xt=urn:btih:YOUR_INFO_HASH"}' \
-  http://127.0.0.1:7001/api/library
-```
-
-For a `.torrent` file, give an absolute path on the Mac:
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"type":"series","name":"Authorized Series","torrentFilePath":"/Users/your-name/Downloads/series.torrent"}' \
-  http://127.0.0.1:7001/api/library
-```
-
-Update, inspect, or delete an entry:
-
-```bash
-curl -X PATCH \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"description":"My private copy","preferredFileIndex":1}' \
-  'http://127.0.0.1:7001/api/library/hoshi%3AITEM_UUID'
-
-curl -X POST \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  'http://127.0.0.1:7001/api/library/hoshi%3AITEM_UUID/inspect'
-
-curl -X DELETE \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  'http://127.0.0.1:7001/api/library/hoshi%3AITEM_UUID'
-```
-
-Inspection may take up to 30 seconds while TorrServer obtains metadata. File IDs are TorrServer’s one-based IDs.
-The management page also probes the selected media for resolution, codecs,
-duration, average bitrate, and a recommended speed with 50% headroom. Set
-`HOME_SPEED_MBPS` to your measured connection speed for the viability verdict.
-
-## Install in Nuvio
-
-Install the tokenized manifest on both clients:
-
-```text
-http://MAC_LAN_IP:7001/addon/ACCESS_TOKEN/manifest.json
-```
-
-URL-encode the token if it contains URL-reserved punctuation. The untokenized `/manifest.json` intentionally returns HTTP 401.
-
-From another LAN device, open the tokenized manifest in a browser first. It should return JSON. Then open `http://MAC_LAN_IP:8090`; this confirms TorrServer is reachable.
-
-## TorrServer API decision
-
-The image is pinned to `ghcr.io/yourok/torrserver:MatriX.141.1`, whose official release supplies Linux arm64. Its live Swagger document reports API version `MatriX.141` at:
-
-```text
-http://127.0.0.1:8090/swagger/index.html
-```
-
-The adapter uses only verified endpoints:
-
-- `GET /echo`
-- `POST /torrents` with `add`, `get`, `list`, and `rem`
-- `POST /torrent/upload`
-- `GET /play/{hash}/{id}`
-
-## Cache, cleanup, and footprint
-
-`torrserver/config/settings.json` configures:
-
-- Disk-backed cache: 2 GiB per active torrent
-- Preload target: 25% of cache, approximately 512 MiB
-- Connection limit: 25
-- Inactive disconnect timeout: 5 minutes
-- Cache deletion when the torrent closes
-- Upload disabled
-- UPnP disabled
-- Rutor and Torznab search disabled
-
-TorrServer has one cache-size setting that applies to either RAM or disk; it cannot provide a separate 512 MiB RAM cache plus 2 GiB disk tier. HoshiStream therefore chooses a bounded 2 GiB disk cache. The MVP assumes one active stream, so its normal cache target remains approximately 2 GiB. Multiple simultaneously active torrents can each allocate that capacity; they are not a supported MVP workload.
-
-TorrServer automatically closes inactive, non-persisted torrents after five minutes. This avoids stale playback URLs during normal TV navigation while `RemoveCacheOnDrop` still removes their disk cache. Logs are written to `~/Library/Logs/HoshiStream/server.log`.
-
-## Performance and codecs
-
-Engineering targets, not guarantees:
-
-- One direct-play stream
-- 720p or compressed 1080p
-- Start within roughly 15 seconds for a healthy torrent
-- Torrent speed at least 1.5× media bitrate
-- Seek recovery in roughly 10–20 seconds
-- Combined memory normally below 1.5 GiB
-- Total images, cache, configuration, and logs near or below 5 GiB
-
-There is no FFmpeg transcoding. Compatibility depends on Nuvio and the television. Prefer MP4 or compatible MKV, H.264 video, AAC or AC3 audio, and SRT or WebVTT subtitles.
-
-## Health and logs
-
-```text
-GET /health
-GET /ready
-```
-
-`/health` confirms the add-on process. `/ready` checks the JSON library and TorrServer `/echo`.
-
-Logs are structured JSON for startup, library mutations, torrent inspection, file selection, stream URL generation, and failures. HoshiStream does not log access tokens, authorization headers, or magnet URIs.
-
-## Security
-
-- Keep both ports on a trusted LAN; never expose them through router forwarding, UPnP, a public tunnel, or the public internet.
-- The add-on protocol uses a secret path token.
-- The management API requires the same token as a bearer credential and compares its digest in constant time.
-- TorrServer serves playback and administration on the same port and does not offer route-level authorization. Its optional Basic Auth also protects playback, which may not work reliably with Nuvio/webOS. For this MVP, the trusted LAN and host firewall are the TorrServer boundary.
-- Anyone who can reach port 8090 on that LAN can reach TorrServer administration. Use a separate guest-free VLAN or host firewall if the LAN is not trusted.
-- No telemetry or external account is used.
-
-## Troubleshooting
-
-**Port returns `Server: AirTunes` or HTTP 403:** macOS AirPlay Receiver owns port 7000. The app defaults to 7001 to avoid it; if you set `ADDON_PORT=7000`, either turn off **System Settings → General → AirDrop & Handoff → AirPlay Receiver** and restart the app, or pick another port.
-
-**Manifest works on the Mac but not the TV:** confirm the public URLs use the LAN IP, not `127.0.0.1` or `torrserver`; verify both devices are on the same non-isolated network.
-
-**TorrServer unavailable:** check `~/Library/Logs/HoshiStream/server.log` and open `/swagger/index.html`.
-
-**No playable files:** inspect the entry. Supported extensions are `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, and `.m4v`. Set `preferredFileIndex` to an inspected playable file ID when automatic selection is wrong.
-
-**Playback stalls:** choose a healthier authorized torrent, compare peer download speed with the media bitrate, keep the Mac awake, and test a webOS-compatible codec.
-
-**Corrupt library JSON:** the add-on quarantines an unreadable `library.json` as `library.json.corrupt-<timestamp>` and restores the last-known-good `library.json.bak` automatically. If both are damaged, stop the stack and repair the file as a JSON array. Atomic writes prevent partial replacement during normal management API updates.
-
-## Development checks
-
-```bash
-cd addon
-npm ci
-npm run typecheck
-npm test
-npm run lint
-npm run format:check
-
-TORRSERVER_TEST_URL=http://127.0.0.1:8090 npm test
-```
-
-The optional integration test checks only health and the empty/list response; it downloads no media.
-
-To run the server from a checkout without building or installing the app, use
-`./scripts/start-native.sh --dev` (or `npm run dev:native` from `addon/` for a
-foreground process that restarts on save). The add-on runs straight from
-`addon/src` — no `tsc` step. See `hoshistream_docs/guides/development.md`.
-
-## Cleanup and uninstall
-
-Remove one inactive torrent through TorrServer’s UI, or quit the app from the menu bar to stop both services.
-
-To uninstall, quit the app from the menu bar, then delete `/Applications/HoshiStream.app`. All mutable state lives in `~/Library/Application Support/HoshiStream` (library, managed media, TorrServer config and cache) with logs in `~/Library/Logs/HoshiStream`. Those survive an app deletion, so a reinstall keeps your library; remove them too for a clean slate, which permanently deletes the local library, configuration, and cache.
+The fetched runtimes are checksum-pinned; the app's Node version comes from
+`packaging/node-lock.json`, independently of the source-mode minimum. No macOS
+mpv fetch is needed. The app is `build/HoshiStream.app`; the local-validation
+DMG is `build/HoshiStream-<buildId>-darwin-arm64-LOCAL-ONLY.dmg`, with checksum,
+build metadata and notes alongside it.
+
+For personal use, quit an existing instance, copy `build/HoshiStream.app` into
+Applications with Finder, and open it. **Leave `HOSHISTREAM_PROJECT_ROOT` unset**
+for portable builds: state and credentials are created on the recipient's Mac,
+never copied from your checkout. Use a separate `HOSHISTREAM_BUILD_DIR` to
+preserve an existing build.
+
+**Building is not redistribution approval.** The normal DMG command (without
+`--stage-only`) requires reviewed exact third-party source/license/build
+materials. Publication also waits for the remaining beta acceptance gates.
+See the [full build guide](hoshistream_docs/guides/setup-native-macos.md) and
+[distribution requirements](hoshistream_docs/guides/distributing-macos-app.md).
+
+Windows 11 x64 remains a separately gated
+[desktop candidate](hoshistream_docs/guides/setup-native-windows.md), not part of
+this initial cohort. Architecture, API examples, tuning and engineering checks
+live in the [documentation index](hoshistream_docs/index.md).
