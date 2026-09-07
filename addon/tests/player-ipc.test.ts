@@ -1,9 +1,15 @@
 import { createServer, type Server } from "node:net";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PlayerIpc, PlayerIpcError } from "../src/player-ipc.ts";
+
+const missingSocket =
+  process.platform === "win32"
+    ? `\\\\.\\pipe\\hoshistream-missing-${randomUUID()}`
+    : "/nonexistent/mpv.sock";
 
 // Speaks the same line-delimited JSON protocol as mpv's --input-ipc-server so
 // the client can be exercised without the real binary installed.
@@ -11,7 +17,10 @@ async function fakeMpv(
   handler: (command: unknown[]) => { error: string; data?: unknown },
 ) {
   const directory = await mkdtemp(join(tmpdir(), "hoshistream-ipc-"));
-  const socketPath = join(directory, "mpv.sock");
+  const socketPath =
+    process.platform === "win32"
+      ? `\\\\.\\pipe\\hoshistream-ipc-test-${randomUUID()}`
+      : join(directory, "mpv.sock");
   const received: unknown[][] = [];
   const clients: import("node:net").Socket[] = [];
   const server: Server = createServer((socket) => {
@@ -45,12 +54,13 @@ async function fakeMpv(
   return {
     socketPath,
     received,
-    emit(event: object) {
+    emit(event: unknown) {
       for (const socket of clients)
         if (!socket.destroyed) socket.write(`${JSON.stringify(event)}\n`);
     },
     async close() {
-      server.close();
+      for (const socket of clients) socket.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(directory, { recursive: true, force: true });
     },
   };
@@ -101,14 +111,14 @@ describe("player IPC", () => {
   });
 
   it("refuses commands when not connected", async () => {
-    const ipc = new PlayerIpc("/nonexistent/mpv.sock");
+    const ipc = new PlayerIpc(missingSocket);
     await expect(ipc.command("loadfile", "x")).rejects.toBeInstanceOf(
       PlayerIpcError,
     );
   });
 
   it("gives up connecting to a socket that never appears", async () => {
-    const ipc = new PlayerIpc("/nonexistent/mpv.sock");
+    const ipc = new PlayerIpc(missingSocket);
     await expect(ipc.connect(2, 1)).rejects.toBeInstanceOf(PlayerIpcError);
   });
 
@@ -144,7 +154,7 @@ describe("player IPC", () => {
     const mpv = await fakeMpv(() => ({ error: "success", data: 1 }));
     const ipc = new PlayerIpc(mpv.socketPath);
     await ipc.connect();
-    mpv.emit("not json" as unknown as object);
+    mpv.emit("not json");
 
     await expect(ipc.command("loadfile", "x")).resolves.toBe(1);
 

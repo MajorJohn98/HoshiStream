@@ -1,11 +1,11 @@
 # Chrome companion
 
-The companion adds manually selected media to HoshiStream on the same Mac.
+The companion adds manually selected media to HoshiStream on the same computer.
 It does not search torrent indexes or require a server address/access token.
 
 ## Normal use
 
-1. Open the HoshiStream macOS app once so it registers its native helper.
+1. Open the HoshiStream desktop app once so it registers its native helper.
 2. Install and pin the Chrome companion.
 3. Right-click a magnet link and choose **Add to HoshiStream**, or open the
    companion's side panel from the toolbar.
@@ -22,6 +22,11 @@ of overlapping episodes. A saved/check-failed result is still saved; retry the
 check rather than creating the entry again.
 
 ## Current local-development installation
+
+The commands in this section are for macOS. Windows needs the built Windows
+native-host executable; running just the Node server does not install a native
+Chrome bridge. See [Windows setup](setup-native-windows.md) for the desktop
+candidate and private extension installation.
 
 The extension has not been published to the Chrome Web Store. For this version,
 local testing uses Chrome's **Load unpacked** flow:
@@ -60,6 +65,19 @@ The macOS build includes the native host, registration script and companion
 assets. The supervisor requests registration on normal startup. Install the app
 in its final location and open it before using the companion.
 
+Windows desktop builds include a separate native-messaging executable under
+`native-host/`. The per-user
+`HKCU\Software\Google\Chrome\NativeMessagingHosts\com.hoshistream.chrome`
+registration points to an absolute manifest path. Configuration remains under
+the private state directory, contains no access token, and permits only the
+matching extension ID. Upgrades/uninstall must change only registrations owned
+by that installation.
+
+For the agreed unsigned Windows private-sharing release, load the matching
+extension ZIP unpacked. This is a private testing/distribution workflow, not a
+claim that the extension is published or that the desktop installer installs
+it in Chrome automatically.
+
 For a production release, reserve/publish a Chrome Web Store listing, obtain its
 public key/ID, update the extension manifest identity, and rebuild the app so the
 native host allowlist matches. Do not tell normal users to use Developer mode as
@@ -87,5 +105,6 @@ building the extension zip.
 - **Check failed:** the entry is retained. Open it to retry, select files, or use
   the existing compatible/native playback options.
 
-No Windows native helper or LAN-server connection is included in this first
-version. Use only media you are authorized to access.
+The Windows desktop release extends native helper support under ADR 0022.
+Connecting the companion to a different LAN computer remains unsupported.
+Use only media you are authorized to access.

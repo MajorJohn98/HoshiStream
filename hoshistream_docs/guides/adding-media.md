@@ -25,16 +25,33 @@ per-add opt-out. Saving happens first. The separate check then resolves metadata
 and reads a bounded sample with ffprobe; torrent checks may contact peers.
 Failures keep the saved entry and offer retry/cancel rather than another Add.
 
-Progress distinguishes queued, inspecting and probing from completed or failed
-checks. A basic check examines one selected file, not every episode. Format,
+Progress distinguishes queued, inspecting and probing from the result. A timeout
+is **inconclusive**, not proof that a torrent is unplayable. **Metadata found**
+means the file listing is available; **Sample read** requires a decoded video
+frame, not merely a codec name in the file header. Browser support is a separate
+hint, not the source's availability.
+
+A basic check examines one selected file, not every episode. Format,
 audio codec, browser capabilities and changing swarm availability can still
 affect actual playback. Use the existing Compatible/native-player options where
 appropriate; checks do not start transcoding or change your selected file.
 
-Checks have a 60-second overall deadline and a 20-second probe limit. TorrServer
+Automatic/basic checks have a 60-second overall deadline and a 20-second probe
+limit. An explicit longer retry has a 180-second total limit; it is never started
+automatically. Both modes are cancellable. TorrServer
 can prefetch cache pieces, so the probe's analysis limit is not a hard network
 byte cap. Restarted/incomplete checks are marked interrupted and are not
 automatically resumed.
+
+Facts are scoped to the file and source that were checked and carry an observation
+time. Older analysis results remain historical information, not current playback
+assurances. A failed later attempt does not erase known codec facts, but also does
+not leave an old positive result as the latest availability result.
+
+The browser player distinguishes slow startup, buffering, autoplay restrictions,
+and decoding errors. Slow startup alone does not switch formats. Use retry/wait
+or explicitly choose another offered quality when needed. **Open direct stream**
+opens the raw media URL; it is not an automated playback test.
 
 ### Open magnet links directly on macOS
 
@@ -153,6 +170,16 @@ curl -X DELETE -H "Authorization: ******" \
 
 ## Inspection and viability
 
-Inspection may take up to 30 seconds while TorrServer fetches metadata; file IDs are TorrServer's one-based IDs. Add `?probe=true` to inspection to read resolution, codecs, duration, and average bitrate, and get a recommended speed with 50% headroom. Set `HOME_SPEED_MBPS` in `.env` to your measured connection speed for the viability verdict.
+Basic inspection allows up to 30 seconds for torrent metadata; file IDs are
+TorrServer's returned one-based IDs. A timeout means metadata did not arrive
+within that attempt's budget, not that the source is dead. Add `?probe=true` to
+inspection for bounded technical analysis through the same queue as source
+checks. Probes read a limited packet window and require an actual decoded video
+frame before reporting sample readability.
+
+Average bitrate and the recommended speed with 50% headroom are estimates.
+`HOME_SPEED_MBPS` and the built-in speed test describe the host's Internet
+download connection, not swarm throughput, client Wi-Fi, or remote upload
+capacity. They do not determine a playable/unplayable verdict.
 
 If automatic file selection is wrong, set `preferredFileIndex` to an inspected playable file ID. For series, `fileOverrides` can include/exclude files and pin season/episode numbers.

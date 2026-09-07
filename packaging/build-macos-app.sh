@@ -19,7 +19,9 @@ if [ -d /Applications/Xcode.app/Contents/Developer ]; then
   export DEVELOPER_DIR
 fi
 
-xcrun swiftc -parse-as-library \
+MIN_MACOS=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" \
+  "$ROOT/supervisor/macos/Info.plist")
+xcrun swiftc -parse-as-library -target "arm64-apple-macos$MIN_MACOS" \
   -module-cache-path "$ROOT/build/swift-module-cache" \
   -framework AppKit \
   -framework ServiceManagement \
@@ -27,6 +29,10 @@ xcrun swiftc -parse-as-library \
   -o "$CONTENTS/MacOS/HoshiStream"
 
 cp "$ROOT/supervisor/macos/Info.plist" "$CONTENTS/Info.plist"
+VERSION=$(node --input-type=module -e \
+  'import { readFileSync } from "node:fs"; const { version } = JSON.parse(readFileSync(process.argv[1], "utf8")); if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error("Invalid app version"); process.stdout.write(version);' \
+  "$ROOT/addon/package.json")
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$CONTENTS/Info.plist"
 # HoshiStreamProjectRoot stays at its PROJECT_ROOT placeholder: the supervisor
 # then resolves ~/Library/Application Support/HoshiStream at runtime, which is
 # what makes the bundle portable to other Macs. Set it only for a dev build
@@ -39,6 +45,9 @@ fi
 cp "$ROOT/vendor/node/darwin-arm64/node" "$RUNTIME/bin/node"
 cp "$ROOT/scripts/native-server.mjs" "$RUNTIME/scripts/native-server.mjs"
 cp "$ROOT/scripts/bootstrap.mjs" "$RUNTIME/scripts/bootstrap.mjs"
+cp "$ROOT/scripts/private-files.mjs" "$RUNTIME/scripts/private-files.mjs"
+cp "$ROOT/scripts/native-runtime.mjs" "$RUNTIME/scripts/native-runtime.mjs"
+cp "$ROOT/scripts/native-control.mjs" "$RUNTIME/scripts/native-control.mjs"
 cp "$ROOT/scripts/lan-ip.mjs" "$RUNTIME/scripts/lan-ip.mjs"
 cp "$ROOT/scripts/register-browser-bridge.mjs" "$RUNTIME/scripts/register-browser-bridge.mjs"
 cp "$ROOT/packaging/torrserver-settings.json" \
@@ -53,7 +62,7 @@ cp "$ROOT/addon/package.json" "$RUNTIME/addon/package.json"
 DEPS_STAGE="$ROOT/build/deps-stage"
 mkdir -p "$DEPS_STAGE"
 cp "$ROOT/addon/package.json" "$ROOT/addon/package-lock.json" "$DEPS_STAGE/"
-(cd "$DEPS_STAGE" && npm ci --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null)
+(cd "$DEPS_STAGE" && npm ci --cache "$ROOT/build/macos-npm" --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null)
 cp -R "$DEPS_STAGE/node_modules" "$RUNTIME/addon/node_modules"
 cp "$ROOT/vendor/torrserver/darwin-arm64/TorrServer" \
   "$RUNTIME/vendor/torrserver/darwin-arm64/TorrServer"

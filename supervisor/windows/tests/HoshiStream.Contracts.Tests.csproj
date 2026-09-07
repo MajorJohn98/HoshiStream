@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../HoshiStream.Windows/Contracts.cs" Link="Contracts.cs" />
+    <Compile Include="../HoshiStream.Windows/WindowsCommandLine.cs" Link="WindowsCommandLine.cs" />
+    <Compile Include="../HoshiStream.Windows/SelfTests.cs" Link="SelfTests.cs" />
+    <Compile Include="../HoshiStream.Windows/RuntimeDiagnostics.cs" Link="RuntimeDiagnostics.cs" />
+    <Compile Include="../HoshiStream.Windows/PipeMessages.cs" Link="PipeMessages.cs" />
+    <Compile Include="../HoshiStream.Windows/LocalPipeServer.cs" Link="LocalPipeServer.cs" />
+    <Compile Include="../HoshiStream.Windows/ResourceSamples.cs" Link="ResourceSamples.cs" />
+    <Compile Include="../HoshiStream.Windows/IntegrationCommands.cs" Link="IntegrationCommands.cs" />
+  </ItemGroup>
+</Project>

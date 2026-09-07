@@ -179,6 +179,20 @@ describe("native framing", () => {
 });
 
 describe("native management relay", () => {
+  it("redacts both literal and URL-encoded local tokens", async () => {
+    const specialToken = "private/token+with-reserved-characters";
+    await writeFile(join(root, ".env"), `ACCESS_TOKEN=${specialToken}\n`);
+    const client = new NativeClient(config(), { fetch: fetcher });
+    await client.status();
+    expect(
+      client.redact(
+        `${specialToken} http://127.0.0.1:7001/manage/${encodeURIComponent(specialToken)} magnet:?xt=private`,
+      ),
+    ).toBe(
+      "[redacted] http://127.0.0.1:7001/manage/[redacted] [redacted source]",
+    );
+  });
+
   it("uses only locally read authentication and strips private entry fields", async () => {
     const request = nativeRequestSchema.parse(
       message("createEntry", {

@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
-import type { DirectPlay } from "./direct-play.ts";
+import { assessDirectPlay, type DirectPlay } from "./direct-play.ts";
 import { ImportError } from "./imports/errors.ts";
 import type { SeriesPreviewPlan } from "./imports/series.ts";
 import { tagKey } from "./tags.ts";
@@ -229,6 +229,7 @@ export class Library {
         extraSources: [...(current.extraSources ?? []), plan.source],
         inspectionCache: plan.inspectionCache,
         directPlay: undefined,
+        mediaFacts: undefined,
         sourceCheck: undefined,
         searchReceipts: [...(current.searchReceipts ?? []), receipt],
         updatedAt: new Date().toISOString(),
@@ -287,6 +288,7 @@ export class Library {
         if (CACHE_INVALIDATING_FIELDS.some((field) => field in input)) {
           delete candidate.inspectionCache;
           delete candidate.directPlay;
+          delete candidate.mediaFacts;
         }
         if (
           (
@@ -435,9 +437,47 @@ export class Library {
           entries[index].sourceCheck?.jobId !== expectedJobId)
       )
         return false;
+      const current = entries[index];
+      const observed =
+        check?.phase === "complete" &&
+        check.outcome === "observed" &&
+        check.fileId !== undefined &&
+        check.filePath !== undefined &&
+        check.fileLength !== undefined &&
+        check.technical?.videoCodec &&
+        (check.technical.decodedVideoFrames ?? 0) > 0;
+      const fact =
+        observed && check?.technical
+          ? {
+              revision: check.revision,
+              jobId: check.jobId,
+              fileId: check.fileId!,
+              sourceHash: check.sourceHash,
+              filePath: check.filePath!,
+              fileLength: check.fileLength!,
+              technical: check.technical,
+              observedAt: check.updatedAt,
+            }
+          : undefined;
       entries[index] = libraryEntrySchema.parse({
-        ...entries[index],
+        ...current,
         sourceCheck: check,
+        ...(fact
+          ? {
+              mediaFacts: [
+                ...(current.mediaFacts ?? []).filter(
+                  (item) =>
+                    item.revision === expectedRevision &&
+                    item.fileId !== fact.fileId,
+                ),
+                fact,
+              ],
+              directPlay: {
+                ...assessDirectPlay(fact.technical),
+                probedAt: fact.observedAt,
+              },
+            }
+          : {}),
       });
       return true;
     });

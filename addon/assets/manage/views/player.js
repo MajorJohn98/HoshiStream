@@ -11,15 +11,17 @@
 import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { api, token } from "../api.js";
 import { load, setState, useStore } from "../store.js";
+import {
+  attachPlaybackSource,
+  browserContainerHint,
+  createPlaybackAttempt,
+} from "../playback-attempt.js";
 
 const SAVE_INTERVAL_MS = 10_000;
 const RESUME_MIN_SECONDS = 15;
 // Within this many seconds of the end, the title counts as finished.
 const FINISHED_TAIL_SECONDS = 45;
 const UP_NEXT_SECONDS = 30;
-// A source that has produced no metadata after this long is treated as
-// undecodable and the next quality is tried.
-const STALL_MS = 15_000;
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
 
 function params() {
@@ -66,26 +68,6 @@ function episodeName(file) {
   // "Show - S01E02 - Title (1080p ...)" → "Title"
   const match = /S\d+E\d+\s*[-–.]\s*([^([]+)/i.exec(base);
   return match ? match[1].replace(/[._]/g, " ").trim() : "";
-}
-
-function attachSource(video, url) {
-  if (
-    url.includes(".m3u8") &&
-    !video.canPlayType("application/vnd.apple.mpegurl")
-  ) {
-    return import("../vendor/hls.js").then(({ default: Hls }) => {
-      if (!Hls.isSupported()) throw new Error("HLS is not supported here");
-      const hls = new Hls();
-      hls.loadSource(url);
-      hls.attachMedia(video);
-      return () => hls.destroy();
-    });
-  }
-  video.src = url;
-  return Promise.resolve(() => {
-    video.removeAttribute("src");
-    video.load();
-  });
 }
 
 // HLS repair sessions report an infinite duration while ffmpeg is still
@@ -189,6 +171,9 @@ export function PlayerView() {
   const stageRef = useRef(null);
   const seekRef = useRef(null);
   const hideTimer = useRef(null);
+  const attemptRef = useRef(null);
+  const playbackGeneration = useRef(0);
+  const recoveryNotice = useRef("");
   const [request, setRequest] = useState(params());
   const [streams, setStreams] = useState(null);
   const [active, setActive] = useState(0);
@@ -262,6 +247,7 @@ export function PlayerView() {
   useEffect(() => {
     if (!entry) return;
     let alive = true;
+    const controller = new AbortController();
     setStreams(null);
     setActive(0);
     setError(null);
@@ -278,6 +264,12 @@ export function PlayerView() {
         "/" +
         encodeURIComponent(id) +
         ".json",
+      {
+        signal: AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(60_000),
+        ]),
+      },
     )
       .then((response) => {
         if (!response.ok)
@@ -324,6 +316,7 @@ export function PlayerView() {
       );
     return () => {
       alive = false;
+      controller.abort();
     };
   }, [entry?.id, file?.id, reload]);
 
@@ -334,8 +327,62 @@ export function PlayerView() {
     if (!video || !stream) return;
     let cleanup;
     let alive = true;
+    let playbackObserved = false;
+    const own = ++playbackGeneration.current;
+    const controller = new AbortController();
+    setError(null);
+    setNotice(recoveryNotice.current);
+    recoveryNotice.current = "";
+    setTime(0);
+    setDuration(0);
+    setBuffered(0);
+    const failure = (error) => {
+      if (!alive || playbackGeneration.current !== own) return;
+      if (error.kind === "codec" && active + 1 < streams.length) {
+        recoveryNotice.current =
+          qualityLabel(stream) +
+          " could not decode here - trying " +
+          qualityLabel(streams[active + 1]);
+        setActive(active + 1);
+      } else setError(error);
+    };
+    const attempt = createPlaybackAttempt(video, {
+      isCurrent: () => alive && playbackGeneration.current === own,
+      onState: (status) => {
+        setStreamStatus(status);
+        setWaiting(
+          ["loading-media", "slow-start", "metadata", "buffering"].includes(
+            status,
+          ),
+        );
+        if (["awaiting-play", "ready", "paused"].includes(status))
+          setPaused(true);
+        if (status === "playing") {
+          playbackObserved = true;
+          setPaused(false);
+          setNotice("");
+        }
+      },
+      onFailure: failure,
+      onSlow: () =>
+        setNotice(
+          "Still waiting for media. This does not mean the format is unsupported.",
+        ),
+    });
+    attemptRef.current = attempt;
     const entryId = entry.id;
     const fileId = file?.id;
+    const technical =
+      entry.type === "movie" || entry.sourceCheck?.fileId === fileId
+        ? entry.sourceCheck?.technical
+        : undefined;
+    if (
+      !stream.url.includes(".m3u8") &&
+      browserContainerHint(video, technical) === "unsupported"
+    )
+      setNotice(
+        "This browser reports limited container support. Trying playback without changing your source.",
+      );
     const key = positionKey(entryId, fileId);
     // Server position wins when it belongs to this file; localStorage covers
     // the seconds since the last server save.
@@ -349,28 +396,34 @@ export function PlayerView() {
     video.volume = volume;
     video.muted = muted;
     video.playbackRate = speed;
-    attachSource(video, stream.url)
+    const resume = () => {
+      if (!alive || start <= RESUME_MIN_SECONDS) return;
+      video.currentTime = start;
+      setResumedFrom(start);
+      setTimeout(() => alive && setResumedFrom(0), 4000);
+    };
+    video.addEventListener("loadedmetadata", resume, { once: true });
+    attachPlaybackSource(video, stream.url, {
+      signal: controller.signal,
+      onFailure: attempt.fail,
+    })
       .then((detach) => {
         if (!alive) return detach();
         cleanup = detach;
-        if (start > RESUME_MIN_SECONDS) {
-          video.currentTime = start;
-          setResumedFrom(start);
-          setTimeout(() => alive && setResumedFrom(0), 4000);
-        }
-        return video.play().catch(() => undefined);
+        return attempt.play();
       })
       .catch(
         (sourceError) =>
           alive &&
-          setError({
-            kind: "codec",
-            message: sourceError.message,
+          attempt.fail({
+            kind: sourceError.kind || "network",
+            message: sourceError.message || "The stream could not be attached.",
           }),
       );
 
     let lastSaved = -1;
     const save = () => {
+      if (!playbackObserved) return;
       const position = Math.floor(video.currentTime);
       const total = Number.isFinite(video.duration) ? video.duration : 0;
       const finished =
@@ -399,17 +452,6 @@ export function PlayerView() {
         ...(fileId === undefined ? {} : { fileId }),
       });
     };
-    const stall = setTimeout(() => {
-      if (!alive || video.readyState > 0 || video.error) return;
-      if (active + 1 < streams.length) {
-        setNotice(
-          qualityLabel(stream) +
-            " isn't starting — switched to " +
-            qualityLabel(streams[active + 1]),
-        );
-        setActive(active + 1);
-      }
-    }, STALL_MS);
     const timer = setInterval(save, SAVE_INTERVAL_MS);
     const onHide = () => {
       if (document.hidden) save();
@@ -421,7 +463,10 @@ export function PlayerView() {
     return () => {
       alive = false;
       save();
-      clearTimeout(stall);
+      attempt.stop();
+      if (attemptRef.current === attempt) attemptRef.current = null;
+      controller.abort();
+      video.removeEventListener("loadedmetadata", resume);
       clearInterval(timer);
       video.removeEventListener("pause", save);
       video.removeEventListener("ended", save);
@@ -461,45 +506,6 @@ export function PlayerView() {
         : [];
       setTracks({ audio, text });
     };
-    const onPlaying = () => {
-      setWaiting(false);
-      setStreamStatus("playing");
-    };
-    // A source the browser cannot decode: try the next quality (usually the
-    // repaired "Compatible" stream) before giving up.
-    const onError = () => {
-      const code = video.error?.code;
-      if (code === 3 || code === 4) {
-        if (streams && active + 1 < streams.length) {
-          setNotice(
-            qualityLabel(streams[active]) +
-              " won't play here — switched to " +
-              qualityLabel(streams[active + 1]),
-          );
-          setActive(active + 1);
-          return;
-        }
-        setStreamStatus("idle");
-        return setError({
-          kind: "codec",
-          message: "This browser cannot decode the stream.",
-        });
-      }
-      if (code !== 2) return;
-      setStreamStatus("idle");
-      setError({
-        kind: "network",
-        message: "The stream stopped responding during playback.",
-      });
-    };
-    const onWaitingForBuffer = () => {
-      setWaiting(true);
-      if (streams) setStreamStatus("buffering");
-    };
-    const onMetadata = () => {
-      setStreamStatus("playing");
-      sync();
-    };
     const events = [
       "play",
       "pause",
@@ -508,23 +514,15 @@ export function PlayerView() {
       "volumechange",
       "progress",
       "ratechange",
+      "loadedmetadata",
+      "canplay",
+      "seeked",
+      "playing",
     ];
     for (const name of events) video.addEventListener(name, sync);
-    video.addEventListener("loadedmetadata", onMetadata);
-    for (const name of ["waiting", "seeking"])
-      video.addEventListener(name, onWaitingForBuffer);
-    for (const name of ["playing", "seeked", "canplay"])
-      video.addEventListener(name, onPlaying);
-    video.addEventListener("error", onError);
     sync();
     return () => {
-      video.removeEventListener("error", onError);
-      video.removeEventListener("loadedmetadata", onMetadata);
       for (const name of events) video.removeEventListener(name, sync);
-      for (const name of ["waiting", "seeking"])
-        video.removeEventListener(name, onWaitingForBuffer);
-      for (const name of ["playing", "seeked", "canplay"])
-        video.removeEventListener(name, onPlaying);
     };
   }, [streams, active, scrubbing]);
 
@@ -547,7 +545,7 @@ export function PlayerView() {
       showChrome();
       if (key === " " || key === "k") {
         event.preventDefault();
-        if (video.paused) void video.play();
+        if (video.paused) void attemptRef.current?.play();
         else video.pause();
       } else if (key === "ArrowLeft" || key === "j") video.currentTime -= 10;
       else if (key === "ArrowRight" || key === "l") video.currentTime += 10;
@@ -714,7 +712,7 @@ export function PlayerView() {
         onClick=${(event) => {
           event.stopPropagation();
           if (menu) return setMenu(null);
-          if (video?.paused) void video.play();
+          if (video?.paused) void attemptRef.current?.play();
           else video?.pause();
         }}
         onDblClick=${toggleFullscreen}
@@ -724,7 +722,7 @@ export function PlayerView() {
       ></video>
 
       ${
-        waiting && !paused && !error
+        waiting && !error
           ? html`<div class="pl-spinner" aria-label="Buffering"></div>`
           : null
       }
@@ -735,7 +733,7 @@ export function PlayerView() {
               aria-label="Play"
               onClick=${(event) => {
                 event.stopPropagation();
-                void video?.play();
+                void attemptRef.current?.play();
               }}
             >
               <${Icon} name="play" size="34" />
@@ -743,27 +741,51 @@ export function PlayerView() {
           : null
       }
       ${
-        notice || resumedFrom
-          ? html`<div class="pl-toast">
-              ${notice || "Resumed from " + clock(resumedFrom)}
+        notice || resumedFrom || streamStatus === "awaiting-play"
+          ? html`<div class="pl-toast" role="status" aria-live="polite">
+              ${streamStatus === "awaiting-play" ? "Autoplay was blocked. Press Play to start." : notice || "Resumed from " + clock(resumedFrom)}
             </div>`
           : null
       }
       ${
         error
-          ? html`<div class="pl-error">
+          ? html`<div class="pl-error" role="alert">
               <p class="danger">${error.message}</p>
               <p class="muted">
                 ${
                   error.kind === "codec"
                     ? "Browsers cannot decode every codec — try the Compatible quality if one is offered."
                     : error.kind === "network"
-                      ? "The stream request started, but playback stalled. Retry, then review the entry if it happens again."
+                      ? "Check whether this browser can reach the media URL. Network, CORS, or HTTPS restrictions can differ from the host's source check."
                       : "This looks unresolved rather than unsupported. Open the entry and review its source check, then retry."
                 }
               </p>
               <div class="row tight stacked-sm">
                 <button class="secondary" onClick=${retry}>Retry</button>
+                ${
+                  error.kind === "timeout"
+                    ? html`<button
+                        class="secondary"
+                        onClick=${() => {
+                          setError(null);
+                          setNotice("");
+                          void attemptRef.current?.play({ retry: true });
+                        }}
+                      >
+                        Wait longer
+                      </button>`
+                    : null
+                }
+                ${
+                  streams && active + 1 < streams.length
+                    ? html`<button
+                        class="secondary"
+                        onClick=${() => setActive(active + 1)}
+                      >
+                        Try ${qualityLabel(streams[active + 1])}
+                      </button>`
+                    : null
+                }
                 <button class="primary" onClick=${openEntryCheck}>
                   Open entry check
                 </button>
@@ -1006,7 +1028,7 @@ export function PlayerView() {
             aria-label=${paused ? "Play" : "Pause"}
             title=${paused ? "Play (Space)" : "Pause (Space)"}
             onClick=${() => {
-              if (video?.paused) void video.play();
+              if (video?.paused) void attemptRef.current?.play();
               else video?.pause();
             }}
           >

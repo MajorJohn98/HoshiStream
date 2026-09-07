@@ -1,0 +1,29 @@
+{
+  "dotnetSdk": "10.0.103",
+  "dotnetRuntime": "10.0.11",
+  "dotnetRuntimeReleaseDate": "2026-08-11",
+  "dotnetRuntimeVerifiedDate": "2026-09-06",
+  "dotnetReleaseMetadata": "https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json",
+  "notices": [
+    {
+      "component": "node",
+      "version": "v26.3.1",
+      "name": "node-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/nodejs/node/v26.3.1/LICENSE",
+      "sha256": "148eacf7863ef4329224a29398623077200a27194aa075569faf4a0a85566ca5"
+    },
+    {
+      "component": "torrserver",
+      "version": "MatriX.141",
+      "name": "torrserver-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/YouROK/TorrServer/MatriX.141/LICENSE",
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    }
+  ],
+  "innoSetup": {
+    "version": "6.7.1",
+    "name": "innosetup-6.7.1.exe",
+    "url": "https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe",
+    "sha256": "4d11e8050b6185e0d49bd9e8cc661a7a59f44959a621d31d11033124c4e8a7b0"
+  }
+}

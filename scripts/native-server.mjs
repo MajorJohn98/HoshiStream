@@ -13,18 +13,19 @@ import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { defaultMediaDir, ensureFirstRunSetup } from "./bootstrap.mjs";
 import { lanIp } from "./lan-ip.mjs";
+import {
+  claimRuntimeState,
+  createRuntimeControl,
+  ensurePortsFree,
+  loadAddon,
+  nativeOptions,
+  portNumber,
+  waitForService,
+} from "./native-runtime.mjs";
 
 const runtimeRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const options = Object.fromEntries(
-  process.argv
-    .slice(2)
-    .filter((value) => value.startsWith("--"))
-    .map((value) => {
-      const [key, ...rest] = value.slice(2).split("=");
-      return [key, rest.join("=") || "true"];
-    }),
-);
-const torrServerPort = Number(options["torrserver-port"] ?? 8090);
+const options = nativeOptions(process.argv.slice(2));
+const torrServerPort = portNumber(options["torrserver-port"] ?? 8090);
 // --dev runs the add-on straight from addon/src via Node's type stripping,
 // skipping the tsc build. Only meaningful from a checkout; packaged bundles
 // ship dist/ alone.
@@ -35,6 +36,7 @@ const projectRoot = resolve(options["project-root"] ?? runtimeRoot);
 const stateRoot = resolve(
   options["state-dir"] ?? join(projectRoot, "native-data"),
 );
+const identity = await claimRuntimeState(stateRoot);
 // First run on a new machine has no .env: create the state directory and a
 // generated access token rather than failing to start.
 const { environment: projectEnvironment, firstRun } = await ensureFirstRunSetup(
@@ -43,10 +45,7 @@ const { environment: projectEnvironment, firstRun } = await ensureFirstRunSetup(
     mediaDir: defaultMediaDir(),
   },
 );
-if (
-  options["register-browser-bridge"] === "true" &&
-  process.platform === "darwin"
-) {
+if (options["register-browser-bridge"] === "true") {
   try {
     const { registerBrowserBridge } =
       await import("./register-browser-bridge.mjs");
@@ -63,7 +62,7 @@ if (
     );
   }
 }
-const addonPort = Number(
+const addonPort = portNumber(
   options["addon-port"] ?? projectEnvironment.ADDON_PORT ?? 7001,
 );
 const mediaRoot = resolve(
@@ -189,20 +188,11 @@ async function seedTorrServerConfig() {
   });
 }
 
-async function waitFor(url, timeoutMs = 30_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return;
-    } catch {}
-    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
-  }
-  throw new Error(`Service did not become ready on port ${new URL(url).port}`);
-}
-
 await access(binary);
 const accessToken = existingToken();
+if (addonPort === torrServerPort)
+  throw new Error("The add-on and TorrServer must use different ports");
+await ensurePortsFree([addonPort, torrServerPort]);
 await mkdir(uploadRoot, { recursive: true });
 await mkdir(mediaRoot, { recursive: true });
 await mkdir(configRoot, { recursive: true });
@@ -225,7 +215,7 @@ const torrServer = spawn(
     torrentsRoot,
     "--dontkill",
   ],
-  { stdio: ["ignore", "pipe", "pipe"] },
+  { stdio: ["ignore", "pipe", "pipe"], windowsHide: true },
 );
 for (const output of [torrServer.stdout, torrServer.stderr]) {
   createInterface({ input: output }).on("line", (line) =>
@@ -234,11 +224,19 @@ for (const output of [torrServer.stdout, torrServer.stderr]) {
 }
 
 let addon;
+let addonStartup;
+let control;
+let controlStartup;
+let parentInput;
 let stopping = false;
+const startup = new AbortController();
 
 async function stop(exitCode = 0) {
   if (stopping) return;
   stopping = true;
+  startup.abort();
+  parentInput?.close();
+  if (options["parent-control"] === "true") process.stdin.destroy();
   if (parentWatchdog) clearInterval(parentWatchdog);
   // A daemon that fails to exit keeps holding the ports, so the next launch
   // silently serves the old process. Guarantee termination even when a child
@@ -247,19 +245,63 @@ async function stop(exitCode = 0) {
     console.error(
       JSON.stringify({ level: "warn", event: "forced_exit", exitCode }),
     );
-    process.exit(exitCode);
+    if (
+      torrServer.pid &&
+      torrServer.exitCode === null &&
+      torrServer.signalCode === null
+    )
+      torrServer.kill("SIGKILL");
+    process.exit(1);
   }, SHUTDOWN_TIMEOUT_MS);
   forceExit.unref();
-  await addon?.close().catch(() => undefined);
-  if (torrServer.exitCode === null) {
+  try {
+    if (addonStartup) addon = await addonStartup;
+    await addon?.close();
+  } catch {
+    exitCode = 1;
+    console.error(
+      JSON.stringify({ level: "error", event: "addon_shutdown_failed" }),
+    );
+  }
+  if (
+    torrServer.pid &&
+    torrServer.exitCode === null &&
+    torrServer.signalCode === null
+  ) {
+    const exited = new Promise((resolveExit) =>
+      torrServer.once("exit", resolveExit),
+    );
+    let childTimeout;
     torrServer.kill("SIGTERM");
-    await Promise.race([
-      new Promise((resolveExit) => torrServer.once("exit", resolveExit)),
-      new Promise((resolveWait) => setTimeout(resolveWait, 5_000)),
-    ]);
-    if (torrServer.exitCode === null) torrServer.kill("SIGKILL");
+    try {
+      await Promise.race([
+        exited,
+        new Promise((resolveWait) => {
+          childTimeout = setTimeout(resolveWait, 5_000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(childTimeout);
+    }
+    if (torrServer.exitCode === null && torrServer.signalCode === null) {
+      torrServer.kill("SIGKILL");
+      await exited;
+    }
   }
   await unlink(pidPath).catch(() => undefined);
+  try {
+    if (controlStartup) control = await controlStartup;
+    await control?.close();
+  } catch {
+    exitCode = 1;
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "native_control_cleanup_failed",
+      }),
+    );
+  }
+  await identity.release();
   clearTimeout(forceExit);
   process.exitCode = exitCode;
 }
@@ -272,7 +314,9 @@ async function stop(exitCode = 0) {
 // expected and the watchdog must stay off.
 const initialParentPid = process.ppid;
 const parentWatchdog =
-  initialParentPid > 1 && options.detached !== "true"
+  process.platform !== "win32" &&
+  initialParentPid > 1 &&
+  options.detached !== "true"
     ? setInterval(() => {
         if (process.ppid === initialParentPid) return;
         console.error(
@@ -282,22 +326,60 @@ const parentWatchdog =
             initialParentPid,
           }),
         );
-        void stop();
+        requestStop();
       }, 2_000)
     : undefined;
 parentWatchdog?.unref();
 
 // Watch mode and the terminal can deliver the same signal. Keep handlers
 // installed until asynchronous child cleanup has finished.
-process.on("SIGINT", () => void stop());
-process.on("SIGTERM", () => void stop());
-process.on("SIGHUP", () => void stop());
+function requestStop(exitCode = 0) {
+  void stop(exitCode).catch(() => {
+    console.error(
+      JSON.stringify({ level: "error", event: "native_shutdown_failed" }),
+    );
+    process.exit(1);
+  });
+}
+process.on("SIGINT", () => requestStop());
+process.on("SIGTERM", () => requestStop());
+process.on("SIGHUP", () => requestStop());
+torrServer.once("error", () => {
+  console.error(
+    JSON.stringify({ level: "error", event: "torrserver_spawn_failed" }),
+  );
+  requestStop(1);
+});
 torrServer.once("exit", (code) => {
-  if (!stopping) void stop(code || 1);
+  if (!stopping) requestStop(code || 1);
 });
 
 try {
-  await waitFor(`http://127.0.0.1:${torrServerPort}/echo`);
+  controlStartup = createRuntimeControl({
+    stateRoot,
+    identity,
+    addonPort,
+    shutdown: () => requestStop(),
+  });
+  control = await controlStartup;
+  if (options["parent-control"] === "true") {
+    parentInput = createInterface({ input: process.stdin });
+    parentInput.on("line", (line) => {
+      if (line.length > 256) return requestStop(1);
+      try {
+        const command = JSON.parse(line);
+        if (command.version !== 1 || command.command !== "shutdown")
+          return requestStop(1);
+        requestStop();
+      } catch {
+        requestStop(1);
+      }
+    });
+    parentInput.once("close", () => requestStop());
+  }
+  await waitForService(`http://127.0.0.1:${torrServerPort}/echo`, {
+    signal: startup.signal,
+  });
   Object.assign(process.env, {
     ADDON_PORT: String(addonPort),
     TORRSERVER_INTERNAL_URL: `http://127.0.0.1:${torrServerPort}`,
@@ -306,15 +388,20 @@ try {
     ACCESS_TOKEN: accessToken,
     LIBRARY_PATH: libraryPath,
     ONBOARDING_PATH: join(stateRoot, "onboarding.json"),
+    TAGS_PATH: join(stateRoot, "tags.json"),
+    DEVICE_NAMES_PATH: join(stateRoot, "device-names.json"),
+    VOLUMES_PATH: join(stateRoot, "volumes.json"),
+    DISK_CLEANUP_PATH: join(stateRoot, "disk-cleanup.json"),
+    DISK_SCHEDULE_PATH: join(stateRoot, "disk-schedule.json"),
     ONBOARDING_FIRST_RUN: firstRun ? "true" : "false",
     MEDIA_ROOT: mediaRoot,
     UPLOAD_ROOT: uploadRoot,
-    // Unix-socket Finder picker; Windows has no supervisor socket, so the
-    // add-on reports the picker unavailable and the UI uses browser paths.
-    ...(process.platform !== "win32"
-      ? { NATIVE_PICKER_SOCKET: join(stateRoot, "run", "supervisor.sock") }
-      : {}),
+    NATIVE_PICKER_SOCKET:
+      process.env.NATIVE_PICKER_SOCKET ??
+      join(stateRoot, "run", "supervisor.sock"),
     HOME_SPEED_MBPS: projectEnvironment.HOME_SPEED_MBPS ?? "10",
+    LAN_REDIRECT: projectEnvironment.LAN_REDIRECT ?? "auto",
+    MDNS_ENABLED: projectEnvironment.MDNS_ENABLED ?? "true",
     PLAYER: projectEnvironment.PLAYER ?? "auto",
     ...(projectEnvironment.PLAYER_PATH
       ? { PLAYER_PATH: projectEnvironment.PLAYER_PATH }
@@ -340,30 +427,40 @@ try {
     FFMPEG_PATH: await ffmpegBinary(),
     FFPROBE_PATH: await ffprobeBinary(),
   });
+  startup.signal.throwIfAborted();
   const addonEntry = devMode ? "addon/src/index.ts" : "addon/dist/index.js";
-  const { startHoshiStream } = await import(
-    new URL(addonEntry, `${pathToFileURL(runtimeRoot)}/`)
+  const { startHoshiStream } = await loadAddon(
+    new URL(addonEntry, `${pathToFileURL(runtimeRoot)}/`),
+    startup.signal,
   );
-  addon = await startHoshiStream();
-  await waitFor(`http://127.0.0.1:${addonPort}/ready`);
-  console.log(
-    JSON.stringify({
-      level: "info",
-      event: "native_ready",
-      address,
-      addonPort,
-      torrServerPort,
-      stateRoot,
-      ...(devMode ? { devMode, addonEntry } : {}),
-    }),
-  );
+  addonStartup = startHoshiStream();
+  addon = await addonStartup;
+  if (!stopping) {
+    await waitForService(`http://127.0.0.1:${addonPort}/ready`, {
+      signal: startup.signal,
+    });
+    control.markReady();
+    console.log(
+      JSON.stringify({
+        level: "info",
+        event: "native_ready",
+        address,
+        addonPort,
+        torrServerPort,
+        stateRoot,
+        ...(devMode ? { devMode, addonEntry } : {}),
+      }),
+    );
+  }
 } catch (error) {
-  console.error(
-    JSON.stringify({
-      level: "error",
-      event: "native_start_failed",
-      error: error instanceof Error ? error.message : String(error),
-    }),
-  );
-  await stop(1);
+  if (!stopping) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "native_start_failed",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    requestStop(1);
+  }
 }

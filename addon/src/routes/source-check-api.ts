@@ -5,6 +5,7 @@ const requestSchema = z
   .object({
     probe: z.boolean().optional(),
     fileId: z.number().int().nonnegative().optional(),
+    mode: z.enum(["basic", "extended"]).optional(),
   })
   .strict();
 

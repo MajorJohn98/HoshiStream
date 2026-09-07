@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "node --watch --env-file=.env src/index.ts",
+    "dev": "node --watch --env-file=../.env src/index.ts",
     "dev:native": "node --watch --watch-path=src --watch-path=../scripts ../scripts/native-server.mjs --dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

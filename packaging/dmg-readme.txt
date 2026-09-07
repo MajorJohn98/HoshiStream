@@ -1,6 +1,9 @@
 HoshiStream — install notes
 ===========================
 
+Requires an Apple Silicon Mac running macOS 13.5 or later. Intel Macs are not
+supported by this build.
+
 This build is signed with an ad-hoc signature rather than an Apple Developer
 ID, so macOS quarantines it. Dragging it to Applications and double-clicking
 will be blocked with "Apple could not verify HoshiStream is free of malware"

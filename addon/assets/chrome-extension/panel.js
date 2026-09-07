@@ -1,6 +1,8 @@
 import { PANEL_UPDATE_MESSAGE, MAX_TORRENT_BYTES } from "./lib/constants.js";
 import {
   checkBadge,
+  checkActions,
+  checkDetails,
   checkSummary,
   createCheckPoller,
   isActiveCheck,
@@ -642,32 +644,21 @@ function renderCheck() {
     refs.checkCopy,
     state.save.checkError
       ? "Saved, but the follow-up check could not start automatically."
-      : "Source checks stay bounded and never claim full playback certainty.",
+      : checkDetails(check) ||
+          "Source checks keep metadata and sample evidence separate from browser support.",
   );
   setText(
     refs.checkMessage,
     state.save.checkError?.message || checkSummary(check, entry.type),
   );
 
-  const actions = [
+  const actions = checkActions(check).map(({ label, command, payload }) =>
     actionButton(
-      check && check.phase !== "unchecked" ? "Refresh check" : "Start check",
-      "secondary",
-      () =>
-        runRequest(
-          check && check.phase !== "unchecked"
-            ? "panel:getCheck"
-            : "panel:startCheck",
-        ),
+      label,
+      command === "panel:cancelCheck" ? "ghost" : "secondary",
+      () => runRequest(command, payload),
     ),
-  ];
-  if (isActiveCheck(check)) {
-    actions.push(
-      actionButton("Cancel check", "ghost", () =>
-        runRequest("panel:cancelCheck"),
-      ),
-    );
-  }
+  );
   replaceChildren(refs.checkActions, actions);
 }
 

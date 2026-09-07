@@ -120,22 +120,42 @@ interactive UI opts into a check after new saves by default.
 
 | Method & path | Contract |
 |---|---|
-| `POST /api/library/{id}/check` | `{probe?: boolean, fileId?: number}`; defaults to a bounded probe; returns `202` with a check report |
+| `POST /api/library/{id}/check` | `{probe?: boolean, fileId?: number, mode?: "basic" \| "extended"}`; defaults to a basic bounded probe; returns `202` with a check report |
 | `GET /api/library/{id}/check` | Current report, or `phase: "unchecked"` for the current source |
 | `DELETE /api/library/{id}/check` | Cancel the active check without removing the entry; returns the report |
 
 Reports include `entryId`, `phase`, `message` and, where applicable, `jobId`,
-`revision`, `probe`, `updatedAt`, `code`, `fileId`, `checkedFiles`, `totalFiles`,
-`technical` and `browserSupport` (`likely`, `limited`, `unknown`). Active phases
+`revision`, `probe`, `mode`, `stage`, `outcome`, `updatedAt`, `code`, `fileId`,
+`sourceHash`, `filePath`, `fileLength`, `checkedFiles`, `totalFiles`, `technical`
+and `browserSupport` (`likely`, `limited`, `unknown`). Active phases
 are `queued`, `inspecting`, `probing`; terminal phases are `complete`, `failed`,
 `cancelled`, `interrupted`.
 
 One check runs at a time, with up to 32 active/queued entries. Identical concurrent
-requests coalesce; conflicting options return `409`. Checks have a 60-second
-overall deadline and a 20-second probe budget. Completed probe results describe
-one selected file and are not a universal playback guarantee.
+requests coalesce; conflicting options, including different modes, return `409`.
+Basic checks have a 60-second overall deadline and a 20-second probe budget.
+An explicitly requested extended check has a 180-second total deadline. No
+automatic escalation occurs. Cancellation drains the active operation before
+another probe can take its slot.
 
-`sourceCheck` is server-owned. Source/selection changes invalidate it; stale jobs
+Job completion is not a universal success verdict. `outcome` distinguishes
+`observed`, `inconclusive`, `invalid`, and `unavailable`; a completed attempt can
+be inconclusive because metadata or a sample did not arrive within its budget.
+`stage` identifies metadata versus sample work. A readable sample requires
+`technical.decodedVideoFrames > 0`, not merely a codec name. `probe: false`
+establishes metadata only. Older reports without this evidence remain historical.
+
+Technical data can include `containerAliases`, `videoProfile`, `videoLevel`,
+`pixelFormat`, `videoTag`, `audioCodecs`, and `audioTracks`, alongside duration,
+resolution and bitrate. Demuxer aliases are not proof of browser container
+support. No result guarantees all files, future availability, or a browser's
+ability to reach or decode its returned stream URL.
+
+`sourceCheck` and `mediaFacts` are server-owned. `mediaFacts` retains successful
+file-scoped observations with source revision, job ID, identity, technical data
+and `observedAt`. A transient failed/inconclusive retry keeps old technical facts,
+but the latest attempt still reports its own outcome. Source/selection changes
+invalidate evidence; stale jobs
 cannot overwrite new source state. Unfinished checks are marked interrupted on
 restart rather than automatically resumed.
 
@@ -170,11 +190,17 @@ Exactly one source is required: `magnetUri` (must start `magnet:?`), `torrentFil
 
 ### Inspection response
 
-Returns the TorrServer registration (`hash`, `files`, `selectedFiles`) plus `homeSpeedMbps`. Add `?probe=true` to include `technical` (resolution, codecs, duration, average bitrate, recommended speed with 50% headroom); probe failures return `technical: {"error": ...}`. Inspection may take up to 30 s; file IDs are TorrServer's one-based IDs.
+Returns the TorrServer registration (`hash`, `files`, `selectedFiles`) plus
+`homeSpeedMbps`. Add `?probe=true` for bounded technical analysis through the same
+coordinator as source checks; the legacy response keeps `technical` and its error
+shape. Plain metadata inspection allows up to 30 seconds per source. File IDs
+are TorrServer's returned one-based IDs.
 
 Multi-torrent series: every source is inspected and the episode lists merge. File IDs become composite — `sourceIndex × 100000 + torrServerFileId` (the primary source keeps raw IDs) — and files from extra sources carry their own `hash`. A file's name parsing wins over the source's `seasonHint`; on duplicate (season, episode) claims the later source wins. Changing `extraSources` clears the inspection cache.
 
-A successful probe also returns `directPlay` and persists it on the library entry:
+A successful sampled probe also returns representative `directPlay` advice.
+File-specific stream consumers use matching `mediaFacts`, not an unscoped verdict
+from a different episode:
 
 ```json
 {
@@ -185,12 +211,21 @@ A successful probe also returns `directPlay` and persists it on the library entr
   "height": 1080,
   "bitrateMbps": 14.7,
   "compatibility": "risky",
-  "warnings": ["dts audio is often software-decoded and is the most common cause of stutter"],
+  "warnings": ["dts audio support depends on the player; this does not measure torrent availability"],
   "probedAt": "2026-08-14T17:33:33.965Z"
 }
 ```
 
-`compatibility` is `direct`, `caution`, or `risky`. It reflects codec support on typical TV players plus a link-capacity check against `HOME_SPEED_MBPS`, and is cleared whenever the source or file selection changes. Non-`direct` verdicts are appended to the Stremio stream description so they are visible at selection time. Direct play is never re-encoded; when stream repair is enabled (ADR 0010), non-direct verdicts additionally trigger a "Compatible" stream (see the add-on protocol reference). Entries also accept a `forceTranscode` boolean via `PATCH`, which always offers the Compatible stream.
+`compatibility` is `direct`, `caution`, `risky`, or `unknown`. It is support advice,
+not proof of torrent availability, and incomplete metadata is never `direct`.
+The browser hint separately accounts for available container/profile/pixel-format
+information. `HOME_SPEED_MBPS` and the host speed test do not affect the grade.
+
+Scoped support warnings can appear in Stremio stream descriptions. Direct play
+is never re-encoded. Existing stream repair, only when enabled, uses matching
+file codec facts and its existing repair policy; it is not enabled merely by an
+inconclusive check. Entries also accept `forceTranscode` via `PATCH`, preserving
+the explicit Compatible-stream override.
 
 ## Stream repair sessions
 
@@ -206,8 +241,8 @@ Available only when `TRANSCODE_ENABLED=true`; the UI's "Stream Repair" view is b
 | Method & path | Description |
 |---|---|
 | `GET /api/status` | Add-on status, TorrServer `{online, version}`, `libraryCount`, `homeSpeedMbps` (measured link speed when available, else the configured fallback), `speed {mbps, source, measuredAt}`, `nativePicker` (supervisor socket present, so Finder pickers work), `streamingActive` (a client requested a stream in the last 5 min; archiver and inspection traffic do not count), `uptimeSeconds`, `transcode {enabled, activeSessions, videoEncoder}` |
-| `POST /api/speedtest` | Measure download speed against Cloudflare's open speed-test endpoint (~8 s) → `{mbps, measuredAt, source}`; also runs once at startup. The result replaces `HOME_SPEED_MBPS` in all direct-play guidance until the next run |
-| `GET\|POST\|DELETE /api/analysis` | Library-wide playback analysis. `POST {force?}` starts a sequential run over entries missing a verdict (`force` re-analyzes all; `409` when already running), `DELETE` cancels between entries, `GET` reports `{running, total, done, current, failed[], startedAt, finishedAt, cancelled}` |
+| `POST /api/speedtest` | Measure host Internet download speed against Cloudflare's open endpoint (~8 s) → `{mbps, measuredAt, source}`; also runs at startup. Advisory only: not swarm speed, client Wi-Fi, remote upload capacity, or a viability verdict |
+| `GET\|POST\|DELETE /api/analysis` | Library-wide bounded analysis through the shared check coordinator. `POST {force?}` checks entries without a current-revision check attempt (`force` explicitly rechecks all, including failed/inconclusive attempts; `409` while active/draining); `DELETE` cancels active work as well as scheduling; `GET` reports `{running, total, done, current, failed[], startedAt, finishedAt, cancelled}` |
 | `GET /api/resources` | Resource usage: per-group process stats (`addon`, `torrServer`, `ffmpeg` repair sessions — CPU %, RSS bytes, process count; `available:false` where `ps` is missing) plus disk usage of the torrent cache, stream-repair sessions, and managed uploads (15 s cache) |
 | `POST /api/stremio-refresh` | Recount catalogs → `{movies, series, total, updatedAt}` (no-store) |
 | `GET /api/media-files` | List files available under the read-only media mount |

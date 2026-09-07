@@ -1,0 +1,64 @@
+HoshiStream Windows third-party software and redistribution requirements
+======================================================================
+
+This payload contains independent third-party programs. Their licenses remain
+applicable. No media content is included. HoshiStream does not run upstream mpv
+installers, updater scripts, or file-association scripts.
+
+Node.js: nodejs.org, MIT and bundled third-party licenses. Exact runtime/version
+is recorded in packaging/node-lock.json. The checksum-pinned upstream LICENSE
+accompanying that runtime is included as node-LICENSE.txt.
+
+.NET Windows Desktop Runtime: github.com/dotnet/runtime and
+github.com/dotnet/winforms. License/notice files from the exact restored runtime
+packages are included under dotnet/ and windowsdesktop/. The .NET SDK is a build
+prerequisite, not an end-user prerequisite.
+The build SDK is pinned separately from the shipped runtime. Both self-contained
+applications explicitly request .NET 10.0.11 (Core and Windows Desktop), verified
+against Microsoft's release metadata and NuGet on 2026-09-06. This security
+servicing release was published 2026-08-11. See windows-toolchain-lock.json for
+the exact pins and official metadata URL. Staging rejects older runtime versions.
+When servicing .NET, update that runtime pin, recheck both Windows NuGet runtime
+packages, rebuild, and renew the matching redistribution review.
+
+TorrServer: github.com/YouROK/TorrServer. The exact binary is recorded in
+packaging/torrserver-lock.json. Its license is included as torrserver-LICENSE.txt;
+complete corresponding source and build instructions also belong in the reviewed
+source bundle.
+
+mpv: github.com/mpv-player/mpv, Windows build by shinchiro, recommended by
+https://mpv.io/installation/. packaging/mpv-lock.json records the exact binary,
+source commit, build-recipe commit and checksums. vendor/mpv/win32-x64/licenses
+contains the upstream Copyright and GPL/LGPL texts. The full runtime tree is
+retained, including fonts configuration and d3dcompiler_43.dll. Review the
+redistribution terms for that Microsoft DLL and every linked dependency.
+
+FFmpeg/ffprobe: github.com/BtbN/FFmpeg-Builds. The pinned Windows build in
+packaging/ffmpeg-lock.json is GPL, including third-party codec libraries.
+An FFmpeg source link alone is not the complete corresponding source for this
+build. Its exact dependencies, patches, configuration and build instructions
+also need to be supplied.
+
+npm dependencies: addon/package.json and addon/package-lock.json record locked
+production dependencies. Their own license files remain in addon/node_modules.
+Development dependencies are not shipped.
+
+RELEASE GATE
+------------
+Private sharing is still redistribution. Upstream web links, this notice, and
+a checkbox are NOT substitutes for license compliance. Do not share validation
+staging trees. By default ZIP/installer generation requires a reviewed bundle
+at vendor/windows-redistribution, including source archives, license texts,
+notices and build instructions for the exact shipped components.
+
+The bundle's manifest.json must have version: 1, a nonempty reviewedBy string,
+and components named node, dotnet, torrserver, mpv, ffmpeg. Each component must
+identify pinSha256 (SHA256 of the matching packaging lockfile; dotnet uses
+windows-toolchain-lock.json), include a nonempty files array of
+{path, sha256}, and state completeCorrespondingSource: true where applicable
+(torrserver, mpv, ffmpeg). Paths are relative to this bundle. Every listed file
+is checked and the complete bundle is shipped as third-party/redistribution.
+
+This is a technical integrity/review gate, not an automatic legal conclusion.
+There is intentionally no checked-in attestation claiming the missing sources
+are complete. Maintainers must assemble and review them before distribution.

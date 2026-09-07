@@ -1,6 +1,6 @@
 // Add Media modal: manual magnet, .torrent, local-file, and folder imports.
 // Rendered by App over the current page while state.adding is set. When the
-// native app is running, local sources can be linked in place with a Finder
+// native app is running, local sources can be linked in place with a native
 // picker instead of uploading a copy.
 import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { ApiError, api, apiResponse, headers, notify } from "../api.js";
@@ -139,7 +139,7 @@ async function prepareSource(form, source, picked, previous, remember) {
   if (source === "local") {
     const file = form.elements.media.files[0];
     if (!file)
-      throw Error("Choose a local media file or link one with Finder.");
+      throw Error("Choose a local media file or link one from this computer.");
     const report =
       prepared.uploaded.get(file) ??
       (await upload(file, prepared.batch, file.name));
@@ -237,7 +237,7 @@ function SourceField({
         disabled=${picking}
         onClick=${onPick}
       >
-        ${picking ? "Waiting for Finder…" : "Choose with Finder"}
+        ${picking ? "Waiting for selection…" : "Choose on this computer"}
       </button>
       <span class="muted">${picked ? picked.name : label}</span>
     </div>

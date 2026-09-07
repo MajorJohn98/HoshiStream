@@ -43,7 +43,7 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 | `tags.ts`, `routes/tags-api.ts` | Tag registry (`tags.json`, seeded with TMDB/IMDb genres) and `/api/tags` |
 | `types.ts` | Zod schemas for library entries (create/patch) |
 | `imports/`, `routes/imports-api.ts` | Provider-neutral manual drafts, identity validation, retry-safe import, and episode-preview/series append (ADR 0020) |
-| `browser/`, `assets/chrome-extension/` | Chrome MV3 companion and a narrow macOS native-messaging relay; master token remains local |
+| `browser/`, `assets/chrome-extension/` | Chrome MV3 companion and narrow macOS/Windows native-messaging relays; master token remains local |
 | `torrserver-client.ts` | Verified TorrServer API subset with timeouts and Zod parsing |
 | `inspection.ts` | Torrent registration + metadata polling + file selection |
 | `media-file-selection.ts` | Playable-extension filtering, series episode mapping (`S01E02`, `1x02`) |
@@ -53,7 +53,7 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 | `transcode.ts` | Opt-in stream repair (ADR 0010): ffmpeg HLS sessions for remux, audio fix, and hardware video re-encode |
 | `mdns.ts` | LAN discovery (ADR 0011): dependency-free mDNS responder advertising `_hoshistream._tcp` |
 | `local-media.ts` | Local file/folder validation, managed uploads, range-request serving |
-| `native-picker.ts` | Native Finder picker bridge over the supervisor Unix socket |
+| `native-picker.ts` | Native picker bridge over a macOS Unix socket or current-user Windows named pipe |
 | `management.ts` | Thin HTML shell for the management UI; views live in `assets/manage/` as preact components (no build step) |
 | `security.ts` | Constant-time token comparison (SHA-256 digest + `timingSafeEqual`), bearer parsing |
 
@@ -76,8 +76,11 @@ Two processes are always supervised together:
 
 - Supervision lives in `scripts/native-server.mjs`, which is plain cross-platform Node: ports, environment, state directories, TorrServer config, and process lifecycle.
 - The macOS shell is the Swift supervisor (`supervisor/macos`): menu bar, login item, sleep assertion, native Finder pickers over a Unix socket (`NATIVE_PICKER_SOCKET`), and log access.
+- The Windows shell (`supervisor/windows`) is a self-contained .NET tray application with native dialogs, login/power integration and owned-process Job Object cleanup. It reuses Node and the browser UI rather than rewriting application logic.
+- `scripts/native-runtime.mjs` provides exclusive state ownership, authenticated loopback-only terminal control and real readiness; desktop parents also have inherited-stdin shutdown. See [native runtime control](../api/native-runtime-control.md).
 - Runtimes are vendored and pinned via `packaging/` lockfiles, which carry `darwin-arm64` and `win32-x64` entries.
 - See `../plans/desktop-app-strategy.md` for the app strategy and `../plans/2026-08-14-native-only-plan.md` for the Windows path.
+- The current Windows scope is [the desktop release plan](../plans/2026-09-06-windows-desktop-release-plan.md), extending the older minimal-launcher direction.
 
 ## State layout
 

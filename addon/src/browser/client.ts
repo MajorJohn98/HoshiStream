@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify, parseEnv } from "node:util";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, posix, win32 } from "node:path";
 import { z } from "zod";
 import { sourceCheckSchema } from "../source-check-types.ts";
 import {
@@ -80,18 +80,170 @@ const previewSchema = z.object({
     )
     .max(10_000),
 });
-export const hostConfigSchema = z
-  .object({
-    version: z.literal(1),
-    extensionId: z.string().regex(/^[a-p]{32}$/),
-    projectRoot: z.string().refine(isAbsolute),
-    appPath: z
-      .string()
-      .refine((path) => isAbsolute(path) && path.endsWith(".app"))
-      .optional(),
-  })
-  .strict();
+const configIdentity = {
+  extensionId: z.string().regex(/^[a-p]{32}$/),
+};
+const localWindowsPath = z
+  .string()
+  .max(32_000)
+  .refine(
+    (path) =>
+      /^[a-z]:[\\/]/i.test(path) &&
+      !/["<>|?*]/.test(path) &&
+      ![...path].some((character) => character.charCodeAt(0) < 32) &&
+      !path.slice(2).includes(":"),
+  );
+const macApp = z
+  .string()
+  .refine(
+    (path) =>
+      posix.isAbsolute(path) && !path.includes("\0") && path.endsWith(".app"),
+  );
+export const hostConfigSchema = z.union([
+  z
+    .object({
+      ...configIdentity,
+      version: z.literal(1),
+      projectRoot: z.string().refine(isAbsolute),
+      appPath: macApp.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...configIdentity,
+      version: z.literal(2),
+      platform: z.literal("darwin"),
+      projectRoot: z.string().refine(posix.isAbsolute),
+      appPath: macApp.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...configIdentity,
+      version: z.literal(2),
+      platform: z.literal("win32"),
+      projectRoot: localWindowsPath,
+      appPath: localWindowsPath.refine(
+        (path) => win32.basename(path).toLowerCase() === "hoshistream.exe",
+      ),
+    })
+    .strict(),
+]);
 export type HostConfig = z.infer<typeof hostConfigSchema>;
+
+export function isManagementEntryUrl(target: string): boolean {
+  if (
+    target.length > 4096 ||
+    /["\\]/.test(target) ||
+    [...target].some((character) => character.charCodeAt(0) <= 32)
+  )
+    return false;
+  try {
+    const url = new URL(target);
+    const origin = /^http:\/\/127\.0\.0\.1(?::[1-9]\d{0,4})?(?=\/)/.exec(
+      target,
+    )?.[0];
+    return (
+      url.protocol === "http:" &&
+      url.hostname === "127.0.0.1" &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      /^\/manage\/[^/]+$/.test(url.pathname) &&
+      /^#\/entry\/[^/]+$/.test(url.hash) &&
+      origin !== undefined &&
+      origin + url.pathname + url.hash === target
+    );
+  } catch {
+    return false;
+  }
+}
+
+type Activation =
+  | { version: 1; command: "openLibrary" }
+  | { version: 1; command: "openUrl"; url: string };
+export type NativeLauncher = (
+  file: string,
+  args: string[],
+  input: string,
+) => Promise<void>;
+
+const launchNative: NativeLauncher = (file, args, input) =>
+  new Promise((resolve, reject) => {
+    const child = execFile(
+      file,
+      args,
+      {
+        windowsHide: true,
+        timeout: 15_000,
+        maxBuffer: 1024,
+      },
+      (error) => {
+        if (error)
+          reject(
+            new NativeBridgeError(
+              "app_start_failed",
+              "HoshiStream could not be opened. Open the desktop app manually, then retry.",
+            ),
+          );
+        else resolve();
+      },
+    );
+    child.stdin?.on("error", () =>
+      reject(
+        new NativeBridgeError(
+          "app_start_failed",
+          "The desktop activation helper closed before accepting the request.",
+        ),
+      ),
+    );
+    child.stdin?.end(input);
+  });
+
+export function nativeOpener(
+  config: HostConfig,
+  platform: NodeJS.Platform = process.platform,
+  launch: NativeLauncher = launchNative,
+): (target: string) => Promise<void> {
+  if (config.version !== 2 || config.platform === "darwin") {
+    return async (target) => {
+      if (platform !== "darwin")
+        throw new NativeBridgeError(
+          "manual_start_required",
+          "Register the Chrome helper from the installed HoshiStream desktop app.",
+        );
+      await execFileAsync("/usr/bin/open", [target]);
+    };
+  }
+  return async (target) => {
+    if (platform !== "win32")
+      throw new NativeBridgeError(
+        "manual_start_required",
+        "This Chrome helper belongs to a Windows installation.",
+      );
+    let activation: Activation;
+    if (target === config.appPath)
+      activation = { version: 1, command: "openLibrary" };
+    else if (isManagementEntryUrl(target))
+      activation = { version: 1, command: "openUrl", url: target };
+    else
+      throw new NativeBridgeError(
+        "invalid_open_target",
+        "Only a local HoshiStream entry can be opened.",
+      );
+    // The helper sends navigation over the verified current-user tray pipe. Cold
+    // starts use Explorer with nonsecret arguments to escape Chrome's Windows job.
+    await launch(
+      win32.join(
+        win32.dirname(config.appPath),
+        "native-host",
+        "HoshiStream.NativeHost.exe",
+      ),
+      ["--activate"],
+      JSON.stringify(activation),
+    );
+  };
+}
 const entrySchema = z
   .object({
     id: z.string().min(1).max(200),
@@ -155,6 +307,8 @@ function summary(value: unknown) {
 export type NativeActions = {
   open?: (target: string) => Promise<void>;
   fetch?: typeof fetch;
+  platform?: NodeJS.Platform;
+  launch?: NativeLauncher;
 };
 
 export class NativeClient {
@@ -169,9 +323,7 @@ export class NativeClient {
     this.request = actions.fetch ?? fetch;
     this.open =
       actions.open ??
-      (async (target) => {
-        await execFileAsync("/usr/bin/open", [target]);
-      });
+      nativeOpener(this.config, actions.platform, actions.launch);
   }
 
   private async settings() {
@@ -285,7 +437,15 @@ export class NativeClient {
   }
 
   redact(value: string): string {
-    return (this.token ? value.split(this.token).join("[redacted]") : value)
+    return (
+      this.token
+        ? value
+            .split(this.token)
+            .join("[redacted]")
+            .split(encodeURIComponent(this.token))
+            .join("[redacted]")
+        : value
+    )
       .replace(/magnet:\?\S+/gi, "[redacted source]")
       .replace(/Bearer\s+\S+/gi, "Bearer [redacted]");
   }
@@ -493,6 +653,9 @@ export class NativeClient {
             "POST",
             {
               probe: true,
+              ...(message.payload.mode === undefined
+                ? {}
+                : { mode: message.payload.mode }),
               ...(message.payload.fileId === undefined
                 ? {}
                 : { fileId: message.payload.fileId }),

@@ -61,11 +61,20 @@ export class PlayerIpc {
   private open(): Promise<Socket> {
     return new Promise((resolve, reject) => {
       const socket = createConnection(this.socketPath);
+      const timer = setTimeout(() => {
+        socket.destroy();
+        reject(new PlayerIpcError("Player connection timed out"));
+      }, this.timeoutMs);
       socket.once("connect", () => {
+        clearTimeout(timer);
         socket.removeAllListeners("error");
         resolve(socket);
       });
-      socket.once("error", reject);
+      socket.once("error", (error) => {
+        clearTimeout(timer);
+        socket.destroy();
+        reject(error);
+      });
     });
   }
 
@@ -97,6 +106,7 @@ export class PlayerIpc {
     this.failAll("Player stopped");
     this.socket?.destroy();
     this.socket = undefined;
+    this.buffer = "";
   }
 
   private consume(chunk: string): void {

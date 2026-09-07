@@ -2,6 +2,8 @@ import { markStreamActivity } from "../activity.ts";
 import { resolveStreamSource } from "../inspection.ts";
 import { inspectLocalEntry, serveLocalMedia } from "../local-media.ts";
 import { serveMediaSource } from "../media-source.ts";
+import { directPlayForFile } from "../media-facts.ts";
+import type { DirectPlay } from "../direct-play.ts";
 import { validToken } from "../security.ts";
 import { repairTier, TranscodeBusyError } from "../transcode.ts";
 import {
@@ -35,22 +37,26 @@ export const handleHls: RouteHandler = async (
   if (!entry) return reply(response, 404, { error: "Unknown entry" });
   let session = transcode.get(entry.id, fileId, variant);
   if (!session || session.failed) {
-    // The video variant is the remote lower-bitrate rendition; "auto"
-    // follows the probe verdict, defaulting to a copy-only remux.
-    const tier =
-      variant === "video" ? "video" : (repairTier(entry.directPlay) ?? "remux");
     let input: string | undefined;
+    let directPlay: DirectPlay | undefined;
     if (entry.localFilePath || entry.localFolderPath) {
       const inspection = await inspectLocalEntry(entry);
       input = inspection?.files.find((file) => file.id === fileId)?.localPath;
+      const file = inspection?.selectedFiles.find((file) => file.id === fileId);
+      if (file) directPlay = directPlayForFile(entry, file);
     } else {
       const source = await resolveStreamSource(entry, torrServer, library);
       const file = source.selectedFiles.find(
         (candidate) => candidate.id === fileId,
       );
-      if (file) input = torrServer.streamUrl(source.hash, file);
+      if (file) {
+        input = torrServer.streamUrl(source.hash, file);
+        directPlay = directPlayForFile(entry, file, source.hash);
+      }
     }
     if (!input) return reply(response, 404, { error: "Unknown file" });
+    const tier =
+      variant === "video" ? "video" : (repairTier(directPlay) ?? "remux");
     try {
       session = await transcode.ensure({
         entryId: entry.id,

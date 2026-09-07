@@ -11,9 +11,10 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { z } from "zod";
-import { containsPath } from "./path-safety.ts";
+import { containsPath, samePath } from "./path-safety.ts";
+import { enumerateWindowsMounts } from "./windows-platform.ts";
 
 // A drive is identified by this marker, never by its mount path or name. The
 // marker carries only a format version and a random id — no tokens, no URIs.
@@ -26,14 +27,23 @@ const markerSchema = z.object({
   volumeId: z.string().uuid(),
 });
 
+function isMountRelativePath(path: string): boolean {
+  if (path === "") return true;
+  if (isAbsolute(path) || path.includes("\0")) return false;
+  if (process.platform === "win32" && /^[a-z]:/i.test(path)) return false;
+  return path
+    .split(process.platform === "win32" ? /[\\/]/ : "/")
+    .every((part) => part !== "" && part !== "." && part !== "..");
+}
+
 export const storageVolumeSchema = z.object({
   id: z.string().uuid(),
   label: z.string().min(1),
   lastKnownRoot: z.string().min(1),
   // Root's path below its mount point ("" when the root is the mount itself).
-  // Absent for internal folders, which never change mount paths and are only
-  // resolved via lastKnownRoot.
-  mountRelativePath: z.string().optional(),
+  // Legacy registrations without this field resolve only via lastKnownRoot;
+  // selecting the folder again records the relative path without changing id.
+  mountRelativePath: z.string().refine(isMountRelativePath).optional(),
   createdAt: z.string().datetime(),
 });
 
@@ -61,6 +71,19 @@ export class VolumeError extends Error {}
 
 function defaultMountBase(): string | undefined {
   return process.platform === "darwin" ? "/Volumes" : undefined;
+}
+
+export interface MountOptions {
+  enumerateMounts: () => Promise<string[]>;
+}
+
+async function mountsBelow(base: string): Promise<string[]> {
+  try {
+    return (await readdir(base)).map((mount) => join(base, mount));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
 }
 
 type MarkerRead =
@@ -93,16 +116,23 @@ export class VolumeRegistry {
     { expiresAt: number; value: VolumeResolution }
   >();
   private readonly path: string;
-  private readonly mountBase: string | undefined;
+  private readonly enumerateMounts: () => Promise<string[]>;
   private readonly resolutionTtlMs: number;
 
   constructor(
     path: string,
-    mountBase = defaultMountBase(),
+    mountBase: string | MountOptions | undefined = defaultMountBase(),
     resolutionTtlMs = RESOLUTION_TTL_MS,
   ) {
     this.path = path;
-    this.mountBase = mountBase;
+    this.enumerateMounts =
+      typeof mountBase === "object"
+        ? mountBase.enumerateMounts
+        : typeof mountBase === "string"
+          ? () => mountsBelow(mountBase)
+          : process.platform === "win32"
+            ? enumerateWindowsMounts
+            : async () => [];
     this.resolutionTtlMs = resolutionTtlMs;
   }
 
@@ -126,32 +156,56 @@ export class VolumeRegistry {
       const root = await realpath(rawPath);
       if (!(await stat(root)).isDirectory())
         throw new VolumeError("Choose a folder to use as storage");
+      const mountRelativePath = await this.mountRelativePath(root);
       const marker = await readMarker(root);
-      if (marker.ok) {
-        const existing = volumes.find(
-          (volume) => volume.id === marker.volumeId,
-        );
-        if (existing) {
-          existing.lastKnownRoot = root;
-          this.resolutions.delete(existing.id);
-          return existing;
-        }
-      } else if (marker.reason === "invalid") {
+      if (!marker.ok && marker.reason === "invalid") {
         throw new VolumeError(
           "Folder contains an invalid HoshiStream volume marker",
         );
-      } else if (marker.reason === "permission") {
+      } else if (!marker.ok && marker.reason === "permission") {
         throw new VolumeError("Folder is not readable");
       }
       for (const volume of volumes) {
+        if (marker.ok && volume.id === marker.volumeId) continue;
         if (
-          volume.lastKnownRoot === root ||
+          samePath(volume.lastKnownRoot, root) ||
           containsPath(volume.lastKnownRoot, root) ||
           containsPath(root, volume.lastKnownRoot)
         ) {
           throw new VolumeError(
             `Folder overlaps the registered volume "${volume.label}"`,
           );
+        }
+      }
+      if (marker.ok) {
+        const existing = volumes.find(
+          (volume) => volume.id === marker.volumeId,
+        );
+        if (existing) {
+          const previous = await this.locate(existing);
+          if (
+            previous.state === "ambiguous" ||
+            (previous.state === "online" && !samePath(previous.root, root))
+          )
+            throw new VolumeError(
+              "Two folders carry this volume marker; disconnect the duplicate before registering",
+            );
+          if (previous.state === "permission-denied")
+            throw new VolumeError("Existing volume marker is not readable");
+          const resolution = await this.locate(
+            { ...existing, lastKnownRoot: root, mountRelativePath },
+            [existing.lastKnownRoot],
+          );
+          if (resolution.state === "ambiguous")
+            throw new VolumeError(
+              "Two folders carry this volume marker; disconnect the duplicate before registering",
+            );
+          if (resolution.state !== "online")
+            throw new VolumeError("Volume marker could not be verified");
+          existing.lastKnownRoot = root;
+          existing.mountRelativePath = mountRelativePath;
+          this.resolutions.delete(existing.id);
+          return existing;
         }
       }
       const id = marker.ok ? marker.volumeId : randomUUID();
@@ -164,9 +218,8 @@ export class VolumeRegistry {
             { flag: "wx" },
           );
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "EROFS")
-            throw new VolumeError("Folder is not writable");
-          if ((error as NodeJS.ErrnoException).code === "EACCES")
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "EROFS" || code === "EACCES" || code === "EPERM")
             throw new VolumeError("Folder is not writable");
           throw error;
         }
@@ -178,7 +231,7 @@ export class VolumeRegistry {
         id,
         label: basename(root) || root,
         lastKnownRoot: root,
-        mountRelativePath: this.mountRelativePath(root),
+        mountRelativePath,
         createdAt: new Date().toISOString(),
       });
       volumes.push(volume);
@@ -249,12 +302,28 @@ export class VolumeRegistry {
     );
   }
 
-  private async locate(volume: StorageVolume): Promise<VolumeResolution> {
-    const candidates = new Set<string>([volume.lastKnownRoot]);
-    if (volume.mountRelativePath !== undefined && this.mountBase) {
-      const mounts = await readdir(this.mountBase).catch(() => []);
+  private async locate(
+    volume: StorageVolume,
+    additionalRoots: string[] = [],
+  ): Promise<VolumeResolution> {
+    const candidates = new Set<string>([
+      volume.lastKnownRoot,
+      ...additionalRoots,
+    ]);
+    if (volume.mountRelativePath !== undefined) {
+      let mounts: string[];
+      try {
+        mounts = await this.enumerateMounts();
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === "EACCES" || code === "EPERM")
+          return { state: "permission-denied" };
+        throw new VolumeError("Cannot enumerate local storage mounts", {
+          cause: error,
+        });
+      }
       for (const mount of mounts) {
-        candidates.add(join(this.mountBase, mount, volume.mountRelativePath));
+        candidates.add(join(mount, volume.mountRelativePath));
       }
     }
     const matches = new Set<string>();
@@ -263,28 +332,39 @@ export class VolumeRegistry {
       const marker = await readMarker(candidate);
       if (marker.ok && marker.volumeId === volume.id) {
         // realpath dedupes firmlink/symlink aliases of the same directory.
-        matches.add(await realpath(candidate).catch(() => candidate));
+        try {
+          const actual = await realpath(candidate);
+          if (![...matches].some((match) => samePath(match, actual)))
+            matches.add(actual);
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code === "EACCES" || code === "EPERM") permissionDenied = true;
+          else if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+        }
       } else if (!marker.ok && marker.reason === "permission") {
         permissionDenied = true;
       }
     }
+    if (matches.size > 1)
+      return { state: "ambiguous", roots: [...matches].sort() };
+    // An unreadable candidate can hide a clone. Do not choose another mount
+    // until identity can be established across the whole bounded candidate set.
+    if (permissionDenied) return { state: "permission-denied" };
     if (matches.size === 1) {
       const [root] = matches;
       return { state: "online", root };
     }
-    if (matches.size > 1)
-      return { state: "ambiguous", roots: [...matches].sort() };
-    return permissionDenied
-      ? { state: "permission-denied" }
-      : { state: "offline" };
+    return { state: "offline" };
   }
 
-  private mountRelativePath(root: string): string | undefined {
-    if (!this.mountBase) return undefined;
-    if (root === this.mountBase) return "";
-    if (!containsPath(this.mountBase, root)) return undefined;
-    const [mount, ...rest] = relative(this.mountBase, root).split("/");
-    return mount ? rest.join("/") : undefined;
+  private async mountRelativePath(root: string): Promise<string | undefined> {
+    const mounts = await this.enumerateMounts();
+    const mount = mounts
+      .filter((mount) => samePath(mount, root) || containsPath(mount, root))
+      .sort((a, b) => b.length - a.length)[0];
+    return mount === undefined
+      ? undefined
+      : relative(mount, root).split(sep).join("/");
   }
 
   private async read(): Promise<StorageVolume[]> {

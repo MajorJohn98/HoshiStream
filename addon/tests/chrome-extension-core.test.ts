@@ -335,8 +335,8 @@ describe("chrome companion check polling", () => {
     expect(
       checkBadge({ phase: "complete", probe: true, browserSupport: "limited" }),
     ).toEqual({
-      tone: "warn",
-      label: "Browser limited",
+      tone: "idle",
+      label: "Sample unverified",
     });
   });
 });

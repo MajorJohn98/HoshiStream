@@ -1,17 +1,19 @@
-import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   Player,
   resolvePlayerBinary,
   systemPlayerCommand,
+  bundledPlayerPath,
 } from "../src/player.ts";
 
 // A stand-in for mpv: it parses --input-ipc-server, listens on that socket and
 // answers the same line-delimited JSON, so the real spawn and connect path is
 // exercised end to end without the actual binary.
-const STUB = `#!/usr/bin/env node
+const STUB = `
 const net = require("node:net");
 const arg = process.argv.find((a) => a.startsWith("--input-ipc-server="));
 const path = arg.split("=")[1];
@@ -31,6 +33,7 @@ const server = net.createServer((socket) => {
         let data;
         if (name === "get_property") data = state[a];
         if (name === "set_property") state[a] = b;
+        if (name === "seek") state["time-pos"] = a;
         if (name === "loadfile")
           setTimeout(() => {
             if (!socket.destroyed)
@@ -48,7 +51,7 @@ const server = net.createServer((socket) => {
         );
         if (!socket.destroyed)
           socket.write(
-            JSON.stringify({ error: "success", data, request_id: req.request_id }) + "\\n",
+            JSON.stringify({ error: a === "reject:queue" ? "load failed" : "success", data, request_id: req.request_id }) + "\\n",
           );
       }
       i = buffer.indexOf("\\n");
@@ -61,19 +64,38 @@ setTimeout(() => process.exit(0), 15000);
 
 async function stubPlayer() {
   const directory = await mkdtemp(join(tmpdir(), "hoshistream-player-"));
-  const binary = join(directory, "fake-mpv");
+  directories.push(directory);
+  const script = join(directory, "fake-mpv.cjs");
   const log = join(directory, "commands.log");
-  await writeFile(binary, STUB, { mode: 0o755 });
-  await chmod(binary, 0o755);
+  await writeFile(script, STUB);
   await writeFile(log, "");
-  process.env.STUB_LOG = log;
-  return { binary, log, directory };
+  vi.stubEnv("STUB_LOG", log);
+  const makePlayer = (onPosition?: ConstructorParameters<typeof Player>[1]) => {
+    const player = new Player(process.execPath, onPosition, [script]);
+    players.push(player);
+    return player;
+  };
+  return { binary: process.execPath, log, directory, makePlayer };
 }
+
+const players: Player[] = [];
+const directories: string[] = [];
+afterEach(async () => {
+  for (const player of players.splice(0)) player.stop();
+  vi.unstubAllEnvs();
+  for (const directory of directories.splice(0))
+    await rm(directory, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 50,
+    });
+});
 
 describe("player process", () => {
   it("spawns, connects, and loads a file", async () => {
-    const { binary, log } = await stubPlayer();
-    const player = new Player(binary);
+    const { makePlayer, log } = await stubPlayer();
+    const player = makePlayer();
 
     await player.play("/tmp/Movie.mkv", { entryId: "hoshi:1" });
     expect(player.running).toBe(true);
@@ -97,8 +119,8 @@ describe("player process", () => {
   });
 
   it("reuses the running process for the next file", async () => {
-    const { binary, log } = await stubPlayer();
-    const player = new Player(binary);
+    const { makePlayer, log } = await stubPlayer();
+    const player = makePlayer();
 
     await player.play("/tmp/One.mkv", { entryId: "hoshi:1" });
     await player.play("/tmp/Two.mkv", { entryId: "hoshi:2" });
@@ -113,25 +135,31 @@ describe("player process", () => {
   });
 
   it("applies pause through the IPC channel", async () => {
-    const { binary } = await stubPlayer();
-    const player = new Player(binary);
+    const { makePlayer } = await stubPlayer();
+    const player = makePlayer();
     await player.play("/tmp/Movie.mkv", { entryId: "hoshi:1" });
 
     await player.command("set_property", "pause", true);
 
     expect((await player.status()).paused).toBe(true);
+    await player.command("set_property", "pause", false);
+    await player.command("seek", 65, "absolute");
+    expect(await player.status()).toMatchObject({
+      paused: false,
+      positionSeconds: 65,
+    });
     player.stop();
   });
 
   it("reports not running before anything starts", async () => {
-    const { binary } = await stubPlayer();
-    expect(await new Player(binary).status()).toEqual({ running: false });
+    const { makePlayer } = await stubPlayer();
+    expect(await makePlayer().status()).toEqual({ running: false });
   });
 
   it("reports playback position through the callback", async () => {
-    const { binary } = await stubPlayer();
+    const { makePlayer } = await stubPlayer();
     const seen: Array<[string, number]> = [];
-    const player = new Player(binary, (entryId, position) =>
+    const player = makePlayer((entryId, position) =>
       seen.push([entryId, position]),
     );
 
@@ -143,21 +171,67 @@ describe("player process", () => {
   });
 
   it("starts again after a previous player left its socket behind", async () => {
-    const { binary } = await stubPlayer();
-    const first = new Player(binary);
+    const { makePlayer } = await stubPlayer();
+    const first = makePlayer();
     await first.play("/tmp/One.mkv", { entryId: "hoshi:1" });
     // Kill the process without letting it clean up, as a crash would.
     first.stop();
 
-    const second = new Player(binary);
+    const second = makePlayer();
     await second.play("/tmp/Two.mkv", { entryId: "hoshi:2" });
 
     expect(second.running).toBe(true);
     second.stop();
   });
+
+  it("preserves Windows queue paths as JSON and restarts the same controller", async () => {
+    const { makePlayer, log } = await stubPlayer();
+    const player = makePlayer();
+    const target = "E:\\M\u00e9dia & Films\\Show\\Episode 1.mkv";
+    const queue = [
+      "E:\\M\u00e9dia & Films\\Show\\Episode 2.mkv",
+      "http://127.0.0.1/play?a=1&b=%20",
+    ];
+    await player.play(target, { entryId: "hoshi:queue", fileId: 1 }, queue);
+    const commands = (await readFile(log, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(commands).toContainEqual(["loadfile", target, "replace"]);
+    expect(commands).toContainEqual(["loadfile", queue[0], "append"]);
+    expect(commands).toContainEqual(["loadfile", queue[1], "append"]);
+    player.stop();
+    await player.play(queue[0], { entryId: "hoshi:queue", fileId: 2 });
+    expect(await player.status()).toMatchObject({ running: true, fileId: 2 });
+  });
+
+  it("surfaces queue failures rather than silently dropping episodes", async () => {
+    const { makePlayer } = await stubPlayer();
+    const player = makePlayer();
+    await expect(
+      player.play("E:\\Movie.mkv", { entryId: "hoshi:queue-failure" }, [
+        "reject:queue",
+      ]),
+    ).rejects.toThrow("load failed");
+    expect(await player.status()).toMatchObject({
+      entryId: "hoshi:queue-failure",
+    });
+  });
 });
 
 describe("player binary resolution", () => {
+  it("locates mpv at the runtime root in both source and dist layouts", () => {
+    const root = resolve("runtime with spaces");
+    for (const layout of ["src/player.ts", "dist/player.js"]) {
+      const url = pathToFileURL(join(root, "addon", layout)).href;
+      expect(bundledPlayerPath(url, "win32", "x64")).toBe(
+        join(root, "vendor", "mpv", "win32-x64", "mpv.exe"),
+      );
+      expect(bundledPlayerPath(url, "darwin", "arm64")).toBe(
+        join(root, "vendor", "mpv", "darwin-arm64", "mpv"),
+      );
+    }
+  });
   it("accepts an executable override", async () => {
     const { binary } = await stubPlayer();
     expect(await resolvePlayerBinary(binary)).toBe(binary);
@@ -282,8 +356,14 @@ describe("system player command", () => {
     expect(
       systemPlayerCommand("/m/E01.mkv", queue, { platform: "darwin" }),
     ).toEqual(["open", ["/m/E01.mkv"]]);
-    expect(
-      systemPlayerCommand("/m/E01.mkv", queue, { platform: "win32" }),
-    ).toEqual(["cmd", ["/c", "start", "", "/m/E01.mkv"]]);
+    const target = 'E:\\Film & %PATH%\\$(not-a-command) "quoted".mkv';
+    const [command, args] = systemPlayerCommand(target, queue, {
+      platform: "win32",
+    });
+    expect(command).toMatch(/powershell\.exe$/);
+    expect(args).toContain("-NoProfile");
+    expect(args.join(" ")).not.toContain(target);
+    expect(args.at(-1)).toContain("$env:HOSHISTREAM_PLAYER_TARGET");
+    expect(args.at(-1)).toContain("UseShellExecute = $true");
   });
 });

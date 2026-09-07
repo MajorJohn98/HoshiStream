@@ -4,6 +4,7 @@ import { markStreamActivity } from "./activity.ts";
 import { directPlayLabel } from "./direct-play.ts";
 import { sourceKey } from "./disk-copy.ts";
 import { resolveStreamSource } from "./inspection.ts";
+import { directPlayForFile } from "./media-facts.ts";
 import { repairTier, repairDescription } from "./transcode.ts";
 import type { TorrServerClient } from "./torrserver-client.ts";
 
@@ -106,17 +107,27 @@ export async function getStreams(
     const source = await resolveStreamSource(entry, torrServer, library);
     const file = requestedFile(source.selectedFiles, type, id).file;
     if (!file) return { streams: [] };
+    const assessed = {
+      ...entry,
+      directPlay: directPlayForFile(entry, file, source.hash),
+    };
     markStreamActivity(Date.now(), entry.id);
     void library.markStreamed(entry.id).catch(() => undefined);
     return {
       streams: [
         {
           name: "HoshiStream",
-          description: describe("Local", file, entry),
+          description: describe("Local", file, assessed),
           url: `${publicAddonUrl}/local/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${file.id}`,
           behaviorHints: streamBehaviorHints(entry.id, file),
         },
-        ...compatibleStreams(repair, publicAddonUrl, accessToken, entry, file),
+        ...compatibleStreams(
+          repair,
+          publicAddonUrl,
+          accessToken,
+          assessed,
+          file,
+        ),
       ],
     };
   }
@@ -124,6 +135,10 @@ export async function getStreams(
   const source = await resolveStreamSource(entry, torrServer, library);
   const file = requestedFile(source.selectedFiles, type, id).file;
   if (!file) return { streams: [] };
+  const assessed = {
+    ...entry,
+    directPlay: directPlayForFile(entry, file, source.hash),
+  };
   markStreamActivity(Date.now(), entry.id);
   void library.markStreamed(entry.id).catch(() => undefined);
 
@@ -162,11 +177,11 @@ export async function getStreams(
     streams: [
       {
         name: "HoshiStream",
-        description: describe(label, file, entry),
+        description: describe(label, file, assessed),
         url,
         behaviorHints: streamBehaviorHints(entry.id, file),
       },
-      ...compatibleStreams(repair, publicAddonUrl, accessToken, entry, file),
+      ...compatibleStreams(repair, publicAddonUrl, accessToken, assessed, file),
     ],
   };
 }

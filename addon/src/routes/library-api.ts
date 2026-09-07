@@ -11,7 +11,6 @@ import {
   saveUpload,
   validateBrowserLocalPath,
 } from "../local-media.ts";
-import { probeMedia } from "../media-probe.ts";
 import { entrySourceDefinitionRevision } from "../imports/source-identity.ts";
 import { homeSpeedMbps } from "../speedtest.ts";
 import { entryTagsSchema, type Tags } from "../tags.ts";
@@ -47,7 +46,8 @@ function rejectServerOwnedFields(input: Record<string, unknown>): void {
     "sourceHash" in input ||
     "searchImport" in input ||
     "searchReceipts" in input ||
-    "sourceCheck" in input
+    "sourceCheck" in input ||
+    "mediaFacts" in input
   )
     throw new SyntaxError(
       "Source identity, search metadata, and source checks are server-owned",
@@ -64,7 +64,8 @@ function rejectNestedOwnership(input: Record<string, unknown>): void {
         "sourceHash" in source ||
         "searchImport" in source ||
         "searchReceipts" in source ||
-        "sourceCheck" in source)
+        "sourceCheck" in source ||
+        "mediaFacts" in source)
     )
       throw new SyntaxError(
         "Extra-source ownership, source identity, search metadata, and source checks are server-owned",
@@ -296,46 +297,61 @@ export const handleLibraryItem: RouteHandler = async (
 };
 
 export const handleInspect: RouteHandler = async (
-  { library, torrServer },
+  { library, torrServer, sourceChecks },
   { response, url, method },
 ) => {
   const inspectMatch = /^\/api\/library\/([^/]+)\/inspect$/.exec(url.pathname);
   if (!inspectMatch || method !== "POST") return false;
   const entry = await library.get(decodeURIComponent(inspectMatch[1]));
   if (!entry) return reply(response, 404, { error: "Not found" });
-  const sourceDefinitionRevision = entrySourceDefinitionRevision(entry);
-  const inspection = await inspectEntry(entry, torrServer, library);
-  const selected = inspection.selectedFiles[0];
-  const source = inspection.files.find((file) => file.id === selected?.id) as
-    { id: number; length: number; localPath?: string } | undefined;
-  let technical;
-  if (technicalProbeRequested(url) && selected && source) {
-    try {
-      const input =
-        source.localPath ?? torrServer.streamUrl(inspection.hash, selected);
-      technical = await probeMedia(input, source);
-    } catch {
-      technical = { error: "Media details could not be read" };
-    }
-    if ("error" in technical) {
-      return reply(response, 200, {
-        ...inspection,
-        technical,
-        homeSpeedMbps: homeSpeedMbps(),
+  if (technicalProbeRequested(url)) {
+    if (!sourceChecks)
+      return noStoreReply(response, 409, {
+        code: "check_unavailable",
+        error: "Source checks are unavailable on this host.",
+      });
+    const { check, inspection } = await sourceChecks.check(entry.id, {
+      probe: true,
+    });
+    if (!inspection) {
+      const status =
+        check.outcome === "invalid"
+          ? 422
+          : check.code === "not_found"
+            ? 404
+            : ["timeout", "metadata_timeout", "check_timeout"].includes(
+                  check.code ?? "",
+                )
+              ? 504
+              : check.phase === "cancelled" || check.phase === "interrupted"
+                ? 409
+                : 503;
+      return noStoreReply(response, status, {
+        error: check.message,
+        code: check.code ?? "check_unavailable",
+        sourceCheck: check,
       });
     }
-    const directPlay = assessDirectPlay(technical, homeSpeedMbps());
-    await library.setDirectPlay(entry.id, directPlay, sourceDefinitionRevision);
+    const observed =
+      check.phase === "complete" &&
+      check.outcome === "observed" &&
+      check.checkedFiles;
     return reply(response, 200, {
       ...inspection,
-      technical,
-      directPlay,
+      technical:
+        observed && check.technical
+          ? check.technical
+          : { error: check.message },
+      ...(observed && check.technical
+        ? { directPlay: assessDirectPlay(check.technical) }
+        : {}),
+      sourceCheck: check,
       homeSpeedMbps: homeSpeedMbps(),
     });
   }
+  const inspection = await inspectEntry(entry, torrServer, library);
   return reply(response, 200, {
     ...inspection,
-    technical,
     homeSpeedMbps: homeSpeedMbps(),
   });
 };

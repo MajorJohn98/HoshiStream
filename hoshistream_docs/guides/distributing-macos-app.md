@@ -15,6 +15,9 @@ node packaging/fetch-ffmpeg.mjs
 
 The second script prints the path to `build/HoshiStream-<version>.dmg`, containing the app,
 a symlink to `/Applications`, and `READ ME FIRST.txt` with the install steps below.
+The app and DMG version are taken from `addon/package.json`, not the older
+version in the source plist template. For a build intended for another Mac,
+leave `HOSHISTREAM_PROJECT_ROOT` unset so it creates that Mac's own private state.
 
 ## Why a `.dmg` and not a `.zip`
 
@@ -86,9 +89,11 @@ HOSHISTREAM_PROJECT_ROOT=/path/to/checkout ./packaging/build-macos-app.sh
 
 ## Known limitations
 
-- **Apple Silicon only.** The vendored `node`, `TorrServer`, and `ffmpeg` binaries are
-  `darwin-arm64`, and the supervisor compiles for the build machine's architecture. Intel
-  Macs are not supported by this artifact.
+- **Apple Silicon, macOS 13.5 or later.** The vendored `node`, `TorrServer`, and
+  `ffmpeg` binaries are `darwin-arm64`. The supervisor explicitly targets the
+  plist's minimum OS version instead of inheriting the build machine's newer
+  deployment target. The bundled Node runtime requires macOS 13.5. Intel Macs
+  are not supported by this artifact.
 - **No Developer ID signing or notarization.** The `xattr` step above is the workaround.
   Removing it requires an Apple Developer Program membership, a hardened-runtime build, and
   `notarytool` submission — after which the DMG opens with no terminal commands.

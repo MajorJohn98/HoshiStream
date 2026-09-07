@@ -6,6 +6,7 @@ import {
   resetSpeed,
   runSpeedTest,
   setConfiguredSpeed,
+  stopSpeedTest,
 } from "../src/speedtest.ts";
 
 function fakeFetch(chunkSize: number, chunks: number): typeof fetch {
@@ -61,6 +62,24 @@ describe("measureDownloadMbps", () => {
 });
 
 describe("runSpeedTest", () => {
+  it("aborts in-flight network work during native shutdown", async () => {
+    const stalled: typeof fetch = (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(init.signal?.reason),
+          { once: true },
+        );
+      });
+    const pending = runSpeedTest(stalled);
+    const failure = expect(pending).rejects.toThrow();
+    await stopSpeedTest();
+    await failure;
+    expect(currentSpeed().source).toBe("configured");
+    await expect(runSpeedTest(fakeFetch(1_000_000, 2))).resolves.toHaveProperty(
+      "mbps",
+    );
+  });
   it("shares one in-flight measurement between concurrent calls", async () => {
     let calls = 0;
     const counting = (async (url: RequestInfo | URL) => {

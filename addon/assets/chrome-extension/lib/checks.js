@@ -5,8 +5,8 @@ const CHECK_BADGES = {
   queued: { tone: "warn", label: "Queued" },
   inspecting: { tone: "warn", label: "Inspecting…" },
   probing: { tone: "warn", label: "Checking…" },
-  complete: { tone: "ok", label: "Checked" },
-  failed: { tone: "bad", label: "Check failed" },
+  complete: { tone: "idle", label: "Sample unverified" },
+  failed: { tone: "warn", label: "Check unavailable" },
   cancelled: { tone: "idle", label: "Check cancelled" },
   interrupted: { tone: "warn", label: "Check interrupted" },
 };
@@ -19,17 +19,40 @@ export function isActiveCheck(check) {
   return ACTIVE_CHECK_PHASES.has(checkPhase(check));
 }
 
+export function checkOutcome(check) {
+  if (check?.outcome) return check.outcome;
+  if (
+    check?.phase === "failed" &&
+    ["probe_timeout", "metadata_timeout", "check_timeout", "timeout"].includes(
+      check.code,
+    )
+  )
+    return "inconclusive";
+  return check?.phase === "failed" ? "unavailable" : "observed";
+}
+
+export function hasReadableSample(check) {
+  return (
+    check?.phase === "complete" &&
+    checkOutcome(check) === "observed" &&
+    check.probe === true &&
+    check.technical?.decodedVideoFrames >= 1
+  );
+}
+
 export function checkBadge(check) {
   const phase = checkPhase(check);
+  if (phase === "complete" || phase === "failed") {
+    const outcome = checkOutcome(check);
+    if (outcome === "inconclusive")
+      return { tone: "warn", label: "Check inconclusive" };
+    if (outcome === "invalid") return { tone: "bad", label: "Invalid source" };
+    if (outcome === "unavailable") return CHECK_BADGES.failed;
+  }
   if (phase !== "complete")
     return CHECK_BADGES[phase] ?? CHECK_BADGES.unchecked;
-  if (!check?.probe) return { tone: "ok", label: "Inspected" };
-  if (check.browserSupport === "limited") {
-    return { tone: "warn", label: "Browser limited" };
-  }
-  if (check.browserSupport === "likely") {
-    return { tone: "ok", label: "Browser likely" };
-  }
+  if (hasReadableSample(check)) return { tone: "ok", label: "Sample read" };
+  if (check?.probe === false) return { tone: "idle", label: "Metadata found" };
   return CHECK_BADGES.complete;
 }
 
@@ -37,33 +60,106 @@ export function checkSummary(check, entryType = "movie") {
   const itemLabel = entryType === "series" ? "episode" : "file";
   switch (checkPhase(check)) {
     case "unchecked":
-      return "Run a source check when you want metadata and a bounded playback sample.";
+      return "A basic check inspects metadata and tries a small media sample, for up to 1 minute.";
     case "queued":
-      return "Queued to inspect the source and read a limited media sample after saving.";
+      return check?.probe === false
+        ? "Queued to inspect source metadata."
+        : "Queued to inspect the source and try a small media sample.";
     case "inspecting":
-      return "Inspecting metadata. This may contact peers but does not switch sources or download the full title.";
+      return "Inspecting metadata. This may contact peers but does not switch sources or request a full download.";
     case "probing":
-      return `Reading a limited sample from one representative ${itemLabel}. This is still not a ready-to-play guarantee.`;
+      return `Trying a small sample from one selected ${itemLabel}. Engine read-ahead may fetch extra data; this is not a strict network-byte limit.`;
     case "cancelled":
       return "The check was cancelled. Your saved library entry stayed unchanged.";
     case "interrupted":
       return "The check stopped because the source changed or the app restarted. Retry when you are ready.";
     case "failed":
-      return check?.message || "The source check failed.";
     case "complete":
-      if (!check?.probe) {
-        return "Metadata inspection finished, but playback has not been checked yet.";
-      }
-      if (check.browserSupport === "limited") {
-        return `One representative ${itemLabel} completed a bounded check, but browser support looks limited.`;
-      }
-      if (check.browserSupport === "likely") {
-        return `One representative ${itemLabel} completed a bounded playback check. That is a useful browser hint, not a ready-to-play guarantee.`;
-      }
-      return `A representative ${itemLabel} completed a bounded check, but browser support is still uncertain.`;
+      if (checkOutcome(check) === "inconclusive")
+        return `The ${check?.stage === "metadata" || check?.code === "metadata_timeout" || check?.probe === false ? "metadata" : "sample"} check did not collect enough evidence within its limits. This does not mean the source is unplayable. Retry for longer or open the entry for direct playback.`;
+      if (checkOutcome(check) === "invalid")
+        return (
+          check?.message ||
+          "Invalid source or media data. Review the source before retrying."
+        );
+      if (checkOutcome(check) === "unavailable")
+        return `This attempt could not check the source. ${check?.message || "Retry when the engine, file, or connection is available."} Your entry was kept.`;
+      if (hasReadableSample(check))
+        return `A small video sample from one ${itemLabel} was decoded on this computer. This is not a ready-to-play guarantee: other files, later seeks, sustained playback, and browser support remain untested.`;
+      if (check?.probe === false)
+        return "Metadata was found; playback has not been checked. File listings do not establish media availability.";
+      return "No decoded-frame evidence was recorded. Saved technical details are historical metadata, not a verified media sample.";
     default:
       return "Refresh the check status.";
   }
+}
+
+export function checkDetails(check) {
+  if (!check) return "";
+  const browser =
+    check.browserSupport === "likely"
+      ? "Likely (not tested in this browser)"
+      : check.browserSupport === "limited"
+        ? "Limited (a native player may differ)"
+        : "Uncertain";
+  return [
+    check.mode === "extended"
+      ? "Extended: up to 3 minutes."
+      : "Basic: up to 1 minute.",
+    check.filePath
+      ? `File: ${check.filePath}.`
+      : check.fileId !== undefined
+        ? `File ID: ${check.fileId}.`
+        : "",
+    check.totalFiles !== undefined
+      ? `Sample coverage: ${hasReadableSample(check) ? (check.checkedFiles ?? 1) : 0} of ${check.totalFiles} files.`
+      : "",
+    `Browser hint: ${browser}.`,
+    check.updatedAt ? `Last attempt: ${check.updatedAt}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function checkActions(check) {
+  if (checkPhase(check) === "unchecked")
+    return [
+      {
+        label: "Start check",
+        command: "panel:startCheck",
+        payload: { mode: "basic" },
+      },
+    ];
+  const actions = [{ label: "Refresh status", command: "panel:getCheck" }];
+  if (isActiveCheck(check))
+    return [
+      ...actions,
+      { label: "Cancel check", command: "panel:cancelCheck" },
+    ];
+  return [
+    ...actions,
+    {
+      label: "Retry check",
+      command: "panel:startCheck",
+      payload: { mode: "basic" },
+    },
+    {
+      label: "Retry longer (up to 3 min)",
+      command: "panel:startCheck",
+      payload: { mode: "extended" },
+    },
+  ];
+}
+
+export function startCheckPayload(entry, check, mode = "basic") {
+  if (mode !== "basic" && mode !== "extended")
+    throw new Error("Choose a basic or extended source check.");
+  const fileId = check?.fileId ?? entry.checkFileId;
+  return {
+    entryId: entry.id,
+    ...(fileId === undefined ? {} : { fileId }),
+    mode,
+  };
 }
 
 export function createCheckPoller(
@@ -95,6 +191,7 @@ export function createCheckPoller(
     if (stopped || !isActiveCheck(current)) return;
     timer = schedule(
       async () => {
+        if (stopped) return;
         const own = ++ticket;
         try {
           const next = await load();

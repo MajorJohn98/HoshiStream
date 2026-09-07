@@ -17,6 +17,7 @@ export interface SpeedResult {
 let configured = 10;
 let measured: SpeedResult | undefined;
 let running: Promise<SpeedResult> | undefined;
+let measurement: AbortController | undefined;
 
 export function setConfiguredSpeed(mbps: number): void {
   configured = mbps;
@@ -42,22 +43,39 @@ export function homeSpeedMbps(): number {
 
 // For tests.
 export function resetSpeed(): void {
+  measurement?.abort();
+  measurement = undefined;
   measured = undefined;
   running = undefined;
+}
+
+export async function stopSpeedTest(): Promise<void> {
+  const pending = running;
+  const controller = measurement;
+  controller?.abort();
+  try {
+    await pending;
+  } catch (error) {
+    if (!controller?.signal.aborted) throw error;
+  }
 }
 
 export async function measureDownloadMbps(
   fetchImpl: typeof fetch = fetch,
   measureMs = MEASURE_MS,
+  signal?: AbortSignal,
 ): Promise<number> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const requestSignal = signal
+    ? AbortSignal.any([signal, controller.signal])
+    : controller.signal;
   try {
     // Small warm-up so connection setup and TLS are not billed to the run.
-    await fetchImpl(WARMUP_URL, { signal: controller.signal }).then((r) =>
+    await fetchImpl(WARMUP_URL, { signal: requestSignal }).then((r) =>
       r.arrayBuffer(),
     );
-    const response = await fetchImpl(DOWN_URL, { signal: controller.signal });
+    const response = await fetchImpl(DOWN_URL, { signal: requestSignal });
     if (!response.ok || !response.body)
       throw new Error(`Speed test failed: ${response.status}`);
     const reader = response.body.getReader();
@@ -85,17 +103,27 @@ export async function runSpeedTest(
 ): Promise<SpeedResult> {
   // Concurrent requests share one in-flight measurement.
   if (running) return running;
-  running = (async () => {
-    const mbps = Number((await measureDownloadMbps(fetchImpl)).toFixed(1));
+  const controller = new AbortController();
+  measurement = controller;
+  const pending = (async () => {
+    const mbps = Number(
+      (
+        await measureDownloadMbps(fetchImpl, MEASURE_MS, controller.signal)
+      ).toFixed(1),
+    );
     measured = { mbps, measuredAt: new Date().toISOString() };
     console.log(
       JSON.stringify({ level: "info", event: "speedtest_completed", mbps }),
     );
     return measured;
   })();
+  running = pending;
   try {
-    return await running;
+    return await pending;
   } finally {
-    running = undefined;
+    if (running === pending) {
+      running = undefined;
+      measurement = undefined;
+    }
   }
 }

@@ -36,7 +36,7 @@ export const handleAnalysis: RouteHandler = async (
       return reply(response, 409, { error: "Analysis already running" });
     logInfo("library_analysis_started", { force: Boolean(input.force) });
   } else if (method === "DELETE") {
-    analysis.cancel();
+    await analysis.cancel();
   } else if (method !== "GET") {
     return reply(response, 405, { error: "Method not allowed" });
   }

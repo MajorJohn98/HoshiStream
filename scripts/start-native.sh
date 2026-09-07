@@ -15,8 +15,10 @@ done
 
 mkdir -p "$LOG_DIR"
 if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-  echo "HoshiStream native server is already running."
-  exit 0
+  if node "$ROOT/scripts/native-control.mjs" status --state-dir="$STATE_DIR" >/dev/null 2>&1; then
+    echo "HoshiStream native server is already running."
+    exit 0
+  fi
 fi
 
 if [ "$DEV" -eq 0 ]; then
@@ -26,15 +28,13 @@ fi
 # Same --project-root the menu-bar app and start-native.ps1 use, so the
 # terminal server reads the installed app's .env (token, MEDIA_DIR) and is a
 # drop-in for it rather than a second identity with its own token.
+node "$ROOT/scripts/native-control.mjs" prepare --state-dir="$STATE_DIR"
 nohup node "$ROOT/scripts/native-server.mjs" --state-dir="$STATE_DIR" --project-root="$STATE_DIR" --detached "$@" >>"$LOG_DIR/hoshistream.log" 2>&1 &
+STARTED_PID=$!
 
-for _ in $(seq 1 60); do
-  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-    echo "HoshiStream native server started."
-    exit 0
-  fi
-  sleep 0.25
-done
+if node "$ROOT/scripts/native-control.mjs" wait --state-dir="$STATE_DIR" --pid="$STARTED_PID"; then
+  exit 0
+fi
 
 echo "HoshiStream native server failed to start. Check $LOG_DIR/hoshistream.log" >&2
 exit 1

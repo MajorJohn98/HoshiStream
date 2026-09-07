@@ -13,8 +13,22 @@ import {
   writeFile,
 } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { basename, dirname, extname, join, relative, resolve } from "node:path";
-import { containsPath, firstSegmentBelow } from "./path-safety.ts";
+import {
+  basename,
+  dirname,
+  extname,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
+import {
+  containsPath,
+  firstSegmentBelow,
+  isSafeRelativePath,
+  isWindowsFilename,
+  samePath,
+} from "./path-safety.ts";
 import { pipeline } from "node:stream/promises";
 import { isPlayablePath, selectMediaFiles } from "./media-file-selection.ts";
 import type { LibraryEntry } from "./types.ts";
@@ -140,9 +154,12 @@ export async function inspectLocalEntry(entry: LibraryEntry) {
   const files = await Promise.all(
     paths.map(async (path, id) => ({
       id,
-      path: info.isDirectory()
+      path: (info.isDirectory()
         ? relative(root, path)
-        : relative(join(root, ".."), path),
+        : relative(join(root, ".."), path)
+      )
+        .split(sep)
+        .join("/"),
       length: (await stat(path)).size,
       localPath: path,
     })),
@@ -179,6 +196,11 @@ export async function saveUpload(
   relativePath: string,
 ): Promise<{ path: string; folderRoot: string }> {
   if (!UUID_V4.test(batch) || !relativePath)
+    throw new SyntaxError("Invalid upload path");
+  if (
+    process.platform === "win32" &&
+    !isSafeRelativePath(relativePath.replaceAll("\\", "/"))
+  )
     throw new SyntaxError("Invalid upload path");
   const uploadRoot = await ensureUploadRoot(UPLOAD_ROOT);
   const batchRoot = resolve(uploadRoot, batch);
@@ -218,6 +240,8 @@ export async function saveTorrentUpload(
 ): Promise<string> {
   if (!UUID_V4.test(batch) || extname(name).toLowerCase() !== ".torrent")
     throw new SyntaxError("Invalid torrent upload");
+  if (process.platform === "win32" && !isWindowsFilename(basename(name)))
+    throw new SyntaxError("Invalid torrent upload");
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -238,6 +262,8 @@ export async function saveTorrentBytes(
   root = UPLOAD_ROOT,
 ): Promise<string> {
   if (!UUID_V4.test(batch) || extname(name).toLowerCase() !== ".torrent")
+    throw new SyntaxError("Invalid torrent upload");
+  if (process.platform === "win32" && !isWindowsFilename(basename(name)))
     throw new SyntaxError("Invalid torrent upload");
   if (data.length > MAX_TORRENT_BYTES)
     throw new SyntaxError("Torrent file exceeds 1 MB");
@@ -306,7 +332,7 @@ export async function removeManagedMedia(
     })),
   );
   const overlaps = (a: string, b: string) =>
-    a === b || containsPath(a, b) || containsPath(b, a);
+    samePath(a, b) || containsPath(a, b) || containsPath(b, a);
   for (const path of new Set(owned)) {
     const source = resolve(path);
     const batch = firstSegmentBelow(root, source);
@@ -316,7 +342,7 @@ export async function removeManagedMedia(
       !actual ||
       !containsPath(actualRoot, actual) ||
       // Never follow a replaced file or intermediate directory symlink.
-      actual !== resolve(actualRoot, relative(root, source)) ||
+      !samePath(actual, resolve(actualRoot, relative(root, source))) ||
       references.some(
         (reference) =>
           overlaps(source, reference.lexical) ||
@@ -326,7 +352,9 @@ export async function removeManagedMedia(
       continue;
     // A managed file owns only itself, not other user files in its batch.
     await rm(source, {
-      recursive: source === entry.localFolderPath,
+      recursive:
+        entry.localFolderPath !== undefined &&
+        samePath(source, entry.localFolderPath),
       force: true,
     });
     for (

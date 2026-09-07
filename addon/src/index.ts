@@ -13,7 +13,7 @@ import { MdnsResponder } from "./mdns.ts";
 import { PointerClient } from "./pointer.ts";
 import { DeviceNames } from "./device-names.ts";
 import { Tags } from "./tags.ts";
-import { runSpeedTest } from "./speedtest.ts";
+import { runSpeedTest, stopSpeedTest } from "./speedtest.ts";
 import { VolumeRegistry } from "./volumes.ts";
 import { DiskCleanup } from "./disk-copy.ts";
 import { Archiver } from "./archiver.ts";
@@ -90,6 +90,8 @@ export async function startHoshiStream(settings = config) {
     settings.PUBLIC_ADDON_URL,
     settings.ACCESS_TOKEN,
   );
+  const playback = new Playback(library, torrServer, settings.PLAYER);
+  const analysis = new LibraryAnalysis(library, defaultAnalyzer(sourceChecks));
   let pointer: PointerClient | undefined;
   if (settings.POINTER_URL && settings.POINTER_PUSH_SECRET) {
     pointer = new PointerClient({
@@ -123,7 +125,7 @@ export async function startHoshiStream(settings = config) {
         torrServerUrl: settings.PUBLIC_TORRSERVER_URL,
       },
       lanRedirect: settings.LAN_REDIRECT,
-      playback: new Playback(library, torrServer, settings.PLAYER),
+      playback,
       transcode,
       resourceDirs: {
         torrentCache: settings.TORRSERVER_CACHE_DIR,
@@ -139,69 +141,90 @@ export async function startHoshiStream(settings = config) {
       diskCleanup: new DiskCleanup(settings.DISK_CLEANUP_PATH),
       archiver,
       archiveSchedule,
-      analysis: new LibraryAnalysis(
-        library,
-        defaultAnalyzer(library, torrServer),
-      ),
-    }),
-  );
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(settings.ADDON_PORT, "0.0.0.0", () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  console.log(
-    JSON.stringify({
-      level: "info",
-      event: "started",
-      port: settings.ADDON_PORT,
+      analysis,
     }),
   );
   let mdns: MdnsResponder | undefined;
-  if (settings.MDNS_ENABLED) {
-    mdns = new MdnsResponder({ port: settings.ADDON_PORT });
-    mdns.start();
-  }
-  // Resume any disk-copy work left outstanding by the previous run.
-  await archiver.start();
-  // Measure the real link speed once at startup; failures keep the
-  // configured HOME_SPEED_MBPS fallback and are only logged.
-  void runSpeedTest().catch((error: unknown) =>
-    console.error(
-      JSON.stringify({
-        level: "warn",
-        event: "speedtest_failed",
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    ),
-  );
-  return {
-    close: async () => {
+  let closing = false;
+  let closePromise: Promise<void> | undefined;
+  const close = (): Promise<void> => {
+    closePromise ??= (async () => {
+      closing = true;
       mdns?.close();
-      await imports.close();
-      await sourceChecks.close();
-      await archiver.close();
-      await transcode?.close();
-      // server.close() only stops new connections; it resolves once every
-      // socket is gone. Idle keep-alive clients — an open management tab is
-      // enough — would otherwise hold the process open indefinitely, which
-      // orphaned the daemon whenever the supervisor exited.
+      playback.stop();
+      const analysisStopped = analysis.cancel();
       server.closeIdleConnections();
       const forceClose = setTimeout(() => {
         server.closeAllConnections();
       }, SHUTDOWN_GRACE_MS);
       forceClose.unref();
       try {
-        await new Promise<void>((resolve, reject) =>
-          server.close((error) => (error ? reject(error) : resolve())),
+        const httpClosed = server.listening
+          ? new Promise<void>((resolve, reject) =>
+              server.close((error) => (error ? reject(error) : resolve())),
+            )
+          : Promise.resolve();
+        const results = await Promise.allSettled([
+          httpClosed,
+          stopSpeedTest(),
+          imports.close(),
+          sourceChecks.close(),
+          analysisStopped,
+          archiver.close(),
+          transcode?.close(),
+        ]);
+        const errors = results.flatMap((result) =>
+          result.status === "rejected" ? [result.reason] : [],
         );
+        if (errors.length)
+          throw new AggregateError(errors, "Add-on cleanup failed");
       } finally {
         clearTimeout(forceClose);
       }
-    },
+    })();
+    return closePromise;
   };
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(settings.ADDON_PORT, "0.0.0.0", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    console.log(
+      JSON.stringify({
+        level: "info",
+        event: "started",
+        port: settings.ADDON_PORT,
+      }),
+    );
+    if (settings.MDNS_ENABLED) {
+      mdns = new MdnsResponder({ port: settings.ADDON_PORT });
+      mdns.start();
+    }
+    await archiver.start();
+    void runSpeedTest().catch((error: unknown) => {
+      if (!closing)
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            event: "speedtest_failed",
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+    });
+    return { close };
+  } catch (error) {
+    try {
+      await close();
+    } catch {
+      console.error(
+        JSON.stringify({ level: "error", event: "startup_cleanup_failed" }),
+      );
+    }
+    throw error;
+  }
 }
 
 if (

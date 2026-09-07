@@ -201,10 +201,10 @@ describe("management assets", () => {
     expect(addJs).toContain('event.key === "ArrowLeft"');
   });
 
-  it("add modal offers Finder linking only when the picker is available", async () => {
+  it("add modal offers native linking only when the picker is available", async () => {
     const addJs = await asset("views/add.js");
     expect(addJs).toContain("status.nativePicker");
-    expect(addJs).toContain("Choose with Finder");
+    expect(addJs).toContain("Choose on this computer");
     expect(addJs).toContain("nativePathGrant: picked.grant");
     expect(addJs).toContain('"native-picker/"');
   });
@@ -216,11 +216,9 @@ describe("management assets", () => {
       "extraSources: extraSources.map(editableSource)",
     );
     expect(detailJs).toContain("Save mapping");
-    expect(detailJs).toContain("Test playback");
+    expect(detailJs).toContain("Open direct stream");
     expect(detailJs).toContain("Source check");
-    expect(detailJs).toContain(
-      "A completed check is not a universal browser guarantee",
-    );
+    expect(detailJs).toContain("run a check or automatically assess playback");
     expect(detailJs).toContain('from "../components/source-check.js"');
     expect(detailJs).toContain('class="kv');
     expect(detailJs).toContain("Open the entry and review its source check");
@@ -238,9 +236,9 @@ describe("management assets", () => {
     expect(closeDetailRoute("#/play/demo/1")).toBe("#/play/demo/1");
   });
 
-  it("detail source tab can relink local entries in Finder", async () => {
+  it("detail source tab can relink local entries on this computer", async () => {
     const detailJs = await asset("views/detail.js");
-    expect(detailJs).toContain("Relink in Finder");
+    expect(detailJs).toContain("Relink on this computer");
     expect(detailJs).toContain('"/relink"');
     expect(detailJs).toContain("state.status.nativePicker");
   });
@@ -260,9 +258,12 @@ describe("management assets", () => {
     expect(statusJs).toContain("TorrServer");
     expect(statusJs).toContain("Streaming now");
     expect(statusJs).toContain("status.streamingActive");
-    expect(statusJs).toContain("Native macOS app");
-    expect(statusJs).toContain("Kept awake automatically during playback");
-    expect(statusJs).toContain("Run caffeinate or keep the Mac awake");
+    expect(statusJs).toContain("Native desktop app");
+    expect(statusJs).toContain(
+      "Desktop app manages idle sleep during playback",
+    );
+    expect(statusJs).toContain("Keep the host computer awake");
+    expect(statusJs).toContain('if (!available) return "Unavailable"');
     expect(statusJs).not.toContain('"diagnostics"');
     expect(statusJs).toContain("export function StatusView");
   });
@@ -327,7 +328,7 @@ describe("management assets", () => {
     expect(analysisJs).toContain("export function AnalysisPanel");
     expect(analysisJs).toContain('api("analysis")');
     expect(analysisJs).toContain('method: "DELETE"');
-    expect(analysisJs).toContain("Re-analyze everything");
+    expect(analysisJs).toContain("Recheck everything");
   });
 
   it("status view measures speed and polls resource usage", async () => {
@@ -350,14 +351,21 @@ describe("management assets", () => {
 
   it("player view resolves streams and supports HLS via vendored hls.js", async () => {
     const playerJs = await asset("views/player.js");
-    expect(playerJs).toContain('import("../vendor/hls.js")');
-    expect(playerJs).toContain("application/vnd.apple.mpegurl");
+    expect(playerJs).toContain('from "../playback-attempt.js"');
+    const playbackAttempt = await asset("playback-attempt.js");
+    expect(playbackAttempt).toContain('import("./vendor/hls.js")');
+    expect(playbackAttempt).toContain("application/vnd.apple.mpegurl");
+    expect(playbackAttempt).toContain("Hls.Events.ERROR");
     expect(playerJs).toContain("/stream/");
     expect(playerJs).toContain("if (!response.ok)");
     expect(playerJs).toContain("Could not load stream metadata (HTTP");
     expect(playerJs).toContain("Run a source check, then retry playback");
     expect(playerJs).toContain("Open entry check");
     expect(playerJs).toContain("Retry");
+    expect(playerJs).toContain("Wait longer");
+    expect(playerJs).toMatch(
+      /setNotice\(""\);\s+void attemptRef\.current\?\.play\(\{ retry: true \}\);/,
+    );
     expect(playerJs).toContain("Loading stream metadata…");
     expect(playerJs).toContain("Loading video into the player…");
     expect(playerJs).toContain("localStorage");

@@ -78,7 +78,11 @@ export const nativeRequestSchema = z.discriminatedUnion("command", [
   command(
     "startCheck",
     z
-      .object({ entryId, fileId: z.number().int().nonnegative().optional() })
+      .object({
+        entryId,
+        fileId: z.number().int().nonnegative().optional(),
+        mode: z.enum(["basic", "extended"]).optional(),
+      })
       .strict(),
   ),
   command("getCheck", z.object({ entryId }).strict()),

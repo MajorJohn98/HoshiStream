@@ -1,0 +1,126 @@
+name: Native desktop validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shared:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.3.1"
+          cache: npm
+          cache-dependency-path: addon/package-lock.json
+      - name: Install locked development dependencies
+        working-directory: addon
+        run: npm ci
+      - name: Typecheck
+        working-directory: addon
+        run: npm run typecheck
+      - name: Test shared behavior including native IPC
+        working-directory: addon
+        run: npm test
+      - name: Lint
+        working-directory: addon
+        run: npm run lint
+      - name: Format
+        working-directory: addon
+        run: npm run format:check
+      - name: Build
+        working-directory: addon
+        run: npm run build
+      - name: Fetch native TorrServer
+        if: runner.os == 'Windows' || runner.arch == 'ARM64'
+        run: node packaging/fetch-torrserver.mjs
+      - name: Smoke source startup and private control shutdown
+        if: runner.os == 'Windows' || runner.arch == 'ARM64'
+        run: node scripts/smoke-native.mjs --dev --control-stop
+      - name: Smoke built startup and parent-channel shutdown
+        if: runner.os == 'Windows' || runner.arch == 'ARM64'
+        run: node scripts/smoke-native.mjs
+      - uses: actions/setup-dotnet@v4
+        if: runner.os == 'Windows'
+        with:
+          dotnet-version: "10.0.103"
+      - name: Fetch all Windows runtimes
+        if: runner.os == 'Windows'
+        env:
+          HOSHISTREAM_TARGET: win32-x64
+        run: |
+          node packaging/fetch-node-runtime.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node packaging/fetch-mpv.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node packaging/fetch-ffmpeg.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish self-contained desktop payload
+        if: runner.os == 'Windows'
+        run: node packaging/build-windows-app.mjs --stage-only --validate-installer
+      - name: Installer upgrade and data-preserving uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem build/windows-validation/HoshiStream-*-win-x64-setup.exe
+          if (@($installer).Count -ne 1) { throw 'Expected one validation installer' }
+          & ./packaging/smoke-windows-installer.ps1 -Installer $installer.FullName
+      - name: Native shell and host self-tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tray = Start-Process -FilePath build/windows-stage/HoshiStream/HoshiStream.exe -ArgumentList '--self-test' -PassThru
+          if (-not $tray.WaitForExit(120000)) { $tray.Kill(); throw 'Tray self-test timed out' }
+          if ($tray.ExitCode -ne 0) { throw 'Tray self-test failed' }
+          & build/windows-stage/HoshiStream/native-host/HoshiStream.NativeHost.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Packaged runtime from a spaced Unicode path
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP ('HoshiStream test ' + [char]0x65e5)
+          Copy-Item build/windows-stage/HoshiStream -Destination $destination -Recurse
+          & "$destination/bin/node.exe" "$destination/scripts/smoke-native.mjs" --control-stop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item -LiteralPath $destination -Recurse -Force
+      - name: Require the intended clean revision
+        if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          if ((git status --porcelain --untracked-files=normal)) { throw 'Tracked/untracked checkout changes prevent release packaging' }
+          if ((git rev-parse HEAD) -ne '${{ github.sha }}') { throw 'Unexpected checkout revision' }
+      # This intentionally fails until the exact runtime redistribution bundle
+      # has been reviewed and made available. Stage-only output is never uploaded.
+      - name: Build reviewed private installer and ZIP
+        if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        run: node packaging/build-windows-app.mjs
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        with:
+          name: HoshiStream-windows-x64-${{ github.sha }}
+          path: |
+            build/HoshiStream-*-win-x64.zip
+            build/HoshiStream-*-win-x64.zip.sha256
+            build/HoshiStream-*-win-x64-setup.exe
+            build/HoshiStream-*-win-x64-setup.exe.sha256
+            build/HoshiStream-Chrome-Companion-*.zip
+            build/HoshiStream-Chrome-Companion-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 7

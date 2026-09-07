@@ -3,7 +3,7 @@ import { isAbsolute } from "node:path";
 import { directPlaySchema } from "./direct-play.ts";
 import { isSafeRelativePath } from "./path-safety.ts";
 import { entryTagsSchema } from "./tags.ts";
-import { sourceCheckSchema } from "./source-check-types.ts";
+import { mediaFactSchema, sourceCheckSchema } from "./source-check-types.ts";
 
 const LEGACY_SEARCH_PROVIDER_IDS = [
   "curated",
@@ -208,6 +208,7 @@ export const libraryEntrySchema = z
     searchImport: searchImportSchema.optional(),
     searchReceipts: z.array(searchReceiptSchema).optional(),
     sourceCheck: sourceCheckSchema.optional(),
+    mediaFacts: z.array(mediaFactSchema).optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -241,6 +242,7 @@ export const createEntrySchema = libraryEntrySchema
     searchImport: true,
     searchReceipts: true,
     sourceCheck: true,
+    mediaFacts: true,
     createdAt: true,
     updatedAt: true,
   })

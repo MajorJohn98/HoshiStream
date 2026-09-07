@@ -51,3 +51,21 @@ terminal/watch signals cannot bypass asynchronous child cleanup.
 
 See [the hardening plan](../plans/2026-09-06-search-add-hardening.md) and
 [ADR 0019](../decisions/0019-post-save-source-checks.md).
+
+## Readiness follow-up
+
+The readiness contract now distinguishes file metadata, decoded sample evidence
+and browser support. Empty metadata and header-only video no longer establish a
+readable sample; timeouts are inconclusive rather than unplayable-source claims.
+Automatic checks stay bounded and an explicit longer retry is available.
+
+Technical analysis shares the source-check coordinator. Successful observations
+are stored atomically with source/file/job identity, so late work cannot certify
+an edited source or another episode. Legacy verdicts remain historical, and
+network speed is advisory rather than a permanent compatibility grade.
+
+Management and Chrome companion labels expose the observed evidence. Browser
+startup no longer changes formats merely because metadata is slow, and autoplay,
+buffering, actual playback, and fatal player errors are distinct.
+
+See [ADR 0023](../decisions/0023-file-scoped-readiness-evidence.md).

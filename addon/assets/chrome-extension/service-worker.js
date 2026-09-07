@@ -4,6 +4,7 @@ import {
   PENDING_COMMITS_KEY,
 } from "./lib/constants.js";
 import { normalizeCapturedLinks, sourceFromCandidate } from "./lib/capture.js";
+import { startCheckPayload } from "./lib/checks.js";
 import {
   sendNativeRequest,
   assertTrustedUiSender,
@@ -633,7 +634,7 @@ async function retryPendingCommitState() {
   }
 }
 
-async function startCheckState() {
+async function startCheckState(mode = "basic") {
   const state = await loadState();
   const entry = state.save.entry;
   if (!entry?.id) {
@@ -642,10 +643,11 @@ async function startCheckState() {
       "Save the entry before starting a source check.",
     );
   }
-  const check = await sendNativeRequest(chrome.runtime, "startCheck", {
-    entryId: entry.id,
-    ...(entry.checkFileId === undefined ? {} : { fileId: entry.checkFileId }),
-  });
+  const check = await sendNativeRequest(
+    chrome.runtime,
+    "startCheck",
+    startCheckPayload(entry, state.save.check ?? entry.sourceCheck, mode),
+  );
   return saveState(applyCheckResult(await loadState(), check));
 }
 
@@ -797,7 +799,7 @@ async function handlePanelMessage(message) {
         );
       return primaryActionState();
     case "panel:startCheck":
-      return startCheckState();
+      return startCheckState(message.payload?.mode);
     case "panel:getCheck":
       return getCheckState();
     case "panel:cancelCheck":

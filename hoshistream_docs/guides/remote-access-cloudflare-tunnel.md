@@ -25,6 +25,22 @@ sudo cloudflared service install eyJh...   # the tunnel token
 
 `cloudflared` runs as a LaunchDaemon and reconnects automatically.
 
+### Windows
+
+The HoshiStream Windows installer does not bundle or automatically configure
+`cloudflared`. Download it separately from
+[Cloudflare's official downloads](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/)
+and follow the dashboard's **Windows** connector instructions for your tunnel.
+Cloudflare also documents
+[Windows service setup](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/as-a-service/windows/)
+for locally managed tunnels.
+
+The connector's service permissions and credentials are separate from
+HoshiStream's per-user tray and optional Start at Login. A running connector
+does not start HoshiStream before the user signs in. Keep tunnel credentials
+private; do not include them in HoshiStream logs or release artifacts.
+The existing remote-pointer action remains manual on Windows.
+
 ## 3. Use the tunnel manifest URL
 
 Install the add-on in Stremio/Nuvio with the tunnel hostname:

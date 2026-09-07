@@ -32,9 +32,12 @@ export function sourceKey(primaryHash: string, file: SelectedFile): string {
  * Torrent paths are untrusted external input. Normalize separators, then
  * reject — never rewrite — anything that could escape the entry directory.
  */
-export function safeRelativePath(torrentPath: string): string {
+export function safeRelativePath(
+  torrentPath: string,
+  platform = process.platform,
+): string {
   const normalized = torrentPath.replaceAll("\\", "/").replace(/\/+$/, "");
-  if (!isSafeRelativePath(normalized))
+  if (!isSafeRelativePath(normalized, platform))
     throw new DiskCopyError("Torrent contains an unsafe file path");
   return normalized;
 }
@@ -91,6 +94,7 @@ export interface ManifestOptions {
 export function buildManifest(
   entry: LibraryEntry,
   options: ManifestOptions,
+  platform = process.platform,
 ): DiskCopyFile[] {
   const cache = entry.inspectionCache;
   if (!cache)
@@ -103,19 +107,33 @@ export function buildManifest(
   const explicit = options.includedSourceKeys
     ? new Set(options.includedSourceKeys)
     : undefined;
+  const destinations = new Set<string>();
   return cache.selectedFiles
     .map((file) => {
       const key = sourceKey(cache.hash, file);
       const prior = previous.get(key);
       const carried = prior && prior.length === file.length;
+      const relativePath = safeRelativePath(file.path, platform);
+      const included =
+        options.scope === "all"
+          ? true
+          : (explicit?.has(key) ?? prior?.included ?? false);
+      if (
+        platform === "win32" &&
+        (included || (carried && prior.state !== "missing"))
+      ) {
+        const destination = relativePath.toLowerCase();
+        if (destinations.has(destination))
+          throw new DiskCopyError(
+            "Torrent contains conflicting Windows file paths",
+          );
+        destinations.add(destination);
+      }
       return {
         sourceKey: key,
-        relativePath: safeRelativePath(file.path),
+        relativePath,
         length: file.length,
-        included:
-          options.scope === "all"
-            ? true
-            : (explicit?.has(key) ?? prior?.included ?? false),
+        included,
         state: carried ? prior.state : ("missing" as const),
       };
     })
@@ -194,7 +212,12 @@ export async function removeDiskCopyDirectory(
   if (!containsPath(root, directory))
     throw new DiskCopyError("Disk copy directory escapes the volume root");
   const actualRoot = await realpath(root);
-  const actual = await realpath(directory).catch(() => undefined);
+  const actual = await realpath(directory).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    },
+  );
   if (actual === undefined) return; // already gone
   if (!containsPath(actualRoot, actual))
     throw new DiskCopyError("Disk copy directory escapes the volume root");

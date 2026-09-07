@@ -14,8 +14,8 @@ const SOURCE_CHECK_BADGES = {
   queued: { tone: "warn", label: "Queued" },
   inspecting: { tone: "warn", label: "Inspecting…" },
   probing: { tone: "warn", label: "Checking…" },
-  complete: { tone: "ok", label: "Checked" },
-  failed: { tone: "bad", label: "Check failed" },
+  complete: { tone: "idle", label: "Sample unverified" },
+  failed: { tone: "warn", label: "Check unavailable" },
   cancelled: { tone: "idle", label: "Check cancelled" },
   interrupted: { tone: "warn", label: "Check interrupted" },
 };
@@ -26,7 +26,9 @@ function sameCheck(left, right) {
     left?.updatedAt === right?.updatedAt &&
     left?.message === right?.message &&
     left?.jobId === right?.jobId &&
-    left?.fileId === right?.fileId
+    left?.fileId === right?.fileId &&
+    left?.outcome === right?.outcome &&
+    left?.technical?.decodedVideoFrames === right?.technical?.decodedVideoFrames
   );
 }
 
@@ -66,45 +68,74 @@ export function isSourceCheckActive(check) {
   return ACTIVE_SOURCE_CHECK_PHASES.has(sourceCheckPhase(check));
 }
 
+export function sourceCheckOutcome(check) {
+  if (check?.outcome) return check.outcome;
+  if (
+    check?.phase === "failed" &&
+    ["probe_timeout", "metadata_timeout", "check_timeout", "timeout"].includes(
+      check.code,
+    )
+  )
+    return "inconclusive";
+  return check?.phase === "failed" ? "unavailable" : "observed";
+}
+
+export function hasReadableSample(check) {
+  return (
+    check?.phase === "complete" &&
+    sourceCheckOutcome(check) === "observed" &&
+    check.probe === true &&
+    check.technical?.decodedVideoFrames >= 1
+  );
+}
+
 export function sourceCheckBadge(check, error) {
   if (error) return { tone: "warn", label: "Status unavailable" };
   const phase = sourceCheckPhase(check);
+  if (phase === "complete" || phase === "failed") {
+    const outcome = sourceCheckOutcome(check);
+    if (outcome === "inconclusive")
+      return { tone: "warn", label: "Check inconclusive" };
+    if (outcome === "invalid") return { tone: "bad", label: "Invalid source" };
+    if (outcome === "unavailable") return SOURCE_CHECK_BADGES.failed;
+  }
   if (phase !== "complete")
     return (
       SOURCE_CHECK_BADGES[phase] ?? { tone: "warn", label: "Unknown status" }
     );
-  if (!check?.probe) return { tone: "ok", label: "Inspected" };
-  if (check.browserSupport === "likely")
-    return { tone: "ok", label: "Browser likely" };
-  if (check.browserSupport === "limited")
-    return { tone: "warn", label: "Browser limited" };
+  if (hasReadableSample(check)) return { tone: "ok", label: "Sample read" };
+  if (check?.probe === false) return { tone: "idle", label: "Metadata found" };
   return SOURCE_CHECK_BADGES.complete;
 }
 
 export function sourceCheckSummary(check, entryType = "movie") {
   const phase = sourceCheckPhase(check);
   if (phase === "unchecked")
-    return "Not checked yet. Run a source check when you want metadata and a bounded playback sample.";
+    return "Not checked yet. A basic check inspects metadata and tries a small media sample, for up to 1 minute.";
   if (phase === "queued")
     return check?.probe === false
       ? "Queued to inspect source metadata."
       : "Queued to inspect the source and read a limited media sample after saving.";
   if (phase === "inspecting")
-    return "Inspecting source metadata. This may contact peers but does not switch sources or download the full title.";
+    return "Inspecting source metadata. This may contact peers but does not switch sources or request a full download.";
   if (phase === "probing")
-    return "Reading a limited sample from one representative file. This is still not a ready-to-play guarantee for every browser, device, or episode.";
+    return "Trying a small sample from one selected file. Engine read-ahead may fetch extra data; this is not a strict network-byte limit.";
   if (phase === "cancelled")
     return "The background check was cancelled. The library entry and source were kept unchanged.";
   if (phase === "interrupted")
     return "The background check stopped because the source changed or the app restarted. Retry when you are ready.";
-  if (phase === "failed") return check?.message || "The source check failed.";
-  if (!check?.probe)
-    return "Source metadata was resolved, but playback has not been checked yet.";
-  if (check.browserSupport === "likely")
-    return `One representative ${entryType === "series" ? "episode" : "file"} completed a bounded playback check. That is a useful browser hint, not a ready-to-play guarantee for every file or every device.`;
-  if (check.browserSupport === "limited")
-    return `The representative ${entryType === "series" ? "episode" : "file"} completed a bounded check, but browser support looks limited. A native player or the optional Compatible stream may still be needed.`;
-  return `The representative ${entryType === "series" ? "episode" : "file"} completed a bounded check, but browser support is still uncertain.`;
+  const outcome = sourceCheckOutcome(check);
+  if (outcome === "inconclusive")
+    return `The ${check?.stage === "metadata" || check?.code === "metadata_timeout" || check?.probe === false ? "metadata" : "sample"} check did not collect enough evidence within its limits. This does not mean the source is unplayable. Retry for longer or try direct playback.`;
+  if (outcome === "invalid")
+    return "The check found invalid source or media data. Review the source details before retrying.";
+  if (outcome === "unavailable")
+    return "This attempt could not check the source. The entry was kept; try again when the engine, file, or connection is available.";
+  if (hasReadableSample(check))
+    return `A small video sample from one ${entryType === "series" ? "episode" : "file"} was decoded on this computer. This is not a ready-to-play guarantee: other files, later seeks, sustained playback, and browser support remain untested.`;
+  if (check?.probe === false)
+    return "Source metadata was found; playback has not been checked. File listings do not establish media availability.";
+  return "This check has no recorded decoded-frame evidence. Treat any saved technical details as historical metadata, not a verified media sample.";
 }
 
 export function pickSourceCheckFileId(entry) {
@@ -195,6 +226,7 @@ export function createSourceCheckController(
 
 function agoLabel(iso) {
   if (!iso) return "";
+  if (!Number.isFinite(Date.parse(iso))) return "Unknown time";
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
   if (minutes < 1) return "just now";
   if (minutes < 60) return minutes + " min ago";
@@ -203,32 +235,39 @@ function agoLabel(iso) {
   return Math.round(hours / 24) + " days ago";
 }
 
-function metricRows(check) {
+export function sourceCheckRows(check) {
   if (!check) return [];
   const technical = check.technical || {};
   return [
     check.checkedFiles !== undefined && check.totalFiles !== undefined
       ? [
-          "Coverage",
-          `${check.checkedFiles} of ${check.totalFiles} ${
+          "Sample coverage",
+          `${hasReadableSample(check) ? check.checkedFiles : 0} of ${check.totalFiles} ${
             check.totalFiles === 1 ? "file" : "files"
           }`,
         ]
       : null,
-    check.probe && check.browserSupport
+    check.filePath
+      ? ["File", check.filePath]
+      : check.fileId !== undefined
+        ? ["File ID", String(check.fileId)]
+        : null,
+    check.browserSupport || check.phase
       ? [
           "Browser hint",
           check.browserSupport === "likely"
-            ? "Likely"
+            ? "Likely · not tested in this browser"
             : check.browserSupport === "limited"
-              ? "Limited"
-              : "Unknown",
+              ? "Limited · a native player may differ"
+              : "Uncertain",
         ]
       : null,
     technical.container
       ? ["Container", technical.container.toUpperCase()]
       : null,
     technical.videoCodec ? ["Video", technical.videoCodec.toUpperCase()] : null,
+    technical.videoProfile ? ["Video profile", technical.videoProfile] : null,
+    technical.pixelFormat ? ["Pixel format", technical.pixelFormat] : null,
     technical.audioCodec ? ["Audio", technical.audioCodec.toUpperCase()] : null,
     technical.width && technical.height
       ? ["Resolution", `${technical.width} × ${technical.height}`]
@@ -239,9 +278,41 @@ function metricRows(check) {
     technical.bitrateMbps
       ? ["Average bitrate", technical.bitrateMbps.toFixed(1) + " Mbps"]
       : null,
-    technical.sizeBytes ? ["File size", fmt(technical.sizeBytes)] : null,
-    check.updatedAt ? ["Updated", agoLabel(check.updatedAt)] : null,
+    (check.fileLength ?? technical.sizeBytes) !== undefined
+      ? ["File size", fmt(check.fileLength ?? technical.sizeBytes)]
+      : null,
+    check.stage
+      ? ["Check stage", check.stage === "sample" ? "Media sample" : "Metadata"]
+      : null,
+    check.mode
+      ? [
+          "Time limit",
+          check.mode === "extended"
+            ? "Up to 3 minutes · extended"
+            : "Up to 1 minute · basic",
+        ]
+      : null,
+    check.updatedAt
+      ? ["Last attempt", `${agoLabel(check.updatedAt)} · ${check.updatedAt}`]
+      : null,
   ].filter(Boolean);
+}
+
+export function sourceCheckRequestOptions(
+  startOptions = {},
+  check,
+  mode = "basic",
+) {
+  const fileId =
+    mode === "extended"
+      ? (check?.fileId ?? startOptions.fileId)
+      : (startOptions.fileId ?? check?.fileId);
+  return {
+    ...startOptions,
+    probe: startOptions.probe ?? true,
+    ...(fileId === undefined ? {} : { fileId }),
+    mode,
+  };
 }
 
 export function SourceCheckPanel({
@@ -316,7 +387,7 @@ export function SourceCheckPanel({
     controller.current?.update(check);
   }, [check]);
 
-  const run = async (override = {}) => {
+  const run = async (mode = "basic") => {
     const own = generation.current;
     setActionBusy(true);
     setActionError("");
@@ -326,7 +397,9 @@ export function SourceCheckPanel({
         await api("library/" + encodeURIComponent(entry.id) + "/check", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ...startOptions, ...override }),
+          body: JSON.stringify(
+            sourceCheckRequestOptions(startOptions, check, mode),
+          ),
           signal: AbortSignal.timeout(10000),
         }),
       );
@@ -383,10 +456,13 @@ export function SourceCheckPanel({
 
   const phase = sourceCheckPhase(check);
   const badge = sourceCheckBadge(check);
-  const rows = metricRows(check);
+  const rows = sourceCheckRows(check);
+  const history = (entry.mediaFacts ?? []).filter(
+    (fact) => fact.jobId !== check?.jobId,
+  );
   const actionLabel =
     phase === "complete" && !check?.probe
-      ? "Check playback sample"
+      ? "Check media sample"
       : phase === "failed" || phase === "cancelled" || phase === "interrupted"
         ? "Retry check"
         : phase === "complete"
@@ -407,7 +483,7 @@ export function SourceCheckPanel({
         </span>
       </div>
       ${
-        check?.message && phase !== "failed"
+        check?.message && sourceCheckOutcome(check) !== "observed"
           ? html`<p class="inline-note stacked-xs">${check.message}</p>`
           : null
       }
@@ -424,6 +500,40 @@ export function SourceCheckPanel({
                 `,
               )}
             </dl>`
+          : null
+      }
+      ${
+        history.length
+          ? html`<details class="stacked-sm">
+              <summary>Earlier file facts (${history.length})</summary>
+              <p class="muted stacked-xs">
+                Historical metadata belongs only to the named file. It does not
+                replace the latest check result or establish current
+                availability.
+              </p>
+              ${history.map(
+                (fact) =>
+                  html`<dl
+                    class="kv stacked-sm"
+                    key=${fact.jobId + ":" + fact.fileId}
+                  >
+                    ${[
+                      ["File", fact.filePath],
+                      ["Observed", fact.observedAt],
+                      ...sourceCheckRows({
+                        technical: fact.technical,
+                        fileLength: fact.fileLength,
+                      }),
+                    ].map(
+                      ([label, value]) =>
+                        html`<div key=${label}>
+                          <dt>${label}</dt>
+                          <dd>${value}</dd>
+                        </div>`,
+                    )}
+                  </dl>`,
+              )}
+            </details>`
           : null
       }
       <div class="actions stacked-sm">
@@ -446,6 +556,18 @@ export function SourceCheckPanel({
               >
                 ${actionBusy ? busyLabel || "Starting…" : actionLabel}
               </button>`
+        }
+        ${
+          !isSourceCheckActive(check) && phase !== "unchecked"
+            ? html`<button
+                class="secondary"
+                type="button"
+                disabled=${actionBusy}
+                onClick=${() => run("extended")}
+              >
+                Retry longer (up to 3 min)
+              </button>`
+            : null
         }
       </div>
       ${

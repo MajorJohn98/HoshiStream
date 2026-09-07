@@ -33,6 +33,8 @@
 
 - [decisions/0020-manual-import-chrome-companion.md](decisions/0020-manual-import-chrome-companion.md) — Retire discovery and use a least-privilege Chrome companion with a same-computer macOS native bridge.
 - [decisions/0021-native-magnet-link-handler.md](decisions/0021-native-magnet-link-handler.md) — Opt-in macOS magnet handling with private, expiring handoff tickets and explicit Add Media review.
+- [decisions/0022-windows-native-desktop-release.md](decisions/0022-windows-native-desktop-release.md) — Windows 11 tray, self-contained installer, native integration parity and preserved private/manual behavior.
+- [decisions/0023-file-scoped-readiness-evidence.md](decisions/0023-file-scoped-readiness-evidence.md) — Separate metadata, sampled media, and player support; file-scoped facts, shared checks and explicit longer retries.
 
 ## Guides
 
@@ -40,6 +42,8 @@
 - [guides/chrome-companion.md](guides/chrome-companion.md) — Companion workflow, native registration, local testing, packaging and publication requirements.
 
 - [guides/setup-native-macos.md](guides/setup-native-macos.md) — Build and install the native app, configure `.env`, tune TorrServer, and forward the peer port.
+- [guides/setup-native-windows.md](guides/setup-native-windows.md) — Windows 11 desktop installation, tray behavior, native media/Chrome integration and terminal operation.
+- [guides/distributing-windows-app.md](guides/distributing-windows-app.md) — Self-contained Windows staging, installer/ZIP commands, acceptance and redistribution gates.
 - [guides/distributing-macos-app.md](guides/distributing-macos-app.md) — Build a `.dmg`, the Gatekeeper quarantine workaround, first-run behavior, and signing limitations.
 - [guides/adding-media.md](guides/adding-media.md) — Add magnets, `.torrent` files, and local media; inspection and viability.
 - [guides/development.md](guides/development.md) — Dev commands, the no-build source-run loop (`npm run dev`, `start-native.sh --dev`), working agreement, and code conventions.
@@ -52,6 +56,7 @@
 - [api/management-api-reference.md](api/management-api-reference.md) — Auth, library CRUD, inspection, status, uploads, and token-gated routes.
 - [api/addon-protocol.md](api/addon-protocol.md) — Tokenized manifest, catalog/meta/stream routes, IDs, and stream objects.
 - [api/torrserver-endpoints-used.md](api/torrserver-endpoints-used.md) — The verified TorrServer endpoint subset and client behavior.
+- [api/native-runtime-control.md](api/native-runtime-control.md) — Private local readiness, state ownership and graceful desktop/terminal shutdown contracts.
 
 ## Plans
 
@@ -65,6 +70,7 @@
 - [plans/2026-08-23-realtime-transcoding-plan.md](plans/2026-08-23-realtime-transcoding-plan.md) — Opt-in real-time stream repair: pipeline, session model, seek handling, phased rollout.
 - [plans/2026-08-23-frontend-redesign-and-transcoding-plan.md](plans/2026-08-23-frontend-redesign-and-transcoding-plan.md) — Preact+htm management UI redesign, transcoding UI surface, and the no-Docker dev loop.
 - [plans/2026-08-23-windows-launcher-plan.md](plans/2026-08-23-windows-launcher-plan.md) — Windows v1: portability fixes, PowerShell launcher, zip packaging, on-hardware verification.
+- [plans/2026-09-06-windows-desktop-release-plan.md](plans/2026-09-06-windows-desktop-release-plan.md) — Approved Windows 11 x64 tray, native integration, bundled playback and private installer release plan.
 - [plans/2026-09-01-stable-manifest-pointer-plan.md](plans/2026-09-01-stable-manifest-pointer-plan.md) — Stable manifest URL via a Vercel pointer/redirector server with a manual menu-bar IP push.
 - [plans/2026-09-01-multi-torrent-series-plan.md](plans/2026-09-01-multi-torrent-series-plan.md) — One series entry backed by several torrents: extra sources, composite file IDs, merged episode list.
 - [plans/2026-09-02-multi-tenant-pointer-and-dashboard-plan.md](plans/2026-09-02-multi-tenant-pointer-and-dashboard-plan.md) — Multi-tenant pointer server (token-keyed, claim-on-first-push), public-release hardening, and the local connected-clients dashboard.
@@ -79,6 +85,8 @@
 - [plans/2026-09-06-chrome-companion-plan.md](plans/2026-09-06-chrome-companion-plan.md) — Replace in-app discovery with manual imports, a Chrome side panel and a same-computer macOS native bridge.
 
 ## Changelog
+
+- [changelog/windows-desktop.md](changelog/windows-desktop.md) — Windows tray, native integrations, playback, storage, lifecycle and packaging implementation.
 
 - [changelog/new-user-onboarding.md](changelog/new-user-onboarding.md) — Skippable first-run guidance, persistent setup progress, and private player connection.
 - [changelog/chrome-companion-manual-import.md](changelog/chrome-companion-manual-import.md) — Manual-import pivot, discovery removal, Chrome side panel and native messaging.

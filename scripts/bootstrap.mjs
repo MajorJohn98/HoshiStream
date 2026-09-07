@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
+import { restrictAccess } from "./private-files.mjs";
 
 const TOKEN_MINIMUM_LENGTH = 20;
 
@@ -42,17 +43,17 @@ export function defaultStateRoot(
   env = process.env,
 ) {
   if (platform === "win32")
-    return join(
-      env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"),
+    return win32.join(
+      env.LOCALAPPDATA ?? win32.join(homedir(), "AppData", "Local"),
       "HoshiStream",
     );
-  return join(homedir(), "Library", "Application Support", "HoshiStream");
+  return posix.join(homedir(), "Library", "Application Support", "HoshiStream");
 }
 
 export function defaultMediaDir(platform = process.platform) {
   return platform === "win32"
-    ? join(homedir(), "Videos")
-    : join(homedir(), "Movies");
+    ? win32.join(homedir(), "Videos")
+    : posix.join(homedir(), "Movies");
 }
 
 function renderEnvFile({
@@ -87,6 +88,8 @@ POINTER_PUSH_SECRET=${pointerPushSecret}
 
 async function writePrivateFile(path, contents) {
   const temporary = `${path}.tmp`;
+  await writeFile(temporary, "", { mode: 0o600 });
+  await restrictAccess(temporary);
   await writeFile(temporary, contents, { mode: 0o600 });
   await rename(temporary, path);
 }
@@ -147,6 +150,8 @@ export async function ensureFirstRunSetup({
   }
   if (contents !== existing) {
     await writePrivateFile(envPath, contents);
+  } else {
+    await restrictAccess(envPath);
   }
   return { environment, firstRun: false };
 }

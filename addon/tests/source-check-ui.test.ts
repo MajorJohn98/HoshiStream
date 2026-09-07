@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFile } from "node:fs/promises";
 
 globalThis.location = {
   pathname: "/manage/fixture-token",
@@ -11,7 +12,12 @@ const {
   sourceCheckBadge,
   sourceCheckSummary,
   sourceCheckKey,
+  sourceCheckRows,
+  sourceCheckRequestOptions,
+  hasReadableSample,
 } = module;
+const { unanalyzedCount, analysisEvidenceCounts } =
+  await import("../assets/manage/views/analysis.js");
 const { state, markSourceCheckRequested, refreshSourceCheckReports } =
   await import("../assets/manage/store.js");
 
@@ -37,8 +43,8 @@ describe("source check UI helpers", () => {
         browserSupport: "limited",
       }),
     ).toEqual({
-      tone: "warn",
-      label: "Browser limited",
+      tone: "idle",
+      label: "Sample unverified",
     });
   });
 
@@ -48,6 +54,7 @@ describe("source check UI helpers", () => {
         phase: "complete",
         probe: true,
         browserSupport: "likely",
+        technical: { decodedVideoFrames: 1 },
       }),
     ).toContain("not a ready-to-play guarantee");
     expect(
@@ -56,6 +63,185 @@ describe("source check UI helpers", () => {
         probe: false,
       }),
     ).toContain("playback has not been checked");
+  });
+
+  it.each(["probe_timeout", "metadata_timeout", "check_timeout", "timeout"])(
+    "treats legacy %s as inconclusive, not a red source failure",
+    (code) => {
+      const check = { phase: "failed", probe: true, code };
+      expect(sourceCheckBadge(check)).toEqual({
+        tone: "warn",
+        label: "Check inconclusive",
+      });
+      expect(sourceCheckSummary(check)).toContain(
+        "does not mean the source is unplayable",
+      );
+    },
+  );
+
+  it("keeps sample evidence separate from browser hints and latest attempt outcome", () => {
+    const check = {
+      phase: "complete",
+      outcome: "observed",
+      probe: true,
+      checkedFiles: 1,
+      totalFiles: 12,
+      fileId: 4,
+      filePath: "season/episode04.mp4",
+      updatedAt: "2026-09-07T08:00:00Z",
+      technical: { decodedVideoFrames: 1, videoCodec: "h264" },
+      browserSupport: "unknown",
+    };
+    expect(sourceCheckBadge(check)).toEqual({
+      tone: "ok",
+      label: "Sample read",
+    });
+    expect(sourceCheckRows(check)).toContainEqual([
+      "Browser hint",
+      "Uncertain",
+    ]);
+    expect(sourceCheckRows(check)).toContainEqual([
+      "Sample coverage",
+      "1 of 12 files",
+    ]);
+    expect(sourceCheckRows(check)).toContainEqual(["File", check.filePath]);
+    expect(
+      sourceCheckRows(check).find(([label]) => label === "Last attempt")?.[1],
+    ).toContain(check.updatedAt);
+    expect(sourceCheckSummary(check, "series")).toContain("one episode");
+    for (const outcome of ["inconclusive", "unavailable", "invalid"]) {
+      const latest = { ...check, outcome, stage: "sample" };
+      expect(sourceCheckBadge(latest).tone).not.toBe("ok");
+      expect(hasReadableSample(latest)).toBe(false);
+      expect(sourceCheckRows(latest)).toContainEqual([
+        "Sample coverage",
+        "0 of 12 files",
+      ]);
+      expect(sourceCheckRows(latest)).toContainEqual(["Video", "H264"]);
+    }
+  });
+
+  it.each([undefined, 0])(
+    "does not promote absent or zero decoded frames (%s) to sample evidence",
+    (frames) => {
+      const check = {
+        phase: "complete",
+        probe: true,
+        browserSupport: "likely",
+        technical: { decodedVideoFrames: frames, videoCodec: "h264" },
+        checkedFiles: 1,
+        totalFiles: 1,
+      };
+      expect(hasReadableSample(check)).toBe(false);
+      expect(sourceCheckBadge(check).label).toBe("Sample unverified");
+      expect(sourceCheckSummary(check)).toContain("historical metadata");
+      expect(sourceCheckRows(check)).toContainEqual([
+        "Sample coverage",
+        "0 of 1 file",
+      ]);
+    },
+  );
+
+  it("reports metadata-only observations without a playback success badge", () => {
+    const check = {
+      phase: "complete",
+      probe: false,
+      outcome: "observed",
+      checkedFiles: 0,
+      totalFiles: 3,
+    };
+    expect(sourceCheckBadge(check)).toEqual({
+      tone: "idle",
+      label: "Metadata found",
+    });
+    expect(sourceCheckRows(check)).toContainEqual([
+      "Sample coverage",
+      "0 of 3 files",
+    ]);
+    expect(sourceCheckRows(check)).toContainEqual([
+      "Browser hint",
+      "Uncertain",
+    ]);
+    expect(sourceCheckSummary(check)).toContain(
+      "File listings do not establish media availability",
+    );
+  });
+
+  it("counts current check records rather than historical directPlay verdicts", () => {
+    const entries = [
+      { directPlay: { compatibility: "direct" } },
+      { directPlay: { compatibility: "unknown" } },
+      { sourceCheck: { phase: "complete", probe: false } },
+      {
+        directPlay: { compatibility: "direct" },
+        sourceCheck: { phase: "failed", code: "probe_timeout" },
+      },
+    ];
+    expect(unanalyzedCount(entries)).toBe(2);
+    expect(analysisEvidenceCounts(entries)).toEqual([
+      { label: "Unchecked", tone: "idle", count: 2 },
+      { label: "Metadata found", tone: "idle", count: 1 },
+      { label: "Check inconclusive", tone: "warn", count: 1 },
+    ]);
+  });
+
+  it("keeps default and automatic checks basic and extends only an explicit retry without changing file", async () => {
+    expect(
+      sourceCheckRequestOptions(
+        { mode: "extended" },
+        { fileId: 3, mode: "extended" },
+      ),
+    ).toEqual({
+      probe: true,
+      fileId: 3,
+      mode: "basic",
+    });
+    expect(
+      sourceCheckRequestOptions({ probe: true }, { fileId: 0 }, "extended"),
+    ).toEqual({
+      probe: true,
+      fileId: 0,
+      mode: "extended",
+    });
+    expect(
+      sourceCheckRequestOptions(
+        { probe: false, fileId: 7 },
+        { fileId: 2 },
+        "extended",
+      ),
+    ).toEqual({
+      probe: false,
+      fileId: 2,
+      mode: "extended",
+    });
+    const script = await readFile(
+      new URL("../assets/manage/components/source-check.js", import.meta.url),
+      "utf8",
+    );
+    expect(script).toContain('onClick=${() => run("extended")}');
+    expect(script).toContain("Retry longer (up to 3 min)");
+    expect(script).toContain(
+      '!isSourceCheckActive(check) && phase !== "unchecked"',
+    );
+    expect(script).toContain("Earlier file facts");
+  });
+
+  it("labels raw stream opening as an action rather than a playback assessment", async () => {
+    const script = await readFile(
+      new URL("../assets/manage/views/detail.js", import.meta.url),
+      "utf8",
+    );
+    expect(script).toContain("Open direct stream");
+    expect(script).not.toContain("Test playback");
+    expect(script).toContain("Always offer the Compatible stream");
+    expect(script).toContain("Relink on this computer");
+  });
+
+  it("preserves the requested file instead of switching to another source when retrying", () => {
+    expect(
+      sourceCheckRequestOptions({ fileId: 2 }, { fileId: 1 }, "extended")
+        .fileId,
+    ).toBe(1);
   });
 
   it("prefers the newest server-owned source hash when choosing a representative file", () => {

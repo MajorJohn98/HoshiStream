@@ -1,5 +1,9 @@
 # Windows Launcher Plan
 
+Historical scope: the [Windows desktop release plan](2026-09-06-windows-desktop-release-plan.md)
+now adds the requested tray, installer and native feature parity. The original
+Windows-machine acceptance checklist below was not completed by the ZIP build.
+
 Status: W1 + W2 shipped (zip builds from macOS: `HoshiStream-0.8.2-win-x64.zip`, 192 MB); W3 needs a Windows machine
 Date: 2026-08-23
 Implements: Phase B of [2026-08-14-native-only-plan.md](2026-08-14-native-only-plan.md), per [ADR 0009](../decisions/0009-native-only-deployment.md)

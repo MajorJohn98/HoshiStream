@@ -33,13 +33,27 @@ Live Mac/webOS playback still requires testing with media you are authorized to 
 
 ## Prerequisites
 
-- Apple Silicon Mac (Windows support is in progress)
+- Apple Silicon Mac, or Windows 11 x64 for the Windows desktop candidate
 - Mac and playback devices on the same trusted LAN
 - Nuvio on the LG webOS TV, or nothing at all to watch on the Mac itself
 
 Node.js 22 and TorrServer are vendored into the app bundle; a host Node installation is only needed for local development or to build from source.
 
 ## Install
+
+### Windows desktop
+
+The Windows desktop target uses a native system-tray shell and bundles its
+.NET/Node runtimes, TorrServer, mpv and media-analysis tools. Its installer is
+per-user and unsigned for private sharing. Windows-machine acceptance is still
+required before treating a candidate as release-ready.
+
+See [Windows setup](hoshistream_docs/guides/setup-native-windows.md) and the
+[Windows build/distribution guide](hoshistream_docs/guides/distributing-windows-app.md).
+To run just the server from a checkout, install Node 22.18+ and npm, run
+`npm ci` in `addon/`, fetch the platform TorrServer/ffmpeg binaries, then run
+`node scripts/native-server.mjs --dev` from the repository root. This source
+mode needs no application build but does not create a tray icon.
 
 ### From a disk image
 

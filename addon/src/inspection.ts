@@ -6,6 +6,7 @@ import { inspectLocalEntry } from "./local-media.ts";
 import {
   compositeFileId,
   fileSourceIndex,
+  rawFileId,
   mergeSelectedFiles,
   MediaSelectionError,
   selectMediaFiles,
@@ -83,8 +84,9 @@ export async function inspectEntry(
   entry: LibraryEntry,
   torrServer: TorrServerClient,
   library?: Library,
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  options: { signal?: AbortSignal; timeoutMs?: number; fileId?: number } = {},
 ) {
+  options.signal?.throwIfAborted();
   if (entry.localFilePath || entry.localFolderPath) {
     const local = await inspectLocalEntry(entry);
     options.signal?.throwIfAborted();
@@ -96,6 +98,84 @@ export async function inspectEntry(
     };
   }
   const sources = torrentSources(entry);
+  if (options.fileId !== undefined) {
+    const index = fileSourceIndex(options.fileId);
+    const source = sources[index];
+    if (!source)
+      throw new MediaSelectionError("The requested source no longer exists");
+    const cached = entry.inspectionCache?.selectedFiles;
+    if (cached && !cached.some((file) => file.id === options.fileId))
+      throw new MediaSelectionError("The requested file is no longer selected");
+    markInspectActivity(entry.id);
+    const registered = await registerSource(
+      source,
+      torrServer,
+      entry.name,
+      options.signal,
+    );
+    options.signal?.throwIfAborted();
+    const status = await torrServer.waitForFiles(
+      registered.hash,
+      options.timeoutMs ?? 30_000,
+      options.signal,
+    );
+    options.signal?.throwIfAborted();
+    const selected = selectReviewedMediaFiles(
+      entry.type,
+      status.hash,
+      status.file_stats,
+      source,
+      index === 0 ? entry.preferredFileIndex : undefined,
+    );
+    const requested = selected.find(
+      (file) => file.id === rawFileId(options.fileId!),
+    );
+    if (!requested)
+      throw new MediaSelectionError("The requested file is no longer selected");
+    // Cached selections and explicit later-source mappings can supersede an
+    // episode without making unrelated torrents a network prerequisite.
+    const known = sources.map((_, sourceIndex) => ({
+      hash: sourceIndex === index ? status.hash : "",
+      selectedFiles:
+        sourceIndex === index
+          ? selected
+          : (cached ?? [])
+              .filter((file) => fileSourceIndex(file.id) === sourceIndex)
+              .map((file) => ({ ...file, id: rawFileId(file.id) })),
+    }));
+    const merged = mergeSelectedFiles(known);
+    const shadowed = sources
+      .slice(index + 1)
+      .some((later) =>
+        later.fileOverrides?.some(
+          (override) =>
+            override.included &&
+            override.season !== undefined &&
+            override.episode !== undefined &&
+            override.season === requested.season &&
+            override.episode === requested.episode,
+        ),
+      );
+    if (shadowed || !merged.some((file) => file.id === options.fileId))
+      throw new MediaSelectionError(
+        "A later source replaces the requested episode",
+      );
+    const selectedFiles = merged.filter(
+      (file) => fileSourceIndex(file.id) === index,
+    );
+    return {
+      hash: status.hash,
+      name: status.name ?? status.title,
+      files: status.file_stats.map((file) => ({
+        ...file,
+        id: compositeFileId(index, file.id),
+      })),
+      selectedFiles,
+      partial: sources.length > 1,
+      totalSelectedFiles:
+        cached || sources.length === 1 ? merged.length : undefined,
+    };
+  }
   const inspected: {
     hash: string;
     name: string;
@@ -113,6 +193,7 @@ export async function inspectEntry(
       entry.name,
       options.signal,
     );
+    options.signal?.throwIfAborted();
     const status =
       options.signal || options.timeoutMs
         ? await torrServer.waitForFiles(

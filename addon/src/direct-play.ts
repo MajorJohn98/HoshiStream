@@ -1,7 +1,7 @@
 import { z } from "zod";
+import type { ProbeSummary as MediaSummary } from "./source-check-types.ts";
 
-// Codecs that commonly force a TV or player into software decoding, which is
-// the usual cause of stutter that looks like a network problem.
+// Player-support advice, not measurements of torrent availability.
 const RISKY_AUDIO = new Set(["dts", "dtshd", "truehd", "mlp", "pcm_bluray"]);
 const CAUTION_AUDIO = new Set(["flac", "opus", "vorbis"]);
 const RISKY_VIDEO = new Set(["vc1", "mpeg2video"]);
@@ -14,34 +14,73 @@ export const directPlaySchema = z.object({
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
   bitrateMbps: z.number().nonnegative().optional(),
-  compatibility: z.enum(["direct", "caution", "risky"]),
+  compatibility: z.enum(["direct", "caution", "risky", "unknown"]),
   warnings: z.array(z.string()),
   probedAt: z.string().datetime(),
 });
 
 export type DirectPlay = z.infer<typeof directPlaySchema>;
 
-export type ProbeSummary = {
-  container?: string;
-  videoCodec?: string;
-  audioCodec?: string;
-  width?: number;
-  height?: number;
-  bitrateMbps?: number;
-  recommendedMbps?: number;
-};
+export type ProbeSummary = Partial<MediaSummary>;
 
-export function assessDirectPlay(
+export function browserSupport(
   probe: ProbeSummary,
-  homeSpeedMbps?: number,
-): DirectPlay {
+): "likely" | "limited" | "unknown" {
+  const container = probe.container?.toLowerCase();
+  const video = probe.videoCodec?.toLowerCase();
+  if (!container || !video) return "unknown";
+  const audio = (
+    probe.audioCodecs ?? (probe.audioCodec ? [probe.audioCodec] : [])
+  ).map((codec) => codec.toLowerCase());
+  const audioKnown = probe.audioTracks === 0 || audio.length > 0;
+  if (container === "matroska") {
+    // ffprobe uses the same demuxer for MKV and WebM. Its first alias alone
+    // cannot establish that a file satisfies the browser's WebM restrictions.
+    return ["vp8", "vp9", "av1"].includes(video) ? "unknown" : "limited";
+  }
+  if (["mov", "mp4"].includes(container) && video === "h264") {
+    if (audio.some((codec) => !["aac", "mp3"].includes(codec)))
+      return "limited";
+    if (probe.pixelFormat && probe.pixelFormat !== "yuv420p") return "limited";
+    if (probe.videoLevel !== undefined && probe.videoLevel > 52)
+      return "limited";
+    if (probe.videoTag && !["avc1", "avc3"].includes(probe.videoTag))
+      return "unknown";
+    if (
+      probe.videoProfile &&
+      !["Baseline", "Constrained Baseline", "Main", "High"].includes(
+        probe.videoProfile,
+      )
+    )
+      return "limited";
+    return audioKnown && probe.pixelFormat && probe.videoProfile
+      ? "likely"
+      : "unknown";
+  }
+  if (
+    container === "webm" &&
+    ["vp8", "vp9", "av1"].includes(video) &&
+    audioKnown &&
+    audio.every((codec) => ["opus", "vorbis"].includes(codec))
+  )
+    return probe.pixelFormat === "yuv420p" ? "likely" : "unknown";
+  return "limited";
+}
+
+export function assessDirectPlay(probe: ProbeSummary): DirectPlay {
   const warnings: string[] = [];
-  let compatibility: DirectPlay["compatibility"] = "direct";
+  const browser = browserSupport(probe);
+  let compatibility: DirectPlay["compatibility"] =
+    browser === "likely"
+      ? "direct"
+      : browser === "limited"
+        ? "caution"
+        : "unknown";
 
   const audio = probe.audioCodec?.toLowerCase();
   if (audio && RISKY_AUDIO.has(audio)) {
     warnings.push(
-      `${probe.audioCodec} audio is often software-decoded and is the most common cause of stutter`,
+      `${probe.audioCodec} audio support depends on the player; this does not measure torrent availability`,
     );
     compatibility = "risky";
   } else if (audio && CAUTION_AUDIO.has(audio)) {
@@ -58,17 +97,14 @@ export function assessDirectPlay(
     if (compatibility === "direct") compatibility = "caution";
   }
 
-  // The bitrate check is about sustained link capacity, not decoding, so it
-  // uses the same 1.5x headroom the inspect endpoint already reports.
-  if (probe.bitrateMbps && homeSpeedMbps) {
-    const required = probe.bitrateMbps * 1.5;
-    if (required > homeSpeedMbps) {
-      warnings.push(
-        `needs about ${required.toFixed(1)} Mbps sustained but the link is ${homeSpeedMbps} Mbps`,
-      );
-      compatibility = "risky";
-    }
-  }
+  if (browser === "limited")
+    warnings.push(
+      "Browser format support is limited; a native player may support this file",
+    );
+  else if (browser === "unknown")
+    warnings.push(
+      "Browser support is uncertain from the available media metadata",
+    );
 
   return {
     container: probe.container,
@@ -85,6 +121,7 @@ export function assessDirectPlay(
 
 export function directPlayLabel(directPlay: DirectPlay): string | undefined {
   if (directPlay.compatibility === "direct") return undefined;
-  const prefix = directPlay.compatibility === "risky" ? "May stutter" : "Check";
+  const prefix =
+    directPlay.compatibility === "unknown" ? "Unknown support" : "Check player";
   return `${prefix}: ${directPlay.warnings.join("; ")}`;
 }

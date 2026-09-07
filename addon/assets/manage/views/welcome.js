@@ -129,8 +129,8 @@ export function WelcomeView() {
       <p class="setup-intro">
         ${
           complete
-            ? `Open HoshiStream in ${client} to browse your library. Keep this Mac awake and HoshiStream running while you watch.`
-            : "Add a title on this Mac, then watch it in Nuvio or Stremio on your home network."
+            ? `Open HoshiStream in ${client} to browse your library. Keep this computer awake and HoshiStream running while you watch.`
+            : "Add a title on this computer, then watch it in Nuvio or Stremio on your home network."
         }
       </p>
       <div class="setup-health">
@@ -167,7 +167,7 @@ export function WelcomeView() {
                     ${
                       progress.hasMedia
                         ? `${entries.length} ${entries.length === 1 ? "title" : "titles"} in your library. Source checks and playback readiness are shown on each entry.`
-                        : "Use a magnet link, a .torrent file, or a video already on this Mac."
+                        : "Use a magnet link, a .torrent file, or a video already on this computer."
                     }
                   </p>
                   <div class="row stacked-sm">
@@ -188,8 +188,8 @@ export function WelcomeView() {
                 <div class="setup-step-body">
                   <h2>Connect your player</h2>
                   <p class="muted">
-                    Use the same home network as this Mac. Add HoshiStream once
-                    in your player's add-ons.
+                    Use the same home network as this computer. Add HoshiStream
+                    once in your player's add-ons.
                   </p>
                   <div
                     class="segmented stacked-sm"
@@ -222,7 +222,7 @@ export function WelcomeView() {
                       add-ons.
                     </li>
                   </ol>
-                  ${report.loopbackOnly ? html`<p class="setup-warning" role="status">This address currently works only on this Mac. Connect the Mac to your home network and restart HoshiStream before setting up another device.</p>` : null}
+                  ${report.loopbackOnly ? html`<p class="setup-warning" role="status">This address currently works only on this computer. Connect it to your home network and restart HoshiStream before setting up another device.</p>` : null}
                   <div class="row stacked-sm">
                     <button class="primary" disabled=${busy} onClick=${copy}>
                       ${copied ? "Copy again" : "Copy add-on URL"}
@@ -244,8 +244,8 @@ export function WelcomeView() {
                   </details>
                   <p id="setup-private-note" class="setup-note">
                     This link grants access to your library. Keep it private. If
-                    this Mac's network address changes, copy the updated link
-                    here.
+                    this computer's network address changes, copy the updated
+                    link here.
                   </p>
                   ${report.observedClient ? html`<p class="muted">Recent library request received from ${report.observedClient}.</p>` : null}
                   <div class="row stacked-sm">

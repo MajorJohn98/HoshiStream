@@ -7,7 +7,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   DiskCleanup,
@@ -83,6 +83,13 @@ describe("disk copy identity and paths", () => {
     expect(() => safeRelativePath("../escape.mkv")).toThrow(DiskCopyError);
     expect(() => safeRelativePath("a/../../b.mkv")).toThrow(DiskCopyError);
     expect(() => safeRelativePath("/absolute.mkv")).toThrow(DiskCopyError);
+    expect(() => safeRelativePath("C:relative.mkv")).toThrow(DiskCopyError);
+    expect(() => safeRelativePath("Show/AUX.mkv", "win32")).toThrow(
+      DiskCopyError,
+    );
+    expect(() => safeRelativePath("Show/movie.mkv:stream", "win32")).toThrow(
+      DiskCopyError,
+    );
   });
 
   it("derives a stable entry directory from title and id", () => {
@@ -94,7 +101,7 @@ describe("disk copy identity and paths", () => {
 
   it("containment-checks destinations against the volume root", () => {
     expect(destinationPath("/vol", "Show-1", "S01E01.mkv")).toBe(
-      "/vol/Show-1/S01E01.mkv",
+      resolve("/vol/Show-1/S01E01.mkv"),
     );
     expect(() => destinationPath("/vol", "..", "S01E01.mkv")).toThrow(
       DiskCopyError,
@@ -103,6 +110,54 @@ describe("disk copy identity and paths", () => {
 });
 
 describe("manifest building", () => {
+  it("checks Windows collisions only for copied or already materialized destinations", () => {
+    const entry = seriesEntry();
+    entry.inspectionCache!.selectedFiles[1].path = "show/s01e01.MKV";
+    const selected = buildManifest(
+      entry,
+      {
+        scope: "selected",
+        includedSourceKeys: ["bbbb:3"],
+      },
+      "win32",
+    );
+    expect(
+      selected.filter((file) => file.included).map((file) => file.sourceKey),
+    ).toEqual(["bbbb:3"]);
+    expect(
+      buildManifest(
+        entry,
+        {
+          scope: "selected",
+          includedSourceKeys: [],
+        },
+        "win32",
+      ).every((file) => !file.included),
+    ).toBe(true);
+    const previous = buildManifest(entry, { scope: "all" }, "darwin");
+    previous[0].state = "complete";
+    expect(() =>
+      buildManifest(
+        entry,
+        {
+          scope: "selected",
+          includedSourceKeys: ["aaaa:2"],
+          previous,
+        },
+        "win32",
+      ),
+    ).toThrow("conflicting Windows file paths");
+  });
+
+  it("refuses case-colliding Windows paths rather than overwriting one source", () => {
+    const entry = seriesEntry();
+    entry.inspectionCache!.selectedFiles[1].path = "show/s01e01.MKV";
+    expect(() => buildManifest(entry, { scope: "all" }, "win32")).toThrow(
+      "conflicting Windows file paths",
+    );
+    expect(buildManifest(entry, { scope: "all" }, "darwin")).toHaveLength(3);
+  });
+
   it("includes everything under scope all and carries prior states", () => {
     const entry = seriesEntry();
     const first = buildManifest(entry, { scope: "all" });
@@ -237,7 +292,7 @@ describe("deletion safety and tombstones", () => {
     await mkdir(join(root, "Show-1"));
     await writeFile(join(root, "Show-1", "one.mkv"), "x");
     await writeFile(join(root, "keep.txt"), "keep");
-    await symlink(outside, join(root, "Escape-1"));
+    await symlink(outside, join(root, "Escape-1"), "junction");
 
     await removeDiskCopyDirectory(root, "Show-1");
     await expect(

@@ -5,7 +5,9 @@ import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import { PlayerIpc } from "./player-ipc.ts";
+import { windowsPowerShellPath } from "./windows-platform.ts";
 
 export class PlayerError extends Error {}
 
@@ -18,6 +20,10 @@ const STREAM_ARGS = [
   "--demuxer-max-bytes=400MiB",
   "--demuxer-readahead-secs=30",
 ];
+const positionEventSchema = z.object({
+  name: z.literal("time-pos"),
+  data: z.number().nonnegative(),
+});
 
 export type PlayerChoice = "auto" | "mpv" | "iina" | "vlc" | "system";
 
@@ -46,14 +52,7 @@ export async function resolvePlayerBinary(
 ): Promise<string | undefined> {
   if (choice !== "auto" && choice !== "mpv") return undefined;
   if (override) return (await executable(override)) ? override : undefined;
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-  const bundled = join(
-    root,
-    "vendor",
-    "mpv",
-    `${process.platform}-${process.arch}`,
-    IS_WINDOWS ? "mpv.exe" : "mpv",
-  );
+  const bundled = bundledPlayerPath();
   if (await executable(bundled)) return bundled;
   return (await onPath("mpv")) ? "mpv" : undefined;
 }
@@ -62,6 +61,8 @@ function onPath(binary: string): Promise<boolean> {
   return new Promise((resolveCheck) => {
     const probe = spawn(IS_WINDOWS ? "where" : "which", [binary], {
       stdio: "ignore",
+      windowsHide: true,
+      timeout: 5_000,
     });
     probe.on("error", () => resolveCheck(false));
     probe.on("close", (code) => resolveCheck(code === 0));
@@ -73,6 +74,31 @@ function onPath(binary: string): Promise<boolean> {
 // browser rather than a player.
 const MACOS_PLAYERS = ["IINA", "VLC", "mpv"];
 const IINA_CLI = "/Applications/IINA.app/Contents/MacOS/iina-cli";
+
+// Keep user-controlled URLs/paths out of cmd.exe and PowerShell source text.
+// ShellExecute delegates a file/HTTP URL to its registered application.
+const WINDOWS_OPEN_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+$info = New-Object System.Diagnostics.ProcessStartInfo
+$info.FileName = $env:HOSHISTREAM_PLAYER_TARGET
+$info.UseShellExecute = $true
+[System.Diagnostics.Process]::Start($info) | Out-Null
+`;
+
+export function bundledPlayerPath(
+  moduleUrl = import.meta.url,
+  platform = process.platform,
+  arch = process.arch,
+): string {
+  const runtimeRoot = resolve(dirname(fileURLToPath(moduleUrl)), "..", "..");
+  return join(
+    runtimeRoot,
+    "vendor",
+    "mpv",
+    `${platform}-${arch}`,
+    platform === "win32" ? "mpv.exe" : "mpv",
+  );
+}
 
 async function macosPlayerApp(
   choice: PlayerChoice = "auto",
@@ -109,7 +135,7 @@ export function systemPlayerCommand(
   const platform = options.platform ?? process.platform;
   const choice = options.choice ?? "auto";
   if (choice === "system") {
-    if (platform === "win32") return ["cmd", ["/c", "start", "", target]];
+    if (platform === "win32") return windowsOpenCommand();
     return [platform === "darwin" ? "open" : "xdg-open", [target]];
   }
   if (platform === "darwin" && options.iinaCli && choice !== "vlc") {
@@ -121,9 +147,22 @@ export function systemPlayerCommand(
   if (platform === "darwin" && options.playerApp) {
     return ["open", ["-a", options.playerApp, target, ...queue]];
   }
-  if (platform === "win32") return ["cmd", ["/c", "start", "", target]];
+  if (platform === "win32") return windowsOpenCommand();
   if (platform === "darwin") return ["open", [target]];
   return ["xdg-open", [target]];
+}
+
+function windowsOpenCommand(): [string, string[]] {
+  return [
+    windowsPowerShellPath(),
+    [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      WINDOWS_OPEN_SCRIPT,
+    ],
+  ];
 }
 
 export async function handOffToSystem(
@@ -138,7 +177,15 @@ export async function handOffToSystem(
     playerApp: darwin ? await macosPlayerApp(choice) : undefined,
   });
   await new Promise<void>((resolveSpawn, reject) => {
-    const child = spawn(command, args, { stdio: "ignore", detached: true });
+    const child = spawn(command, args, {
+      stdio: "ignore",
+      detached: true,
+      windowsHide: true,
+      env:
+        process.platform === "win32"
+          ? { ...process.env, HOSHISTREAM_PLAYER_TARGET: target }
+          : process.env,
+    });
     child.on("error", reject);
     child.on("close", (code) =>
       code === 0
@@ -155,6 +202,7 @@ export class Player {
   private socketPath?: string;
   private current?: { entryId: string; fileId?: number; title?: string };
   private readonly binary: string;
+  private readonly launchArgs: string[];
   private readonly onPosition?: (
     entryId: string,
     positionSeconds: number,
@@ -168,9 +216,11 @@ export class Player {
       positionSeconds: number,
       fileId?: number,
     ) => void,
+    launchArgs: string[] = [],
   ) {
     this.binary = binary;
     this.onPosition = onPosition;
+    this.launchArgs = launchArgs;
   }
 
   get running(): boolean {
@@ -184,20 +234,19 @@ export class Player {
   ): Promise<void> {
     if (!this.running) await this.start();
     await this.ipc!.command("loadfile", target, "replace");
+    this.current = context;
     // Queue the rest of the season so playback advances on its own.
     for (const next of queue)
-      await this.ipc!.command("loadfile", next, "append").catch(
-        () => undefined,
-      );
-    this.current = context;
+      await this.ipc!.command("loadfile", next, "append");
   }
 
   private async start(): Promise<void> {
     const socketPath = await socketFor();
     this.socketPath = socketPath;
-    this.process = spawn(
+    const child = spawn(
       this.binary,
       [
+        ...this.launchArgs,
         `--input-ipc-server=${socketPath}`,
         "--idle=yes",
         "--force-window=yes",
@@ -208,15 +257,16 @@ export class Player {
       // refuses to start fails as an opaque socket timeout.
       { stdio: ["ignore", "ignore", "pipe"] },
     );
-    this.process.stderr?.setEncoding("utf8");
-    this.process.stderr?.on("data", (chunk: string) => {
+    this.process = child;
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
       const message = chunk.trim();
       if (message)
         console.error(
           JSON.stringify({ level: "warn", event: "player_stderr", message }),
         );
     });
-    this.process.on("error", (error) => {
+    child.on("error", (error) => {
       console.error(
         JSON.stringify({
           level: "error",
@@ -225,9 +275,9 @@ export class Player {
           error: error.message,
         }),
       );
-      this.reset();
+      if (this.process === child) this.reset();
     });
-    this.process.on("exit", (code, signal) => {
+    child.on("exit", (code, signal) => {
       if (code)
         console.error(
           JSON.stringify({
@@ -237,7 +287,7 @@ export class Player {
             signal,
           }),
         );
-      this.reset();
+      if (this.process === child) this.reset();
     });
     this.ipc = new PlayerIpc(socketPath);
     try {
@@ -254,9 +304,13 @@ export class Player {
       .catch(() => undefined);
     this.ipc.onEvent((event, payload) => {
       if (event !== "property-change") return;
-      const value = (payload as { name?: string; data?: unknown }).data;
-      if (this.current && typeof value === "number")
-        this.onPosition?.(this.current.entryId, value, this.current.fileId);
+      const position = positionEventSchema.safeParse(payload);
+      if (this.current && position.success)
+        this.onPosition?.(
+          this.current.entryId,
+          position.data.data,
+          this.current.fileId,
+        );
     });
   }
 
@@ -292,6 +346,7 @@ export class Player {
   }
 
   private reset(): void {
+    this.ipc?.close();
     this.process = undefined;
     this.ipc = undefined;
     this.current = undefined;

@@ -103,7 +103,7 @@ function Volumes({ entries }) {
           </p>
         </div>
         <button class="primary" disabled=${busy} onClick=${add}>
-          ${busy ? "Choose a folder in Finder…" : "+ Add drive or folder"}
+          ${busy ? "Choose a storage folder…" : "+ Add drive or folder"}
         </button>
       </div>
       ${

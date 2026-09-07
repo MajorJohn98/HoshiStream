@@ -4,19 +4,33 @@
 import { html, useEffect, useState } from "../vendor/preact-htm.js";
 import { api, notify } from "../api.js";
 import { useStore, load } from "../store.js";
+import {
+  sourceCheckBadge,
+  sourceCheckPhase,
+} from "../components/source-check.js";
 
 export function unanalyzedCount(entries) {
-  return entries.filter((entry) => !entry.directPlay).length;
+  return entries.filter(
+    (entry) => sourceCheckPhase(entry.sourceCheck) === "unchecked",
+  ).length;
+}
+
+export function analysisEvidenceCounts(entries) {
+  const counts = new Map();
+  for (const entry of entries) {
+    const badge = sourceCheckBadge(entry.sourceCheck);
+    const group = counts.get(badge.label) ?? { ...badge, count: 0 };
+    group.count++;
+    counts.set(badge.label, group);
+  }
+  return [...counts.values()];
 }
 
 export function AnalysisPanel() {
   const { entries } = useStore();
   const [status, setStatus] = useState(null);
   const analyzed = entries.length - unanalyzedCount(entries);
-  const verdicts = { direct: 0, caution: 0, risky: 0 };
-  for (const entry of entries) {
-    if (entry.directPlay) verdicts[entry.directPlay.compatibility] += 1;
-  }
+  const evidence = analysisEvidenceCounts(entries);
   useEffect(() => {
     let alive = true;
     let timer;
@@ -25,7 +39,7 @@ export function AnalysisPanel() {
       try {
         const next = await api("analysis");
         if (!alive) return;
-        // Refresh library verdicts when a run finishes under our feet.
+        // Refresh evidence when a run finishes under our feet.
         if (status?.running && !next.running) void load();
         setStatus(next);
       } catch {
@@ -48,7 +62,7 @@ export function AnalysisPanel() {
           body: JSON.stringify({ force }),
         }),
       );
-      notify(force ? "Re-analyzing the whole library" : "Analyzing library");
+      notify(force ? "Rechecking the whole library" : "Checking library");
     } catch (error) {
       notify(error.message);
     }
@@ -69,34 +83,25 @@ export function AnalysisPanel() {
     <section class="panel analysis-panel" id="library-analysis">
       <div class="row between">
         <div>
-          <h2>Playback analysis</h2>
+          <h2>Library source checks</h2>
           <p class="muted">
-            Inspect and probe every title so verdicts and Compatible streams are
-            ready before you press play. Runs one title at a time.
+            Try metadata and a small sample from one selected file per title,
+            one title at a time. Basic checks take up to 1 minute each; results
+            do not guarantee playback or cover every episode.
           </p>
         </div>
         <span class="inline-note"
-          >${analyzed} of ${entries.length} analyzed</span
+          >${analyzed} of ${entries.length} with check records</span
         >
       </div>
       <div class="row stacked-sm">
-        <span class="status ok">
-          <i class="dot ok"></i>${verdicts.direct} direct play
-        </span>
-        ${
-          verdicts.caution
-            ? html`<span class="status warn">
-                <i class="dot warn"></i>${verdicts.caution} check device
-              </span>`
-            : null
-        }
-        ${
-          verdicts.risky
-            ? html`<span class="status bad">
-                <i class="dot bad"></i>${verdicts.risky} may not play
-              </span>`
-            : null
-        }
+        ${evidence.map(
+          (group) =>
+            html`<span class="status ${group.tone}" key=${group.label}>
+              <i class="dot ${group.tone}"></i>${group.count}
+              ${group.label.toLowerCase()}
+            </span>`,
+        )}
       </div>
       ${
         running
@@ -104,7 +109,8 @@ export function AnalysisPanel() {
               <div class="row between">
                 <div>
                   <strong>
-                    Analyzing ${status.done + 1} of ${status.total}
+                    Checking ${Math.min(status.done + 1, status.total)} of
+                    ${status.total}
                   </strong>
                   <p class="muted stacked-xs">${status.current?.name ?? "…"}</p>
                 </div>
@@ -121,10 +127,10 @@ export function AnalysisPanel() {
                   disabled=${analyzed === entries.length}
                   onClick=${() => run(false)}
                 >
-                  Analyze ${entries.length - analyzed} missing
+                  Check ${entries.length - analyzed} unchecked
                 </button>
                 <button class="secondary" onClick=${() => run(true)}>
-                  Re-analyze everything
+                  Recheck everything
                 </button>
               </div>
               ${
@@ -132,9 +138,9 @@ export function AnalysisPanel() {
                   ? html`<p class="muted stacked-sm">
                       Last run ${status.cancelled ? "cancelled" : "finished"}:
                       ${status.done}
-                      analyzed${
+                      attempts${
                         status.failed.length
-                          ? ", " + status.failed.length + " failed"
+                          ? ", " + status.failed.length + " need review"
                           : ""
                       }.
                     </p>`

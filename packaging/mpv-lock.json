@@ -1,0 +1,28 @@
+{
+  "version": "20260903-git-69e63f425a",
+  "recommendedBy": "https://mpv.io/installation/",
+  "source": "https://github.com/mpv-player/mpv/tree/69e63f425a531f814431fba12750bdb3721357f2",
+  "buildRecipe": "https://github.com/shinchiro/mpv-winbuild-cmake/tree/cd1edc11dc6887a50f705717619d879f5a93a488",
+  "win32-x64": {
+    "name": "mpv-x86_64-20260903-git-69e63f425a.7z",
+    "url": "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260903/mpv-x86_64-20260903-git-69e63f425a.7z",
+    "sha256": "418dbfb5feb851cbed33d6c05d8481ba71802621bfd6efe8974522b28d42ac97"
+  },
+  "notices": [
+    {
+      "name": "Copyright",
+      "url": "https://raw.githubusercontent.com/mpv-player/mpv/69e63f425a531f814431fba12750bdb3721357f2/Copyright",
+      "sha256": "bfe9ee4cceabcb8ecbfadf208d04156f73d801e6a57369a5606bb8341e204a23"
+    },
+    {
+      "name": "LICENSE.GPL",
+      "url": "https://raw.githubusercontent.com/mpv-player/mpv/69e63f425a531f814431fba12750bdb3721357f2/LICENSE.GPL",
+      "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+    },
+    {
+      "name": "LICENSE.LGPL",
+      "url": "https://raw.githubusercontent.com/mpv-player/mpv/69e63f425a531f814431fba12750bdb3721357f2/LICENSE.LGPL",
+      "sha256": "72b672113d642cbb8ef5dcc76938db801983c56e50b1400ab930f1a64d6dc8d9"
+    }
+  ]
+}

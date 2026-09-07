@@ -1,14 +1,14 @@
 # Get started with HoshiStream
 
-The macOS app opens **Get started** on a fresh installation once its local server
-is ready. You can skip setup and return from the app's menu-bar menu or the
+The desktop app opens **Get started** on a fresh installation once its local server
+is ready. You can skip setup and return from the app's menu-bar or Windows tray menu, or the
 management page's sidebar. Existing installations are not interrupted by a new
 welcome window.
 
 ## Add a title
 
 Choose **Add media** and use a magnet link, a `.torrent` file, or a video already
-on your Mac. Only add media you own or are authorized to access. Review the
+on your computer. Only add media you own or are authorized to access. Review the
 details before saving.
 
 The first step completes when a title is actually in your library. Source checks
@@ -17,8 +17,8 @@ entry to inspect its files, check the source, or investigate a playback problem.
 
 ## Connect Nuvio or Stremio
 
-Keep the player device on the same home network as the Mac. In Get started,
-choose your player and copy the **private add-on URL**. The URL uses the Mac's
+Keep the player device on the same home network as the host computer. In Get started,
+choose your player and copy the **private add-on URL**. The URL uses the host's
 configured network address, not the management browser's localhost address.
 
 - **Nuvio:** open Addons, choose Add Addon, and paste the URL.
@@ -32,13 +32,13 @@ the catalog, the page reports that activity separately.
 
 The URL grants access to your library: do not publish or share it. If copying is
 unavailable, expand **Show private URL** and copy it manually. If the page reports
-that the address works only on this Mac, connect the Mac to the home network and
+that the address works only on this computer, connect it to the home network and
 restart HoshiStream before adding it on another device.
 
 ## Finish or come back later
 
 **Finish setup** becomes available after a title is added and you confirm the
-player setup. Keep HoshiStream running and the Mac awake while watching. A changed
+player setup. Keep HoshiStream running and the computer awake while watching. A changed
 LAN address may require copying the updated URL into your player.
 
 Progress and dismissal are stored in `onboarding.json` alongside the installed

@@ -1,11 +1,14 @@
 // Resource usage for the status page (ADR 0004 trusted-LAN surface): CPU and
 // memory of the add-on, TorrServer, and active ffmpeg repair sessions via a
 // single `ps` call, plus cache directory sizes. No new dependencies; on
-// platforms without `ps` (Windows) process stats degrade to unavailable.
+// Windows uses the same-user tray's owned-process collector, never a system-wide
+// command-line scan. Terminal launches report process statistics unavailable.
 import { execFile } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { z } from "zod";
+import { nativeBridgeRequest } from "./windows-platform.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -77,11 +80,54 @@ export function groupProcesses(
   };
 }
 
-async function processStats(): Promise<
+const processStatsSchema = z.object({
+  cpuPercent: z.number().nonnegative(),
+  rssBytes: z.number().int().nonnegative(),
+  processes: z.number().int().nonnegative(),
+});
+const windowsResourcesSchema = z.object({
+  processes: z.discriminatedUnion("available", [
+    z.object({
+      available: z.literal(true),
+      addon: processStatsSchema.extend({
+        processes: z.number().int().positive(),
+      }),
+      torrServer: processStatsSchema,
+      ffmpeg: processStatsSchema,
+    }),
+    z.object({ available: z.literal(false) }),
+  ]),
+});
+
+export async function processStats(
+  options: {
+    platform?: NodeJS.Platform;
+    endpoint?: string;
+    timeoutMs?: number;
+  } = {},
+): Promise<
   | { available: true; groups: ReturnType<typeof groupProcesses> }
   | { available: false }
 > {
-  if (process.platform === "win32") return { available: false };
+  if ((options.platform ?? process.platform) === "win32") {
+    const endpoint = options.endpoint ?? process.env.NATIVE_PICKER_SOCKET;
+    if (!endpoint) return { available: false };
+    try {
+      const raw = await nativeBridgeRequest(
+        endpoint,
+        { kind: "resources", pid: process.pid },
+        options.timeoutMs ?? 2_000,
+      );
+      const response = windowsResourcesSchema.safeParse(raw);
+      if (!response.success || !response.data.processes.available)
+        return { available: false };
+      const { available, ...groups } = response.data.processes;
+      return { available, groups };
+    } catch {
+      // Explicit unavailable, not a fabricated zero-valued success.
+      return { available: false };
+    }
+  }
   try {
     const { stdout } = await execFileAsync(
       "ps",

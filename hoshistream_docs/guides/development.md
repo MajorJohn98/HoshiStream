@@ -1,6 +1,6 @@
 # Development
 
-The add-on lives in `addon/` (Node 22, TypeScript, ESM). No database — state is one atomically-written JSON file.
+The add-on lives in `addon/` (Node 22.18+, TypeScript, ESM). No database - state uses atomic JSON files.
 
 ## Commands
 
@@ -24,7 +24,7 @@ Add-on only (TorrServer must already be running; uses the repo `.env`):
 
 ```bash
 cp ../.env.example ../.env    # once; set ACCESS_TOKEN and the URLs
-npm run dev                   # node --watch --env-file=.env src/index.ts
+npm run dev                   # node --watch --env-file=../.env src/index.ts
 ```
 
 Whole native stack — TorrServer + add-on, exactly what the menu-bar app
@@ -33,6 +33,22 @@ supervises, minus the menu bar:
 ```bash
 npm run dev:native            # restarts on any change under src/ or scripts/
 ```
+
+For a foreground run without watching, from the **repository root** on either
+macOS or Windows x64:
+
+```text
+node packaging/fetch-torrserver.mjs
+node packaging/fetch-ffmpeg.mjs
+node scripts/native-server.mjs --dev
+```
+
+Run `npm ci` in `addon/` first. Fetchers choose the host platform; the ffmpeg
+fetch also supplies ffprobe. Keep the terminal open and use Ctrl+C to request
+shutdown. A fresh checkout gets a generated root `.env`; existing values are
+preserved, so correct any media paths copied from another computer.
+Open `http://127.0.0.1:7001/manage/<ACCESS_TOKEN>` with its generated token and
+configured port. Do not share the tokenized management URL.
 
 or, detached to the state directory like the packaged app does:
 
@@ -57,6 +73,18 @@ The two whole-stack commands differ in whose data they use:
   state in the gitignored `native-data/`, so experiments never touch the
   installed app's library.
 
+The same sandbox state applies to `node scripts/native-server.mjs --dev`.
+The launcher now pins all JSON store paths there, including tags, devices,
+storage volumes and scheduling. Terminal mode does not create a native tray or
+file-picker bridge. The Windows desktop shell is a separate .NET project;
+see [setup-native-windows.md](setup-native-windows.md).
+
+Start scripts confirm the launched runtime's identity and actual readiness,
+not merely a PID file. Stop scripts use private local authenticated control
+to drain work; they do not blindly terminate a PID. State must live on a
+local filesystem supporting private permissions and atomic hard links.
+See [native runtime control](../api/native-runtime-control.md).
+
 Management-UI assets (`assets/manage/`) are served from disk, so UI edits need
 only a browser refresh.
 
@@ -77,6 +105,17 @@ Optional TorrServer integration test (health + empty list only; downloads nothin
 
 ```bash
 TORRSERVER_TEST_URL=http://127.0.0.1:8090 npm test
+```
+
+An isolated native startup/shutdown smoke test uses the pinned local binary,
+temporary state and separate service/peer ports. It registers no torrents:
+
+```text
+node scripts/smoke-native.mjs --dev
+cd addon
+npm run build
+cd ..
+node scripts/smoke-native.mjs --control-stop
 ```
 
 ## Working agreement (AGENTS.md)

@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   defaultMediaDir,
   defaultStateRoot,
@@ -67,7 +69,7 @@ describe("platform defaults", () => {
   });
 });
 
-describe("ensureFirstRunSetup", () => {
+describe("ensureFirstRunSetup", { timeout: 15_000 }, () => {
   it("does not mistake an unreadable existing environment for a fresh install", async () => {
     const projectRoot = await temporaryRoot();
     await mkdir(join(projectRoot, ".env"));
@@ -92,8 +94,22 @@ describe("ensureFirstRunSetup", () => {
   it("writes .env with owner-only permissions", async () => {
     const projectRoot = await temporaryRoot();
     await ensureFirstRunSetup({ projectRoot });
-    const mode = (await stat(join(projectRoot, ".env"))).mode & 0o777;
-    expect(mode).toBe(0o600);
+    const path = join(projectRoot, ".env");
+    if (process.platform === "win32") {
+      const { stdout } = await promisify(execFile)(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "$acl = Get-Acl -LiteralPath $env:HOSHISTREAM_TEST_PATH; $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; if (-not $acl.AreAccessRulesProtected) { throw 'Inherited ACL' }; foreach ($rule in $acl.Access) { $id = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; if ($id -ne $sid -and $id -ne 'S-1-5-18') { throw 'Unexpected ACL' } }; Write-Output 'private'",
+        ],
+        { env: { ...process.env, HOSHISTREAM_TEST_PATH: path } },
+      );
+      expect(stdout.trim()).toBe("private");
+    } else {
+      expect((await stat(path)).mode & 0o777).toBe(0o600);
+    }
   });
 
   it("preserves an existing token and unrelated settings", async () => {

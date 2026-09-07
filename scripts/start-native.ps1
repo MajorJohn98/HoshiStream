@@ -1,67 +1,61 @@
-# Starts the HoshiStream native server on Windows — the counterpart of
-# start-native.sh. Works from a checkout (builds the add-on first) and from
-# the packaged zip (prebuilt dist, bundled Node under bin\). Pass --dev to
-# skip the build and run the add-on straight from addon\src.
+# Starts the server without the desktop shell. --dev runs TypeScript directly.
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
-
 $Root = Split-Path -Parent $PSScriptRoot
 $StateDir = if ($env:HOSHISTREAM_STATE_DIR) { $env:HOSHISTREAM_STATE_DIR }
   else { Join-Path $env:LOCALAPPDATA "HoshiStream" }
-$LogDir = Join-Path $StateDir "logs"
-$PidFile = Join-Path $StateDir "hoshistream.pid"
-
-New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-
-if (Test-Path $PidFile) {
-  $Existing = (Get-Content $PidFile -TotalCount 1).Trim()
-  if ($Existing -match '^\d+$' -and
-      (Get-Process -Id ([int]$Existing) -ErrorAction SilentlyContinue)) {
-    Write-Output "HoshiStream native server is already running."
-    exit 0
-  }
-  # Stale PID file from a crash or forced shutdown.
-  Remove-Item $PidFile -ErrorAction SilentlyContinue
-}
-
-# The packaged zip carries Node under bin\; a checkout uses the vendored
-# fetch; a dev machine falls back to node on PATH.
 $Node = @(
   (Join-Path $Root "bin\node.exe"),
   (Join-Path $Root "vendor\node\win32-x64\node.exe")
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $Node) { $Node = "node" }
+if (-not $Node) { $Node = (Get-Command node.exe -ErrorAction Stop).Source }
+$Control = Join-Path $Root "scripts\native-control.mjs"
 
-# A checkout has add-on sources that must be compiled; the zip ships dist only.
-# --dev runs those sources directly instead.
-$Dev = $args -contains "--dev"
-if (-not $Dev -and (Test-Path (Join-Path $Root "addon\src"))) {
-  Push-Location (Join-Path $Root "addon")
-  try { npm run build | Out-Null } finally { Pop-Location }
+if (Test-Path (Join-Path $StateDir "run\control.json")) {
+  $PreviousPreference = $ErrorActionPreference
+  try {
+    # Windows PowerShell 5.1 promotes redirected native stderr to an error.
+    # A stale control file is an expected failed probe, not a launch failure.
+    $ErrorActionPreference = "Continue"
+    $Status = & $Node $Control status "--state-dir=$StateDir" 2>$null
+    $StatusCode = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $PreviousPreference }
+  if ($StatusCode -eq 0) {
+    Write-Output "HoshiStream already owns this state directory. Stop it before starting another instance."
+    exit 0
+  }
 }
 
-$Server = Join-Path $Root "scripts\native-server.mjs"
+if (-not ($args -contains "--dev") -and (Test-Path (Join-Path $Root "addon\src"))) {
+  Push-Location (Join-Path $Root "addon")
+  try {
+    & npm.cmd run build
+    if ($LASTEXITCODE -ne 0) { throw "The add-on build failed. No server was started." }
+  } finally { Pop-Location }
+}
+& $Node $Control prepare "--state-dir=$StateDir"
+if ($LASTEXITCODE -ne 0) { throw "Could not prepare private runtime logs." }
+
+function Quote-Argument([string]$Value) {
+  # Start-Process flattens ArgumentList into one Windows command line.
+  return '"' + [regex]::Replace(
+    [regex]::Replace($Value, '(\\*)"', '$1$1\"'), '(\\+)$', '$1$1'
+  ) + '"'
+}
 $ServerArgs = @(
-  "`"$Server`"",
-  "--state-dir=`"$StateDir`"",
-  "--project-root=`"$StateDir`"",
+  (Join-Path $Root "scripts\native-server.mjs"),
+  "--state-dir=$StateDir",
+  "--project-root=$StateDir",
   "--detached"
 ) + $args
-Start-Process -FilePath $Node -ArgumentList $ServerArgs -WindowStyle Hidden `
-  -RedirectStandardOutput (Join-Path $LogDir "hoshistream.log") `
-  -RedirectStandardError (Join-Path $LogDir "hoshistream.err.log")
-
-for ($i = 0; $i -lt 60; $i++) {
-  if (Test-Path $PidFile) {
-    $Started = (Get-Content $PidFile -TotalCount 1 -ErrorAction SilentlyContinue)
-    if ($Started -and $Started.Trim() -match '^\d+$' -and
-        (Get-Process -Id ([int]$Started.Trim()) -ErrorAction SilentlyContinue)) {
-      Write-Output "HoshiStream native server started."
-      exit 0
-    }
-  }
-  Start-Sleep -Milliseconds 250
+$CommandLine = ($ServerArgs | ForEach-Object { Quote-Argument $_ }) -join ' '
+$LogDir = Join-Path $StateDir "logs"
+$LogName = "hoshistream-" + [DateTime]::UtcNow.ToString("yyyyMMdd-HHmmss-fffffff")
+$Started = Start-Process -FilePath $Node -ArgumentList $CommandLine `
+  -WindowStyle Hidden -WorkingDirectory $Root -PassThru `
+  -RedirectStandardOutput (Join-Path $LogDir "$LogName.log") `
+  -RedirectStandardError (Join-Path $LogDir "$LogName.err.log")
+& $Node $Control wait "--state-dir=$StateDir" "--pid=$($Started.Id)"
+if ($LASTEXITCODE -ne 0) {
+  throw "HoshiStream did not become ready. Inspect $LogDir\$LogName.err.log"
 }
-
-Write-Error "HoshiStream native server failed to start. Check $LogDir\hoshistream.log"
-exit 1

@@ -368,7 +368,7 @@ function SourceTab({ state }) {
                 disabled=${relinking}
                 onClick=${relink}
               >
-                ${relinking ? "Waiting for Finder…" : "Relink in Finder"}
+                ${relinking ? "Waiting for selection…" : "Relink on this computer"}
               </button>`
             : null
         }
@@ -678,12 +678,13 @@ function FilesTab({ state }) {
   `;
 }
 
-async function testPlayback(state) {
+async function openDirectStream(state) {
   const f =
+    (
+      state.inspection?.selectedFiles ??
+      state.selected.inspectionCache?.selectedFiles
+    )?.find((file) => file.id === pickSourceCheckFileId(state.selected)) ??
     state.inspection?.selectedFiles?.[0] ??
-    state.selected.inspectionCache?.selectedFiles?.find(
-      (file) => file.id === pickSourceCheckFileId(state.selected),
-    ) ??
     state.selected.inspectionCache?.selectedFiles?.[0];
   const id =
     state.selected.type === "series" && f
@@ -710,7 +711,7 @@ async function testPlayback(state) {
   const s = payload.streams?.[0];
   if (!s)
     throw Error(
-      "No streams were returned for this title. Open the entry and review its source check.",
+      "No direct stream was returned for this title. Open the entry and review its source check.",
     );
   window.open(s.url, "_blank");
 }
@@ -724,7 +725,7 @@ function PlaybackTab({ state }) {
     <${Section}
       id="playback"
       title="Playback check"
-      note="Inspect metadata first, then use the bounded check as a browser hint for one representative file."
+      note="Keep metadata, sampled-media evidence, and browser support separate. Each check covers only the named file."
     >
       <${SourceCheckPanel}
         entry=${state.selected}
@@ -746,10 +747,9 @@ function PlaybackTab({ state }) {
         <button
           class="secondary"
           onClick=${() =>
-            testPlayback(state).catch((error) => notify(error.message))}
-          }
+            openDirectStream(state).catch((error) => notify(error.message))}
         >
-          Test playback
+          Open direct stream
         </button>
       </div>
       <div class="stacked-sm">
@@ -760,13 +760,13 @@ function PlaybackTab({ state }) {
               ? "Local file"
               : "TorrServer"
           }
-          → Player. Direct play needs the player to support the listed codecs;
-          with stream repair enabled, incompatible titles also get a
-          "Compatible" stream in Stremio.
+          → Player. Direct playback depends on the player's container and codec
+          support. When stream repair is enabled, a "Compatible" stream may also
+          be offered; the direct option stays available.
         </p>
         <p class="muted stacked-xs">
-          A completed check is not a universal browser guarantee, and one
-          representative file does not cover every episode.
+          Open direct stream opens the raw media URL in a new tab. It does not
+          run a check or automatically assess playback.
         </p>
         ${
           state.status.transcode?.enabled
@@ -784,7 +784,7 @@ function PlaybackTab({ state }) {
                       notify(
                         e.target.checked
                           ? "Compatible stream always offered"
-                          : "Compatible stream only on predicted failure",
+                          : "Compatible stream offered when file metadata suggests repair",
                       );
                     } catch (error) {
                       notify(error.message);

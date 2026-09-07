@@ -25,7 +25,8 @@ function Status({ tone, children }) {
   >`;
 }
 
-function procLabel(stats) {
+function procLabel(stats, available) {
+  if (!available) return "Unavailable";
   return stats && stats.processes > 0
     ? stats.cpuPercent + "% CPU · " + fmt(stats.rssBytes)
     : "Not running";
@@ -74,19 +75,19 @@ function Resources() {
         <div class="stat">
           <span class="label">Add-on server</span>
           <span class="value">
-            ${report ? procLabel(report.processes.addon) : "—"}
+            ${report ? procLabel(report.processes.addon, report.processes.available) : "—"}
           </span>
         </div>
         <div class="stat">
           <span class="label">TorrServer</span>
           <span class="value">
-            ${report ? procLabel(report.processes.torrServer) : "—"}
+            ${report ? procLabel(report.processes.torrServer, report.processes.available) : "—"}
           </span>
         </div>
         <div class="stat">
           <span class="label">ffmpeg repair</span>
           <span class="value">
-            ${report ? procLabel(report.processes.ffmpeg) : "—"}
+            ${report ? procLabel(report.processes.ffmpeg, report.processes.available) : "—"}
           </span>
         </div>
       </div>
@@ -140,11 +141,11 @@ export function HealthSection() {
     ],
     ["ok", "Library data", "Readable"],
     native
-      ? ["ok", "Mac sleep", "Kept awake automatically during playback"]
+      ? ["ok", "System sleep", "Desktop app manages idle sleep during playback"]
       : [
           "warn",
-          "Mac sleep",
-          "Run caffeinate or keep the Mac awake during playback",
+          "System sleep",
+          "Keep the host computer awake during playback",
         ],
   ];
   return html`
@@ -161,7 +162,7 @@ export function HealthSection() {
           <span class="main">
             <strong>HoshiStream</strong>
             <span class="meta">
-              ${native ? "Native macOS app" : "Headless mode"} · up
+              ${native ? "Native desktop app" : "Terminal mode"} · up
               ${uptimeLabel(status.uptimeSeconds)}
             </span>
           </span>
