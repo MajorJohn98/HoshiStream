@@ -148,6 +148,78 @@ describe("ensureFirstRunSetup", { timeout: 15_000 }, () => {
     );
   });
 
+  it("does not replace a lost credential when a pointer endpoint was configured", async () => {
+    const projectRoot = await temporaryRoot();
+    const contents = `ACCESS_TOKEN=${generateAccessToken()}\nPOINTER_URL=https://pointer.example\n`;
+    await writeFile(join(projectRoot, ".env"), contents);
+    const { environment } = await ensureFirstRunSetup({ projectRoot });
+    expect(environment.POINTER_PUSH_SECRET).toBeUndefined();
+    expect(await readFile(join(projectRoot, ".env"), "utf8")).toBe(contents);
+  });
+
+  it("preserves a lost-credential recovery state from persisted UI setup", async () => {
+    const projectRoot = await temporaryRoot();
+    const pointerStateRoot = join(projectRoot, "state");
+    await mkdir(pointerStateRoot);
+    await writeFile(
+      join(pointerStateRoot, "pointer-settings.json"),
+      JSON.stringify({ enabled: true, pointerUrl: "https://pointer.example" }),
+    );
+    await writeFile(
+      join(projectRoot, ".env"),
+      `ACCESS_TOKEN=${generateAccessToken()}\nPOINTER_PUSH_SECRET=short\n`,
+    );
+    const { environment } = await ensureFirstRunSetup({
+      projectRoot,
+      pointerStateRoot,
+    });
+    expect(environment.POINTER_PUSH_SECRET).toBeUndefined();
+    expect(await readFile(join(projectRoot, ".env"), "utf8")).toContain(
+      "POINTER_PUSH_SECRET=short",
+    );
+  });
+
+  it("refuses to recreate a missing environment over an existing pointer identity", async () => {
+    const projectRoot = await temporaryRoot();
+    const pointerStateRoot = join(projectRoot, "state");
+    await mkdir(pointerStateRoot);
+    await writeFile(join(pointerStateRoot, "pointer-state.json"), "{}");
+    await expect(
+      ensureFirstRunSetup({ projectRoot, pointerStateRoot }),
+    ).rejects.toThrow("Restore the private configuration backup");
+    await expect(readFile(join(projectRoot, ".env"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("does not rotate a missing access token for an already configured pointer", async () => {
+    const projectRoot = await temporaryRoot();
+    const contents = `POINTER_URL=https://pointer.example\nPOINTER_PUSH_SECRET=${generateAccessToken()}\n`;
+    await writeFile(join(projectRoot, ".env"), contents);
+    await expect(ensureFirstRunSetup({ projectRoot })).rejects.toThrow(
+      "installation identity was not replaced",
+    );
+    expect(await readFile(join(projectRoot, ".env"), "utf8")).toBe(contents);
+  });
+
+  it("creates distinct recipient credentials and preserves them through upgrades", async () => {
+    const roots = [await temporaryRoot(), await temporaryRoot()];
+    const recipients = await Promise.all(
+      roots.map((projectRoot) => ensureFirstRunSetup({ projectRoot })),
+    );
+    expect(recipients[0].environment.ACCESS_TOKEN).not.toBe(
+      recipients[1].environment.ACCESS_TOKEN,
+    );
+    expect(recipients[0].environment.POINTER_PUSH_SECRET).not.toBe(
+      recipients[1].environment.POINTER_PUSH_SECRET,
+    );
+    for (const [index, projectRoot] of roots.entries()) {
+      expect(recipients[index].environment.POINTER_URL).toBeUndefined();
+      const restarted = await ensureFirstRunSetup({ projectRoot });
+      expect(restarted.environment).toEqual(recipients[index].environment);
+    }
+  });
+
   it("replaces a placeholder token in place, keeping other settings", async () => {
     const projectRoot = await temporaryRoot();
     await writeFile(

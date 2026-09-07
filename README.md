@@ -6,6 +6,26 @@ Use this software only with media you own, public-domain media, or media you are
 
 Full project documentation lives in [`hoshistream_docs/`](hoshistream_docs/index.md) (architecture, decision records, guides, API references, plans, and changelog).
 
+## Closed-beta candidate contract
+
+The candidate version is **0.14.0**, sourced only from `addon/package.json`;
+`231ae20` is the planning baseline, not an acceptance result. The closed-beta
+target is **Apple Silicon, macOS 13.5+, a trusted LAN, and one direct-play
+stream**. Browser baseline media is an authorized **H.264/AAC MP4**. Exact
+browser, Nuvio, and Stremio versions and recipient playback remain acceptance
+blockers; Windows, remote access, and broader codec support are not covered
+by this baseline. macOS mpv bundling belongs to a later phase.
+
+Packaging stamps the package version, actual Git revision, dirty flag, and
+unique build ID once into `addon/release.json` inside the runtime. The app
+plist and DMG use that same identity; a matching `.release.json` support
+sidecar accompanies the DMG. Unstamped source or plain TypeScript builds
+report `source` and an unknown dirty state, never a verified candidate.
+DMGs are named `HoshiStream-<buildId>-darwin-arm64.dmg`; substitute that
+filename in the installation examples below. To build without replacing an
+existing app, set `HOSHISTREAM_BUILD_DIR="$PWD/build/candidate-check"` for
+both macOS packaging scripts.
+
 ## Architecture
 
 ```text

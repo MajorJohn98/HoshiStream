@@ -1,4 +1,5 @@
-import { del, head, put } from "@vercel/blob";
+import { BlobNotFoundError, del, head, put } from "@vercel/blob";
+import { z } from "zod";
 import {
   POINTER_TTL_SECONDS,
   blobPathname,
@@ -41,6 +42,15 @@ interface RedisEnv {
   token: string;
 }
 
+const redisResultSchema = z
+  .object({
+    result: z.unknown(),
+    error: z.string().optional(),
+  })
+  .refine((value) => !value.error && Object.hasOwn(value, "result"), {
+    message: "Pointer storage command failed",
+  });
+
 export function redisEnv(): RedisEnv | undefined {
   const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
   const token =
@@ -66,7 +76,7 @@ export async function redisCommand(
   if (!response.ok) {
     throw new Error(`Redis command failed with status ${response.status}`);
   }
-  const parsed = (await response.json()) as { result?: unknown };
+  const parsed = redisResultSchema.parse(await response.json());
   return parsed.result;
 }
 
@@ -87,7 +97,7 @@ export async function redisPipeline(
   if (!response.ok) {
     throw new Error(`Redis pipeline failed with status ${response.status}`);
   }
-  const parsed = (await response.json()) as { result?: unknown }[];
+  const parsed = z.array(redisResultSchema).parse(await response.json());
   return parsed.map((entry) => entry.result);
 }
 
@@ -102,7 +112,8 @@ async function blobRead(pathname: string): Promise<unknown> {
   const response = await fetch(`${blob.url}?ts=${Date.now()}`, {
     signal: AbortSignal.timeout(5_000),
   });
-  if (!response.ok) return undefined;
+  if (response.status === 404) return undefined;
+  if (!response.ok) throw new Error("Pointer storage read failed");
   return (await response.json()) as unknown;
 }
 
@@ -138,7 +149,10 @@ export async function loadPointerRecord(
   tokenHash: string,
 ): Promise<PointerRecord | undefined> {
   const cached = cache.get(tokenHash);
-  if (cached && cached.expiresAt > Date.now()) return cached.record;
+  if (cached && cached.expiresAt > Date.now())
+    return cached.record && !isExpired(cached.record)
+      ? cached.record
+      : undefined;
   let record: PointerRecord | undefined;
   try {
     const raw = redisEnv()
@@ -149,8 +163,8 @@ export async function loadPointerRecord(
       const parsed = pointerRecordSchema.parse(value);
       if (!isExpired(parsed)) record = parsed;
     }
-  } catch {
-    record = undefined;
+  } catch (error) {
+    if (!(error instanceof BlobNotFoundError)) throw error;
   }
   cacheSet(tokenHash, record);
   return record;
@@ -163,8 +177,8 @@ export async function deletePointerRecord(tokenHash: string): Promise<void> {
     try {
       const blob = await head(recordBlobPathname(tokenHash));
       await del(blob.url);
-    } catch {
-      // Already gone.
+    } catch (error) {
+      if (!(error instanceof BlobNotFoundError)) throw error;
     }
   }
   cache.delete(tokenHash);
@@ -180,7 +194,8 @@ export async function loadLegacyPointer(
     const value = await blobRead(blobPathname(pushSecret));
     if (value === undefined || value === null) return undefined;
     return legacyPointerRecordSchema.parse(value);
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (error instanceof BlobNotFoundError) return undefined;
+    throw error;
   }
 }

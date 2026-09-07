@@ -134,7 +134,7 @@ internal sealed class ManagementClient : IDisposable
     {
         using var pointer = await ApiAsync("/api/pointer/status", cancellation: cancellation);
         string url;
-        if (pointer.RootElement.GetProperty("configured").GetBoolean())
+        if (pointer.RootElement.TryGetProperty("usable", out var usable) && usable.GetBoolean())
         {
             url = pointer.RootElement.GetProperty("manifestUrl").GetString() ?? throw new InvalidDataException("Missing pointer URL.");
         }

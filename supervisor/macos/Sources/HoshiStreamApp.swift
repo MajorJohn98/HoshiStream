@@ -56,15 +56,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Int(environmentValue("ADDON_PORT") ?? "") ?? 7001
     }
 
-    // Set alongside POINTER_PUSH_SECRET in .env to enable the remote pointer
-    // (ADR 0012). The manifest URL clients install then never changes.
-    private var pointerURL: String? {
-        environmentValue("POINTER_URL").flatMap {
-            let trimmed = $0.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-            return trimmed.isEmpty ? nil : trimmed
-        }
-    }
-
     private func isPrivateIPv4(_ value: String) -> Bool {
         let parts = value.split(separator: ".").compactMap { Int($0) }
         guard parts.count == 4 else { return false }
@@ -126,16 +117,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Open HoshiStream", action: #selector(openLibrary), keyEquivalent: "o").target = self
         menu.addItem(withTitle: "Get Started", action: #selector(openGettingStarted), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Copy Stremio URL", action: #selector(copyStremioURL), keyEquivalent: "c").target = self
+        menu.addItem(withTitle: "Copy Direct LAN URL", action: #selector(copyDirectLANURL), keyEquivalent: "").target = self
         menu.addItem(startItem)
         speedItem.target = self
         menu.addItem(speedItem)
         pointerItem.target = self
         pointerItem.isHidden = true
         menu.addItem(pointerItem)
+        menu.addItem(withTitle: "Remote Pointer Settings…", action: #selector(openPointerSettings), keyEquivalent: "").target = self
         menu.addItem(loginItem)
         magnetItem.target = self
         menu.addItem(magnetItem)
         menu.addItem(withTitle: "Show Logs", action: #selector(showLogs), keyEquivalent: "l").target = self
+        menu.addItem(withTitle: "About HoshiStream", action: #selector(showAbout), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit HoshiStream", action: #selector(quit), keyEquivalent: "q").target = self
         statusItem.menu = menu
@@ -365,9 +359,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         pointerItem.isHidden = false
         if pointerItem.isEnabled {
-            pointerItem.title = pointer.stale == true
-                ? "Update Remote Pointer — ⚠︎ IP changed"
-                : "Update Remote Pointer"
+            switch pointer.state {
+            case "stale": pointerItem.title = "Update Remote Pointer — IP changed"
+            case "expired": pointerItem.title = "Update Remote Pointer — expired"
+            case "authentication-failed": pointerItem.title = "Remote Pointer — authentication failed"
+            case "unreachable": pointerItem.title = "Remote Pointer — service unreachable"
+            case "unregistered": pointerItem.title = "Register Remote Pointer"
+            default: pointerItem.title = "Update Remote Pointer"
+            }
         }
     }
 
@@ -379,8 +378,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 15
-        URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
             let ok = (response as? HTTPURLResponse)?.statusCode == 200
+            let failure = data.flatMap { try? JSONDecoder().decode(PointerFailure.self, from: $0) }
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.pointerItem.isEnabled = true
@@ -388,6 +388,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     ? "Update Remote Pointer — updated just now"
                     : "Update Remote Pointer — ⚠︎ push failed"
                 self.setStatus(ok ? "Remote pointer updated" : "Error — pointer push failed")
+                if !ok {
+                    let alert = NSAlert()
+                    alert.messageText = "Remote pointer was not updated"
+                    alert.informativeText = failure?.error ?? "The local server could not complete the request. Open Remote Pointer Settings to review the service and credential state."
+                    alert.addButton(withTitle: "Open Pointer Settings")
+                    alert.addButton(withTitle: "Cancel")
+                    NSApp.activate(ignoringOtherApps: true)
+                    if alert.runModal() == .alertFirstButtonReturn { self.openPointerSettings() }
+                }
                 if ok {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                         self?.checkHealth()
@@ -453,6 +462,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func openPointerSettings() {
+        guard let token,
+              let escaped = token.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "http://127.0.0.1:\(addonPort)/manage/\(escaped)#/activity")
+        else { return setStatus("Error — missing access token") }
+        if !NSWorkspace.shared.open(url) {
+            setStatus("Could not open pointer settings — try again")
+        }
+    }
+
     private func offerWelcomeIfNeeded(_ onboarding: OnboardingStatus?) {
         guard onboarding?.welcomePending == true,
               !attemptedWelcome, !receivedMagnetThisLaunch,
@@ -477,23 +496,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func copyStremioURL() {
+        guard let token else { return setStatus("Error — missing access token") }
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:\(addonPort)/api/pointer/status")!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 5
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            let pointer = data.flatMap { try? JSONDecoder().decode(PointerStatus.self, from: $0) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard (response as? HTTPURLResponse)?.statusCode == 200, let pointer else {
+                    self.setStatus("Pointer status unavailable — use Copy Direct LAN URL")
+                    return
+                }
+                if pointer.usable == true, let value = pointer.manifestUrl {
+                    self.copyVerifiedManifest(value)
+                } else {
+                    self.copyDirectLANURL()
+                }
+            }
+        }.resume()
+    }
+
+    @objc private func copyDirectLANURL() {
         guard let token,
               let escaped = token.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
         else {
             setStatus("Error — missing access token")
             return
         }
-        // The pointer URL survives IP changes, so it is the better URL to put
-        // into clients whenever the pointer server is configured.
-        let value: String
-        if let pointerURL {
-            value = "\(pointerURL)/addon/\(escaped)/manifest.json"
-        } else if let address = lanAddress {
-            value = "http://\(address):\(addonPort)/addon/\(escaped)/manifest.json"
-        } else {
+        guard let address = lanAddress else {
             setStatus("Error — no private LAN address")
             return
         }
+        copyVerifiedManifest("http://\(address):\(addonPort)/addon/\(escaped)/manifest.json")
+    }
+
+    private func copyVerifiedManifest(_ value: String) {
         guard let url = URL(string: value) else {
             setStatus("Error — invalid manifest URL")
             return
@@ -520,6 +558,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }.resume()
+    }
+
+    @objc private func showAbout() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "HoshiStreamBuildID") as? String ?? "source"
+        let revision = Bundle.main.object(forInfoDictionaryKey: "HoshiStreamRevision") as? String ?? "source"
+        let dirty = Bundle.main.object(forInfoDictionaryKey: "HoshiStreamDirty") as? String ?? "unknown"
+        let alert = NSAlert()
+        alert.messageText = "HoshiStream \(version)"
+        alert.informativeText = "Build: \(build)\nRevision: \(revision)\nUncommitted source changes: \(dirty)\n\nClosed-beta candidate: Apple Silicon, macOS 13.5+, trusted LAN, one direct-play stream. Baseline browser media: H.264/AAC MP4. Exact client-version acceptance remains required."
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     @objc private func showLogs() {
@@ -575,6 +626,13 @@ private struct SpeedResult: Decodable {
 private struct PointerStatus: Decodable {
     let configured: Bool
     let stale: Bool?
+    let state: String?
+    let usable: Bool?
+    let manifestUrl: String?
+}
+
+private struct PointerFailure: Decodable {
+    let error: String
 }
 
 private struct ServerStatus: Decodable {

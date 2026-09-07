@@ -60,6 +60,7 @@
 
 ## Plans
 
+- [plans/2026-09-07-closed-beta-readiness-plan.md](plans/2026-09-07-closed-beta-readiness-plan.md) — macOS-first closed beta gates, installed pointer provisioning, simpler README workflows, release acceptance, recovery, and support.
 - [plans/2026-08-10-project-assessment.md](plans/2026-08-10-project-assessment.md) — Project health assessment: verified checks, risks, next steps.
 - [plans/2026-08-12-reliability-plan.md](plans/2026-08-12-reliability-plan.md) — Reliability findings and the seven fixes shipped in 0.3.0.
 - [plans/2026-08-12-management-ui-plan.md](plans/2026-08-12-management-ui-plan.md) — Library management & UI improvement plan shipped in 0.4.0.
@@ -85,6 +86,8 @@
 - [plans/2026-09-06-chrome-companion-plan.md](plans/2026-09-06-chrome-companion-plan.md) — Replace in-app discovery with manual imports, a Chrome side panel and a same-computer macOS native bridge.
 
 ## Changelog
+
+- [changelog/closed-beta-identity-and-pointer.md](changelog/closed-beta-identity-and-pointer.md) — Phase 1-2 candidate identity, explicit installed pointer setup, credential recovery, and remaining recipient acceptance gates.
 
 - [changelog/windows-desktop.md](changelog/windows-desktop.md) — Windows tray, native integrations, playback, storage, lifecycle and packaging implementation.
 

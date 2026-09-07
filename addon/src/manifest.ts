@@ -1,9 +1,11 @@
+import { releaseInfo } from "./release.ts";
+
 // Base manifest. Catalogs advertise the "genre" extra so Stremio shows a
 // genre picker; its options are the live tag list, filled in per request by
 // manifestWithGenres because the registry changes at runtime.
 export const manifest = {
   id: "com.john.private-torrent-streamer",
-  version: "0.8.0",
+  version: releaseInfo.version,
   name: "HoshiStream",
   description: "Private local library for legally owned or authorized media",
   resources: ["catalog", "meta", "stream"],

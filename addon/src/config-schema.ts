@@ -94,6 +94,7 @@ export const configSchema = z.object({
     .string()
     .min(1)
     .default(join(root, "pointer-state.json")),
+  POINTER_SETTINGS_PATH: z.string().min(1).optional(),
   // User-assigned device names shown in the Devices panel, keyed by IP.
   DEVICE_NAMES_PATH: z.string().min(1).default(join(root, "device-names.json")),
   // Tag registry behind the Tags page; seeded with genre defaults on first run.

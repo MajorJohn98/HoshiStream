@@ -17,6 +17,10 @@ import {
   sha256,
   writeChecksum,
 } from "./windows-build-tools.mjs";
+import {
+  createReleaseIdentity,
+  writeReleaseIdentity,
+} from "./release-identity.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 export const runtimeScripts = [
@@ -50,6 +54,7 @@ export const requiredPayloadFiles = [
   "addon/assets/chrome-extension/manifest.json",
   "addon/package.json",
   "addon/package-lock.json",
+  "addon/release.json",
   "addon/node_modules/zod/package.json",
   "vendor/torrserver/win32-x64/TorrServer.exe",
   "vendor/mpv/win32-x64/mpv.exe",
@@ -285,11 +290,8 @@ export async function buildWindowsApp({
   const redistribution = join(root, "vendor/windows-redistribution");
   if (!stageOnly) await validateRedistribution(redistribution);
   const [npm, npmArgs] = await npmCommand();
-  const { version } = JSON.parse(
-    await readFile(join(root, "addon/package.json"), "utf8"),
-  );
-  if (!/^\d+\.\d+\.\d+$/.test(version))
-    throw new Error("Installer requires a numeric three-part package version");
+  const release = createReleaseIdentity();
+  const { version } = release;
   const stage = join(root, "build/windows-stage");
   const bundle = join(stage, "HoshiStream");
   await mkdir(join(root, "build"), { recursive: true });
@@ -400,6 +402,7 @@ export async function buildWindowsApp({
       await cp(join(root, "addon", name), join(bundle, "addon", name), {
         recursive: true,
       });
+    writeReleaseIdentity(join(bundle, "addon/release.json"), release);
     const dependencies = join(working, "dependencies");
     await mkdir(dependencies);
     for (const file of ["package.json", "package-lock.json"])
@@ -492,6 +495,7 @@ export async function buildWindowsApp({
       JSON.stringify(
         {
           version,
+          release,
           target: "win-x64",
           redistributionReviewed: !stageOnly,
           files: digests,

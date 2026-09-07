@@ -11,7 +11,8 @@ What it does:
   copy of your manifest.
 - `307`-redirects every other add-on request to your Mac's last-pushed LAN
   address. Media never touches Vercel.
-- Updates only when you click **Update Remote Pointer** in the menu bar.
+- Updates only when you click **Register / update** in Activity or
+  **Update Remote Pointer** in the menu bar.
 - Serves **any number of users** on one deployment: the first push with your
   token claims it, and only your per-install push secret can update it
   afterwards. You can join a friend's instance or run your own.
@@ -20,9 +21,23 @@ What it does:
 
 If someone you trust already runs a pointer server, skip straight to
 [Configure HoshiStream](#configure-hoshistream) with their URL. Your
-`POINTER_PUSH_SECRET` is generated on first run and stays yours — the
-operator never needs it. Note that the operator can see your pushed LAN
-base URL (a private address) and manifest.
+`POINTER_PUSH_SECRET` is generated on first run and stays in your private
+configuration. Manual actions send it to the chosen service for authentication;
+never give it to an operator as a setup step. Trust the operator: the service
+processes your credentials and sees your pushed LAN address and manifest.
+
+For the closed beta, the suggested endpoint is
+`https://hoshistream-pointer.vercel.app`, operated by **Major John's projects**
+(the project owner's Vercel team). This is a suggestion, not automatic enrollment.
+Existing custom endpoints are preserved. The endpoint and operator were confirmed
+against the linked Vercel project on 2026-09-07; deployed multi-recipient/client
+acceptance remains a release gate.
+
+To find another deployment's URL, open Vercel, select its project, then
+**Settings > Domains** and choose the stable production domain, not a preview
+deployment URL. The project/team selector identifies the operator responsible
+for the deployment. A service URL is not a Vercel API token, Redis credential,
+Blob credential, or deployment-wide `PUSH_SECRET`.
 
 ## Option B — deploy your own
 
@@ -68,56 +83,99 @@ Note the production URL, e.g. `https://hoshistream-pointer.vercel.app`.
 
 ## Configure HoshiStream
 
-Add to your `.env` (`~/Library/Application Support/HoshiStream/.env` for the
-native app):
+In the installed app, choose **Remote Pointer Settings...** from the menu bar,
+or open **Activity > Remote pointer** in the management page:
+
+1. Review the suggested service or enter your own trusted HTTPS service origin.
+2. Click **Save and enable**. This saves setup privately on this computer;
+   it does not contact the service, register a record, or require a restart.
+3. Click **Register / update** to send this installation's current LAN address
+   and manifest. The first push claims its token with its own push secret.
+4. After a successful, current registration, **Copy private pointer URL**
+   supplies the stable URL. The native **Copy Stremio URL** uses it only while
+   the local state reports it usable; otherwise it uses the direct LAN URL.
+
+HTTPS endpoints must be origins without a path, query, fragment, or embedded
+credentials. Loopback HTTP is allowed for local self-hosted development only.
+Changing service while a remote record is still remembered requires removing
+that record first; disabling locally alone does not remove it.
+
+The full-stack terminal path (`node scripts/native-server.mjs --dev`) generates
+credentials in the checkout's `.env` and uses `native-data/` for pointer state.
+The installed app uses `~/Library/Application Support/HoshiStream/.env` and
+pointer state in that same state directory. `pointer-settings.json` stores the
+enabled state and service origin; `pointer-state.json` stores registration
+evidence. Neither file replaces the secret in `.env`.
+
+Advanced configuration can still set an initial endpoint in `.env`:
 
 ```bash
 POINTER_URL=https://hoshistream-pointer.vercel.app
 ```
 
-`POINTER_PUSH_SECRET` is already there — the app generates it on first run.
-(On an install that predates this, restart once and it is added, or set any
-long random value yourself.)
-
-Restart HoshiStream (menu bar → Restart Server).
-
-## 5. Push and install
-
-1. Menu bar → **Update Remote Pointer**. This sends the current LAN address
-   and manifest to the pointer server. It is the only time anything is sent.
-   The first push claims your token; later pushes must come from the same
-   install (same push secret).
-2. Menu bar → **Copy Stremio URL** now copies the permanent pointer URL —
-   install it in your clients once.
-
-The **Devices** panel of the management UI shows pointer health (last push,
-registration, expiry) and offers **Update** / **Remove** buttons.
+Restart after editing `.env`. Saved UI settings take precedence over this
+initial endpoint, including an explicit disabled choice. Keep `.env`, its
+`ACCESS_TOKEN`, and its `POINTER_PUSH_SECRET` private and unchanged during upgrades.
+The add-on-only `npm run dev` path does not run native first-run provisioning;
+use the whole-stack command for generated recipient credentials.
 
 ## When your IP changes
 
-Streams will fail until you click **Update Remote Pointer** again. The menu
-item shows `⚠︎ IP changed` when the addon notices the mismatch. Clients never
-need touching again.
+Pointer-based requests can fail until you click **Register / update** again.
+The menu flags a changed address. This is not automatic IP tracking.
+**Get started > Copy direct LAN URL** and the native **Copy Direct LAN URL**
+remain available when the pointer service is unavailable. Browser clients
+that block HTTPS-to-HTTP LAN redirects must use this direct URL; it needs
+reinstalling in those clients when the LAN address changes.
 
-## Verifying
+## States and recovery
 
-```bash
-curl -s https://<pointer-host>/addon/<token>/manifest.json | head -c 200
-curl -sI https://<pointer-host>/addon/<token>/catalog/movie/private-movies.json | grep -i location
-```
+Opening Activity or saving setup only reads/writes local state. **Check service**
+is a separate manual request. Status is observed evidence, not a continuous
+guarantee of service availability.
 
-The first prints your manifest; the second shows a `location:` header
-pointing at your LAN IP.
+| State | Action |
+|---|---|
+| Disabled / not configured | Review the service and save/enable locally, then register manually. |
+| Ready to register | No successful current registration is recorded; click Register / update. |
+| Registered | The last successful operation confirmed the record. Keep the computer running on the LAN. |
+| LAN address changed | Register / update manually from the new network. |
+| Expired | Register / update again; server records expire after 90 days without a push. |
+| Service unreachable / invalid response / rate limited | Keep using the direct LAN URL; verify the endpoint and retry the manual action later. |
+| Authentication failed | Restore the original per-install push secret; a new random secret cannot update an existing claim. An old single-tenant deployment must be upgraded by its operator. |
+| Record or credential not confirmed | The status API deliberately returns 404 for both missing records and wrong credentials. Do not infer a successful removal or a free claim; a deliberate update distinguishes authentication rejection. |
+| Local setup unavailable | Check private state permissions or restore its backup. Corrupt files are not silently replaced. |
+
+On an older installation with no pointer history, first-run provisioning can
+backfill a missing secret. If an endpoint or pointer state already exists, a
+missing/invalid secret is **not** silently replaced. Restore the original `.env`
+from your private backup while the app is stopped. If the whole `.env` is lost
+but pointer files remain, startup stops instead of assigning a new identity.
+
+Without a backup, contact the chosen service's operator through a private
+support channel. The operator may remove the old record after confirming the
+request through an appropriate out-of-band process, or you can wait for its
+expiry. Only after the old claim is deliberately retired should you explicitly
+generate/set a new local push secret and register again. Changing the access
+token also changes every installed add-on URL; do not do it as a silent repair.
+Never use the operator's Vercel, Redis, Blob, or legacy shared `PUSH_SECRET`
+credentials as a recipient credential.
+
+**Remove remote record** deletes the service record only after acknowledged
+success; failures leave local evidence intact for retry. **Disable locally**
+prevents further pointer operations but retains credentials and any existing
+remote record. Re-enable before removing it. These actions never remove media
+or library entries.
 
 ## Privacy notes
 
 - The server stores, per tenant: the LAN base URL, SHA-256 hashes of the
   access token and push secret, the manifest, and timestamps. Never the
-  token, the secret, the library, or media.
-- Records expire 90 days after the last push; the Devices panel warns before
-  that happens.
+  raw token, raw secret, library, or media in its application record. Requests
+  necessarily carry credentials; the operator and hosting platform process
+  them, and access-log policy is the operator's responsibility.
+- Records expire 90 days after the last push; Activity shows the expiry.
 - Catalog/stream request *paths* transit Vercel; media bytes go directly
   from your Mac to the client on the LAN.
-- Nothing is pushed automatically — remove `POINTER_URL` from `.env` (and
-  click **Remove** in the Devices panel to delete the server-side record) to
-  turn the feature off entirely.
+- Nothing is pushed automatically. Remove the remote record, then disable
+  locally to leave the service. Saving a suggested endpoint alone sends nothing.

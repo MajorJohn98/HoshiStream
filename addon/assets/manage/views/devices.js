@@ -4,6 +4,7 @@
 import { html, useEffect, useState } from "../vendor/preact-htm.js";
 import { api, fmt, notify } from "../api.js";
 import { useStore } from "../store.js";
+import { PointerCard } from "./pointer.js";
 
 function agoLabel(iso) {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 6e4));
@@ -11,10 +12,6 @@ function agoLabel(iso) {
   if (minutes < 60) return minutes + " min ago";
   if (minutes < 1440) return Math.round(minutes / 60) + " h ago";
   return Math.round(minutes / 1440) + " d ago";
-}
-
-function daysUntil(iso) {
-  return Math.round((Date.parse(iso) - Date.now()) / 864e5);
 }
 
 // Seen within the last five minutes reads as "here now".
@@ -220,144 +217,6 @@ function Playback() {
                   </li>
                 `,
               )}
-            </ul>`
-      }
-    </section>
-  `;
-}
-
-function PointerCard() {
-  const [local, setLocal] = useState(null);
-  const [remote, setRemote] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const refresh = async () => {
-    try {
-      const localStatus = await api("pointer/status");
-      setLocal(localStatus);
-      if (localStatus.configured) setRemote(await api("pointer/remote"));
-    } catch {
-      // pointer optional; leave the card in its last state
-    }
-  };
-  useEffect(() => {
-    void refresh();
-  }, []);
-  const act = async (path, message) => {
-    setBusy(true);
-    try {
-      await api(path, { method: "POST" });
-      notify(message);
-      await refresh();
-    } catch (error) {
-      notify(error.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const configured = Boolean(local?.configured);
-  const expiringDays = remote?.expiresAt ? daysUntil(remote.expiresAt) : null;
-  const pointerTone = !configured ? "idle" : local.stale ? "warn" : "ok";
-  const remoteTone = !remote
-    ? "idle"
-    : !remote.reachable
-      ? "bad"
-      : remote.registered
-        ? "ok"
-        : "idle";
-  return html`
-    <section class="page-section" id="activity-pointer">
-      <div class="section-head">
-        <div>
-          <h2 class="section-title">Remote pointer</h2>
-          <p class="muted">
-            A permanent add-on URL that follows this server across IP changes.
-          </p>
-        </div>
-        ${
-          configured
-            ? html`<div class="row">
-                <button
-                  class="primary"
-                  disabled=${busy}
-                  onClick=${() => act("pointer/push", "Remote pointer updated")}
-                >
-                  ${busy ? "Working…" : "Update pointer"}
-                </button>
-                <button
-                  class="secondary"
-                  disabled=${busy}
-                  onClick=${() =>
-                    act("pointer/remove", "Remote pointer removed")}
-                >
-                  Remove
-                </button>
-              </div>`
-            : null
-        }
-      </div>
-      ${
-        !configured
-          ? html`<p class="empty quiet">
-              Not configured. Set POINTER_URL and POINTER_PUSH_SECRET in .env to
-              enable it.
-            </p>`
-          : html`<ul class="rows">
-              <li class="rowitem">
-                <span class="lead"><i class="dot ${pointerTone}"></i></span>
-                <span class="main">
-                  <strong>Pointer</strong>
-                  <span class="meta wrap">${local.manifestUrl}</span>
-                </span>
-                <span class="trail">
-                  <span class="value ${local.stale ? "warn" : "online"}">
-                    ${local.stale ? "Stale — IP changed" : "Fresh"}
-                  </span>
-                </span>
-              </li>
-              <li class="rowitem">
-                <span class="lead"><i class="dot ${remoteTone}"></i></span>
-                <span class="main">
-                  <strong>Pointer server</strong>
-                  <span class="meta">
-                    ${
-                      remote?.updatedAt
-                        ? "Last push " +
-                          agoLabel(remote.updatedAt) +
-                          " → " +
-                          (remote.baseUrl || "unknown")
-                        : "No push recorded yet"
-                    }
-                  </span>
-                </span>
-                <span class="trail">
-                  <span
-                    class="value ${
-                      remoteTone === "ok"
-                        ? "online"
-                        : remoteTone === "bad"
-                          ? "warn"
-                          : "muted"
-                    }"
-                  >
-                    ${
-                      !remote
-                        ? "Checking…"
-                        : !remote.reachable
-                          ? "Unreachable"
-                          : remote.registered
-                            ? "Registered"
-                            : "Not registered yet"
-                    }
-                  </span>
-                  ${
-                    expiringDays !== null
-                      ? html`<span class="muted">
-                          expires in ${expiringDays} d
-                        </span>`
-                      : null
-                  }
-                </span>
-              </li>
             </ul>`
       }
     </section>

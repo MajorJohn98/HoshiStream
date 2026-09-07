@@ -2,11 +2,19 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-APP="$ROOT/build/HoshiStream.app"
+BUILD_DIR="${HOSHISTREAM_BUILD_DIR:-$ROOT/build}"
+mkdir -p "$BUILD_DIR"
+BUILD_DIR=$(CDPATH= cd -- "$BUILD_DIR" && pwd)
+APP="$BUILD_DIR/HoshiStream.app"
 CONTENTS="$APP/Contents"
 RUNTIME="$CONTENTS/Resources/runtime"
+IDENTITY="$BUILD_DIR/release.json"
 
-(cd "$ROOT/addon" && npm run build)
+# Capture source state once, before compilation, and carry this exact stamp
+# through the runtime, native bundle, and subsequent DMG packaging.
+node "$ROOT/packaging/release-identity.mjs" create "$IDENTITY"
+rm -rf "$BUILD_DIR/addon-dist"
+(cd "$ROOT/addon" && npm run build -- --outDir "$BUILD_DIR/addon-dist")
 rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$RUNTIME/bin" "$RUNTIME/scripts" \
   "$RUNTIME/addon" "$RUNTIME/packaging" "$RUNTIME/vendor/torrserver/darwin-arm64" \
@@ -22,17 +30,22 @@ fi
 MIN_MACOS=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" \
   "$ROOT/supervisor/macos/Info.plist")
 xcrun swiftc -parse-as-library -target "arm64-apple-macos$MIN_MACOS" \
-  -module-cache-path "$ROOT/build/swift-module-cache" \
+  -module-cache-path "$BUILD_DIR/swift-module-cache" \
   -framework AppKit \
   -framework ServiceManagement \
   "$ROOT/supervisor/macos/Sources/"*.swift \
   -o "$CONTENTS/MacOS/HoshiStream"
 
 cp "$ROOT/supervisor/macos/Info.plist" "$CONTENTS/Info.plist"
-VERSION=$(node --input-type=module -e \
-  'import { readFileSync } from "node:fs"; const { version } = JSON.parse(readFileSync(process.argv[1], "utf8")); if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error("Invalid app version"); process.stdout.write(version);' \
-  "$ROOT/addon/package.json")
+release_field() {
+  node "$ROOT/packaging/release-identity.mjs" field "$IDENTITY" "$1"
+}
+VERSION=$(release_field version)
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$CONTENTS/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(release_field buildNumber)" "$CONTENTS/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :HoshiStreamBuildID $(release_field buildId)" "$CONTENTS/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :HoshiStreamRevision $(release_field revision)" "$CONTENTS/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :HoshiStreamDirty $(release_field dirty)" "$CONTENTS/Info.plist"
 # HoshiStreamProjectRoot stays at its PROJECT_ROOT placeholder: the supervisor
 # then resolves ~/Library/Application Support/HoshiStream at runtime, which is
 # what makes the bundle portable to other Macs. Set it only for a dev build
@@ -52,17 +65,18 @@ cp "$ROOT/scripts/lan-ip.mjs" "$RUNTIME/scripts/lan-ip.mjs"
 cp "$ROOT/scripts/register-browser-bridge.mjs" "$RUNTIME/scripts/register-browser-bridge.mjs"
 cp "$ROOT/packaging/torrserver-settings.json" \
   "$RUNTIME/packaging/torrserver-settings.json"
-cp -R "$ROOT/addon/dist" "$RUNTIME/addon/dist"
+cp -R "$BUILD_DIR/addon-dist" "$RUNTIME/addon/dist"
 cp -R "$ROOT/addon/assets" "$RUNTIME/addon/assets"
 cp "$ROOT/addon/package.json" "$RUNTIME/addon/package.json"
+cp "$IDENTITY" "$RUNTIME/addon/release.json"
 # Production-only dependencies. The checkout's node_modules carries the seven
 # devDependencies (vitest, eslint, typescript, vite, ...) that nothing needs at
 # runtime, and the UI is prebuilt into addon/assets, so shipping them only
 # inflates the download. Install from the lockfile into a staging dir instead.
-DEPS_STAGE="$ROOT/build/deps-stage"
+DEPS_STAGE="$BUILD_DIR/deps-stage"
 mkdir -p "$DEPS_STAGE"
 cp "$ROOT/addon/package.json" "$ROOT/addon/package-lock.json" "$DEPS_STAGE/"
-(cd "$DEPS_STAGE" && npm ci --cache "$ROOT/build/macos-npm" --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null)
+(cd "$DEPS_STAGE" && npm ci --cache "$BUILD_DIR/macos-npm" --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null)
 cp -R "$DEPS_STAGE/node_modules" "$RUNTIME/addon/node_modules"
 cp "$ROOT/vendor/torrserver/darwin-arm64/TorrServer" \
   "$RUNTIME/vendor/torrserver/darwin-arm64/TorrServer"
@@ -91,5 +105,6 @@ for BINARY in \
   "$RUNTIME/vendor/ffmpeg/darwin-arm64/ffprobe"; do
   [ -x "$BINARY" ] && codesign --force --sign - "$BINARY"
 done
+node "$ROOT/packaging/release-identity.mjs" verify-app "$APP" >/dev/null
 codesign --force --sign - "$APP"
 echo "$APP"

@@ -13,10 +13,19 @@ node packaging/fetch-ffmpeg.mjs
 ./packaging/build-macos-dmg.sh
 ```
 
-The second script prints the path to `build/HoshiStream-<version>.dmg`, containing the app,
+The second script prints the path to `build/HoshiStream-<buildId>-darwin-arm64.dmg`, containing the app,
 a symlink to `/Applications`, and `READ ME FIRST.txt` with the install steps below.
-The app and DMG version are taken from `addon/package.json`, not the older
-version in the source plist template. For a build intended for another Mac,
+The package version comes from `addon/package.json`. A single stamp records the
+actual source revision, dirty flag, timestamp, and unique build ID in the app's
+`Contents/Resources/runtime/addon/release.json`. The native plist and DMG use the
+same identity; a matching `.release.json` support sidecar is also written.
+**About HoshiStream**, **Status**, and authenticated `GET /api/status` show build
+information. Substitute the full candidate filename in the examples below.
+Unstamped source builds explicitly report `source`, not an accepted candidate.
+
+Set `HOSHISTREAM_BUILD_DIR` to a separate directory for both scripts when
+checking a candidate without replacing an existing local app or DMG.
+For a build intended for another Mac,
 leave `HOSHISTREAM_PROJECT_ROOT` unset so it creates that Mac's own private state.
 
 ## Why a `.dmg` and not a `.zip`
@@ -36,7 +45,7 @@ report that the app is damaged.
 Clear the quarantine flag **before** the app reaches `/Applications`:
 
 ```bash
-hdiutil attach ~/Downloads/HoshiStream-<version>.dmg
+hdiutil attach ~/Downloads/HoshiStream-<buildId>-darwin-arm64.dmg
 ditto /Volumes/HoshiStream/HoshiStream.app ~/Downloads/HoshiStream.app
 xattr -dr com.apple.quarantine ~/Downloads/HoshiStream.app
 mv ~/Downloads/HoshiStream.app /Applications/
@@ -77,6 +86,12 @@ build time. On first launch it creates
 with a `.env` (mode `0600`) holding a freshly generated `ACCESS_TOKEN`, a `MEDIA_DIR`
 defaulting to `~/Movies`, an empty `library.json`, and TorrServer's data directories. No
 manual configuration is needed before the first launch.
+
+It also generates a distinct private pointer push secret. Pointer participation
+is off until explicitly configured in **Remote Pointer Settings...** or
+**Activity > Remote pointer**. Review the suggested service, save locally, then
+register manually; no Vercel deployment credentials belong in a recipient app.
+See [pointer setup and recovery](pointer-server-vercel.md).
 
 To use a different media folder, edit `MEDIA_DIR` in that `.env` and choose **Restart
 Server** from the menu bar.

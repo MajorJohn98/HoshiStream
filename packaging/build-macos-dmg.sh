@@ -7,16 +7,18 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-APP="$ROOT/build/HoshiStream.app"
-VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
-  "$APP/Contents/Info.plist")
-DMG="$ROOT/build/HoshiStream-$VERSION.dmg"
-STAGE="$ROOT/build/dmg-stage"
+BUILD_DIR="${HOSHISTREAM_BUILD_DIR:-$ROOT/build}"
+APP="$BUILD_DIR/HoshiStream.app"
 
 if [ ! -d "$APP" ]; then
   echo "Build the app first: packaging/build-macos-app.sh" >&2
   exit 1
 fi
+
+BUILD_ID=$(node "$ROOT/packaging/release-identity.mjs" verify-app "$APP")
+ARTIFACT="HoshiStream-$BUILD_ID-darwin-arm64"
+DMG="$BUILD_DIR/$ARTIFACT.dmg"
+STAGE="$BUILD_DIR/dmg-stage"
 
 rm -rf "$STAGE" "$DMG"
 mkdir -p "$STAGE"
@@ -25,8 +27,10 @@ cp -R "$APP" "$STAGE/HoshiStream.app"
 # where Gatekeeper path randomization hides its own resources from it.
 ln -s /Applications "$STAGE/Applications"
 cp "$ROOT/packaging/dmg-readme.txt" "$STAGE/READ ME FIRST.txt"
+cp "$APP/Contents/Resources/runtime/addon/release.json" "$STAGE/release-info.json"
 
 hdiutil create -volname "HoshiStream" -srcfolder "$STAGE" \
   -ov -format UDZO "$DMG" >/dev/null
+cp "$STAGE/release-info.json" "$BUILD_DIR/$ARTIFACT.release.json"
 rm -rf "$STAGE"
 echo "$DMG"

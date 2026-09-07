@@ -225,7 +225,7 @@ export function WelcomeView() {
                   ${report.loopbackOnly ? html`<p class="setup-warning" role="status">This address currently works only on this computer. Connect it to your home network and restart HoshiStream before setting up another device.</p>` : null}
                   <div class="row stacked-sm">
                     <button class="primary" disabled=${busy} onClick=${copy}>
-                      ${copied ? "Copy again" : "Copy add-on URL"}
+                      ${copied ? "Copy again" : "Copy direct LAN URL"}
                     </button>
                     ${copied ? html`<span class="online" role="status">Copied. Paste it in ${client}.</span>` : null}
                   </div>
@@ -246,6 +246,12 @@ export function WelcomeView() {
                     This link grants access to your library. Keep it private. If
                     this computer's network address changes, copy the updated
                     link here.
+                  </p>
+                  <p class="muted">
+                    Prefer a stable address? Enable an optional
+                    <a href="#/activity">remote pointer in Activity</a> and
+                    register it manually. This direct LAN URL also works when a
+                    browser client blocks pointer redirects.
                   </p>
                   ${report.observedClient ? html`<p class="muted">Recent library request received from ${report.observedClient}.</p>` : null}
                   <div class="row stacked-sm">

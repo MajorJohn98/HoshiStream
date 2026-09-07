@@ -1,11 +1,19 @@
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { recentEntryActivity, recentStreamActivity } from "../activity.ts";
 import { listClients } from "../clients.ts";
 import { manifestWithGenres } from "../manifest.ts";
 import { lookupHostname } from "../hostname.ts";
 import { resourceReport } from "../resources.ts";
 import { currentSpeed, homeSpeedMbps, runSpeedTest } from "../speedtest.ts";
-import { body, logInfo, reply, type RouteHandler } from "./context.ts";
+import { PointerError, pointerSetupSchema } from "../pointer.ts";
+import { releaseInfo } from "../release.ts";
+import {
+  body,
+  logInfo,
+  noStoreReply,
+  reply,
+  type RouteHandler,
+} from "./context.ts";
 
 const clientNameSchema = z.object({
   ip: z.string().min(1).max(64),
@@ -144,28 +152,31 @@ export const handlePlaybackSessions: RouteHandler = async (
 
 export const handlePointer: RouteHandler = async (
   { pointer, addon, tags },
-  { response, url, method },
+  { request, response, url, method },
 ) => {
-  if (url.pathname === "/api/pointer/status" && method === "GET") {
-    return reply(
-      response,
-      200,
-      pointer ? await pointer.status() : { configured: false },
-    );
-  }
-  const action = /^\/api\/pointer\/(push|remote|remove)$/.exec(
+  const action = /^\/api\/pointer\/(status|settings|push|remote|remove)$/.exec(
     url.pathname,
   )?.[1];
-  if (!action || (action === "remote" ? method !== "GET" : method !== "POST"))
-    return false;
+  if (!action) return false;
+  if (method !== (["status", "remote"].includes(action) ? "GET" : "POST"))
+    return noStoreReply(response, 405, { error: "Method not allowed" });
+  if (!pointer && action === "status")
+    return noStoreReply(response, 200, { configured: false });
   if (!pointer)
-    return reply(response, 409, { error: "Pointer not configured" });
-  if (action === "remote") {
-    return reply(response, 200, await pointer.remoteStatus());
-  }
+    return noStoreReply(response, 409, { error: "Pointer setup unavailable" });
   try {
+    if (action === "status")
+      return noStoreReply(response, 200, await pointer.status());
+    if (action === "settings")
+      return noStoreReply(
+        response,
+        200,
+        await pointer.configure(pointerSetupSchema.parse(await body(request))),
+      );
+    if (action === "remote")
+      return noStoreReply(response, 200, await pointer.remoteStatus());
     if (action === "push") {
-      return reply(
+      return noStoreReply(
         response,
         200,
         await pointer.push(
@@ -174,15 +185,30 @@ export const handlePointer: RouteHandler = async (
       );
     }
     await pointer.remove();
-    return reply(response, 200, { ok: true });
+    return noStoreReply(response, 200, { ok: true });
   } catch (error) {
-    return reply(response, 502, {
+    if (error instanceof ZodError || error instanceof SyntaxError)
+      return noStoreReply(response, 400, {
+        error:
+          "Enter an HTTPS service origin without credentials, a path, query, or fragment.",
+      });
+    if (error instanceof PointerError)
+      return noStoreReply(response, error.statusCode, {
+        error: error.message,
+        code: error.code,
+        state: error.state,
+      });
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "pointer_action_failed",
+        action,
+      }),
+    );
+    return noStoreReply(response, 503, {
       error:
-        error instanceof Error
-          ? error.message
-          : action === "push"
-            ? "Pointer push failed"
-            : "Pointer removal failed",
+        "Pointer setup could not be loaded or saved. Check private state permissions or restore your backup, then retry.",
+      state: "storage-error",
     });
   }
 };
@@ -200,8 +226,25 @@ export const handleStatus: RouteHandler = async (
       .catch(() => ({ online: false })),
     nativePicker.available(),
   ]);
-  return reply(response, 200, {
+  const pointerStatus = pointer
+    ? await pointer.status().catch(() => {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "pointer_status_unavailable",
+          }),
+        );
+        return {
+          configured: false,
+          state: "storage-error",
+          message:
+            "Pointer setup could not be read. Open Activity to retry or restore its private backup.",
+        };
+      })
+    : { configured: false };
+  return noStoreReply(response, 200, {
     status: "online",
+    release: releaseInfo,
     torrServer: torrServerStatus,
     libraryCount: entries.length,
     onboarding: onboarding
@@ -222,9 +265,7 @@ export const handleStatus: RouteHandler = async (
       activeSessions: transcode?.list().length ?? 0,
       videoEncoder: transcode?.videoEncoder ?? null,
     },
-    pointer: pointer
-      ? { configured: true, stale: (await pointer.status()).stale ?? true }
-      : { configured: false },
+    pointer: pointerStatus,
   });
 };
 

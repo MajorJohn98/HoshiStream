@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, posix, win32 } from "node:path";
 import { restrictAccess } from "./private-files.mjs";
@@ -78,9 +78,9 @@ HOME_SPEED_MBPS=10
 # Opt-in stream repair (ADR 0010).
 TRANSCODE_ENABLED=false
 
-# Remote pointer (optional, ADR 0013): set POINTER_URL to a pointer server to
-# get a permanent add-on URL. The push secret is generated per install and
-# claims your token on the first push — it is never shared with anyone.
+# Remote pointer (optional, ADR 0013): use Activity > Remote pointer to enable
+# a service. Saving setup sends nothing; registration and updates are manual.
+# This per-install credential authenticates requests to the chosen service.
 # POINTER_URL=https://your-pointer.vercel.app
 POINTER_PUSH_SECRET=${pointerPushSecret}
 `;
@@ -101,11 +101,21 @@ async function writePrivateFile(path, contents) {
  */
 export async function ensureFirstRunSetup({
   projectRoot,
+  pointerStateRoot = join(projectRoot, "native-data"),
   mediaDir = defaultMediaDir(),
   addonPort = 7001,
 }) {
   await mkdir(projectRoot, { recursive: true, mode: 0o700 });
   const envPath = join(projectRoot, ".env");
+  let priorPointerSetup = false;
+  for (const name of ["pointer-state.json", "pointer-settings.json"]) {
+    try {
+      await stat(join(pointerStateRoot, name));
+      priorPointerSetup = true;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
 
   let existing = null;
   try {
@@ -115,6 +125,10 @@ export async function ensureFirstRunSetup({
   }
 
   if (existing === null) {
+    if (priorPointerSetup)
+      throw new Error(
+        "Existing pointer setup has lost its .env. Restore the private configuration backup before restarting; credentials were not replaced.",
+      );
     const accessToken = generateAccessToken();
     const pointerPushSecret = generateAccessToken();
     await writePrivateFile(
@@ -130,23 +144,39 @@ export async function ensureFirstRunSetup({
   const environment = parseEnvFile(existing);
   let contents = existing;
   if (needsAccessToken(environment.ACCESS_TOKEN)) {
+    if (priorPointerSetup || environment.POINTER_URL)
+      throw new Error(
+        "Existing pointer setup has lost its ACCESS_TOKEN. Restore the private configuration backup; the installation identity was not replaced.",
+      );
     const accessToken = generateAccessToken();
     contents = /^ACCESS_TOKEN=.*$/m.test(contents)
       ? contents.replace(/^ACCESS_TOKEN=.*$/m, `ACCESS_TOKEN=${accessToken}`)
       : `${contents.replace(/\n*$/, "\n")}ACCESS_TOKEN=${accessToken}\n`;
     environment.ACCESS_TOKEN = accessToken;
   }
-  // The pointer push secret is per install (ADR 0013); generate it the same
-  // way so it is ready whenever the user sets POINTER_URL.
   if (needsAccessToken(environment.POINTER_PUSH_SECRET)) {
-    const pointerPushSecret = generateAccessToken();
-    contents = /^POINTER_PUSH_SECRET=.*$/m.test(contents)
-      ? contents.replace(
-          /^POINTER_PUSH_SECRET=.*$/m,
-          `POINTER_PUSH_SECRET=${pointerPushSecret}`,
-        )
-      : `${contents.replace(/\n*$/, "\n")}POINTER_PUSH_SECRET=${pointerPushSecret}\n`;
-    environment.POINTER_PUSH_SECRET = pointerPushSecret;
+    if (priorPointerSetup || environment.POINTER_URL) {
+      // A new secret cannot update an existing claim. Keep the file intact
+      // and let pointer setup surface deliberate credential recovery.
+      delete environment.POINTER_PUSH_SECRET;
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          event: "pointer_credential_recovery_required",
+          message:
+            "Restore the original POINTER_PUSH_SECRET from your private backup. Pointer credentials were not replaced.",
+        }),
+      );
+    } else {
+      const pointerPushSecret = generateAccessToken();
+      contents = /^POINTER_PUSH_SECRET=.*$/m.test(contents)
+        ? contents.replace(
+            /^POINTER_PUSH_SECRET=.*$/m,
+            `POINTER_PUSH_SECRET=${pointerPushSecret}`,
+          )
+        : `${contents.replace(/\n*$/, "\n")}POINTER_PUSH_SECRET=${pointerPushSecret}\n`;
+      environment.POINTER_PUSH_SECRET = pointerPushSecret;
+    }
   }
   if (contents !== existing) {
     await writePrivateFile(envPath, contents);

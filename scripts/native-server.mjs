@@ -42,6 +42,7 @@ const identity = await claimRuntimeState(stateRoot);
 const { environment: projectEnvironment, firstRun } = await ensureFirstRunSetup(
   {
     projectRoot,
+    pointerStateRoot: stateRoot,
     mediaDir: defaultMediaDir(),
   },
 );
@@ -380,6 +381,10 @@ try {
   await waitForService(`http://127.0.0.1:${torrServerPort}/echo`, {
     signal: startup.signal,
   });
+  // This instance belongs to its selected state directory, never an inherited
+  // developer shell's pointer endpoint or credentials.
+  delete process.env.POINTER_URL;
+  delete process.env.POINTER_PUSH_SECRET;
   Object.assign(process.env, {
     ADDON_PORT: String(addonPort),
     TORRSERVER_INTERNAL_URL: `http://127.0.0.1:${torrServerPort}`,
@@ -424,6 +429,7 @@ try {
       ? { POINTER_PUSH_SECRET: projectEnvironment.POINTER_PUSH_SECRET }
       : {}),
     POINTER_STATE_PATH: join(stateRoot, "pointer-state.json"),
+    POINTER_SETTINGS_PATH: join(stateRoot, "pointer-settings.json"),
     FFMPEG_PATH: await ffmpegBinary(),
     FFPROBE_PATH: await ffprobeBinary(),
   });

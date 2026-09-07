@@ -28,9 +28,15 @@
 		</dict>
 	</array>
 	<key>CFBundleShortVersionString</key>
-	<string>0.8.2</string>
+	<string>VERSION</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>BUILD_NUMBER</string>
+	<key>HoshiStreamBuildID</key>
+	<string>source</string>
+	<key>HoshiStreamRevision</key>
+	<string>source</string>
+	<key>HoshiStreamDirty</key>
+	<string>unknown</string>
 	<key>HoshiStreamProjectRoot</key>
 	<string>PROJECT_ROOT</string>
 	<key>LSMinimumSystemVersion</key>

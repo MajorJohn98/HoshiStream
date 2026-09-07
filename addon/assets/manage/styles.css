@@ -291,6 +291,12 @@ h3 {
   width: 100%;
   min-width: 0;
 }
+.pointer-setup input {
+  display: block;
+  width: min(100%, 38rem);
+  min-width: 0;
+  font-size: 16px;
+}
 .setup-extras {
   padding-block: var(--space-4);
   border-bottom: 1px solid var(--line);

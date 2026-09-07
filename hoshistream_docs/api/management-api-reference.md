@@ -15,6 +15,12 @@ JSON request bodies are limited to 1 MB. Validation errors return `400` with a m
 | `GET /health` | none | `200 {"status":"ok"}` — process alive |
 | `GET /ready` | none | `200 {"status":"ready"}` — library readable and TorrServer `/echo` OK |
 
+Authenticated `GET /api/status` includes `release`:
+`{version,revision,dirty,buildId,buildNumber,builtAt}`. A packaged candidate has
+one stamped identity shared with its native app and artifact metadata.
+Unstamped runs report revision/build ID `source` and null dirty/build number/date,
+not a verified candidate. Status responses are `no-store`.
+
 ## Library
 
 Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...`).
@@ -36,10 +42,24 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `GET /api/clients` | Recent clients (in-memory): `{ip, device, hostname?, name?, firstSeen, lastSeen, requests, lastResource}` |
 | `POST /api/clients/name` | Assign a device name: `{ip, name}`; empty name clears it |
 | `GET /api/playback` | Live TorrServer sessions: speeds, peers/seeders, progress, plus `entryId` (when the hash maps to a library entry) and `activity` — `streaming` (a client requested this entry's stream in the last 5 min), `downloading` (the archiver is copying it), `inspecting` (metadata read in the last 2 min), or `idle`. A "working" torrent is not necessarily being watched |
-| `GET /api/pointer/status` | Local pointer state: manifest URL, last push, staleness |
-| `GET /api/pointer/remote` | Server-side pointer record health (reachable, registered, expiry) |
+| `GET /api/pointer/status` | Local-only setup and registration evidence: enabled, configured, suggested endpoint/operator, state/message, usable, last push, expiry and private manifest URL |
+| `POST /api/pointer/settings` | Save `{enabled,pointerUrl}` privately; no service contact, credential input or restart |
+| `GET /api/pointer/remote` | Explicit manual service check; reachability, registration evidence, expiry, and actionable state/message |
 | `POST /api/pointer/push` | Push the current LAN base URL + manifest to the pointer server |
 | `POST /api/pointer/remove` | Delete the pointer record on the pointer server |
+
+Pointer responses are authenticated and `no-store`. Saving an endpoint never
+registers it. Service URLs are HTTPS origins without embedded credentials,
+paths, queries or fragments; loopback HTTP is allowed for local development.
+Saved settings override the initial `.env` endpoint. Disabling preserves the
+secret and remote record; removal requires an explicit enabled manual action.
+The server never accepts a push secret through browser settings.
+
+`usable` means current local registration evidence for this endpoint and
+installation, not continuous service monitoring. A status-service 404 is
+ambiguous between absence and wrong credentials and is not reported as a
+definite successful removal or a free claim. See
+[pointer setup and recovery](../guides/pointer-server-vercel.md).
 
 ### Onboarding
 

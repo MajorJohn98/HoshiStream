@@ -165,6 +165,14 @@ export function HealthSection() {
               ${native ? "Native desktop app" : "Terminal mode"} · up
               ${uptimeLabel(status.uptimeSeconds)}
             </span>
+            ${
+              status.release
+                ? html`<span class="meta wrap">
+                    Version ${status.release.version} ·
+                    ${status.release.buildId === "source" ? "Source build — not a stamped candidate" : status.release.buildId}
+                  </span>`
+                : null
+            }
           </span>
           <span class="trail"><span class="value online">Online</span></span>
         </li>

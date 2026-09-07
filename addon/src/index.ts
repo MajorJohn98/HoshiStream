@@ -92,25 +92,14 @@ export async function startHoshiStream(settings = config) {
   );
   const playback = new Playback(library, torrServer, settings.PLAYER);
   const analysis = new LibraryAnalysis(library, defaultAnalyzer(sourceChecks));
-  let pointer: PointerClient | undefined;
-  if (settings.POINTER_URL && settings.POINTER_PUSH_SECRET) {
-    pointer = new PointerClient({
-      pointerUrl: settings.POINTER_URL,
-      pushSecret: settings.POINTER_PUSH_SECRET,
-      token: settings.ACCESS_TOKEN,
-      port: settings.ADDON_PORT,
-      statePath: settings.POINTER_STATE_PATH,
-    });
-  } else if (settings.POINTER_URL) {
-    console.error(
-      JSON.stringify({
-        level: "warn",
-        event: "pointer_partially_configured",
-        message:
-          "Set POINTER_PUSH_SECRET alongside POINTER_URL to enable the remote pointer",
-      }),
-    );
-  }
+  const pointer = new PointerClient({
+    pointerUrl: settings.POINTER_URL,
+    pushSecret: settings.POINTER_PUSH_SECRET,
+    token: settings.ACCESS_TOKEN,
+    port: settings.ADDON_PORT,
+    statePath: settings.POINTER_STATE_PATH,
+    settingsPath: settings.POINTER_SETTINGS_PATH,
+  });
   const server = createServer(
     createHandler({
       library,
