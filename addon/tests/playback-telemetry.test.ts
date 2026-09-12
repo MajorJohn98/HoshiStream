@@ -386,6 +386,30 @@ describe("PlaybackTelemetry", () => {
     expect(entries).toHaveBeenCalledTimes(1);
   });
 
+  it("logs a rate-limited warning when TorrServer's list cannot be read", async () => {
+    const list = vi
+      .fn<TorrServerClient["list"]>()
+      .mockRejectedValue(new Error("invalid torrent list"));
+    const log = vi.fn<(line: string) => void>();
+    let clock = 60_000_000;
+    const telemetry = new PlaybackTelemetry(
+      { list, cacheState: vi.fn() } as unknown as TorrServerClient,
+      { now: () => clock, log, entries: async () => [] },
+    );
+    await telemetry.sample(clock);
+    clock += 2_000;
+    await telemetry.sample(clock);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({
+      level: "warn",
+      event: "playback_discovery_failed",
+      error: "invalid torrent list",
+    });
+    clock += 400_000;
+    await telemetry.sample(clock);
+    expect(log).toHaveBeenCalledTimes(2);
+  });
+
   it("ignores working torrents without a reader", async () => {
     const hash = "e".repeat(40);
     const entry = libraryEntrySchema.parse({

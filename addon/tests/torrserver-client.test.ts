@@ -69,6 +69,43 @@ describe("TorrServerClient", () => {
     });
   });
 
+  it("lists torrents even when a live stat is null", async () => {
+    // Seen from MatriX for a working torrent with a single idle peer: the
+    // list would otherwise fail as a whole and hide every other torrent.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([
+            {
+              title: "Quiet",
+              hash: "a".repeat(40),
+              stat: 3,
+              stat_string: "Torrent working",
+              download_speed: null,
+              active_peers: 1,
+              connected_seeders: null,
+            },
+            {
+              title: "Busy",
+              hash: "b".repeat(40),
+              stat: 3,
+              stat_string: "Torrent working",
+              download_speed: 1_000,
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    const list = await new TorrServerClient("http://torrserver:8090").list();
+    expect(list.map((torrent) => torrent.title)).toEqual(["Quiet", "Busy"]);
+    expect(list[0].download_speed).toBeUndefined();
+    expect(list[0].connected_seeders).toBeUndefined();
+    expect(list[0].active_peers).toBe(1);
+    expect(list[1].download_speed).toBe(1_000);
+  });
+
   it("retries transient failures before succeeding", async () => {
     const fetchMock = vi
       .fn()

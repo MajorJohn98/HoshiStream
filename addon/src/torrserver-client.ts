@@ -10,6 +10,11 @@ const torrentFileSchema = z.object({
   length: z.number().int().nonnegative(),
 });
 
+const liveStat = z
+  .number()
+  .nullish()
+  .transform((value) => value ?? undefined);
+
 const torrentStatusSchema = z.object({
   title: z.string().default(""),
   name: z.string().optional(),
@@ -18,13 +23,14 @@ const torrentStatusSchema = z.object({
   stat_string: z.string(),
   file_stats: z.array(torrentFileSchema).optional().default([]),
   // Optional live stats (verified against MatriX.141 server/torr/state/state.go)
-  // surfaced by the Devices panel; absent unless the torrent is active.
-  loaded_size: z.number().optional(),
-  torrent_size: z.number().optional(),
-  download_speed: z.number().optional(),
-  upload_speed: z.number().optional(),
-  active_peers: z.number().optional(),
-  connected_seeders: z.number().optional(),
+  // surfaced by the Devices panel; absent unless the torrent is active, and
+  // observed as null for a working torrent with no measurable speed yet.
+  loaded_size: liveStat,
+  torrent_size: liveStat,
+  download_speed: liveStat,
+  upload_speed: liveStat,
+  active_peers: liveStat,
+  connected_seeders: liveStat,
 });
 
 const torrentListSchema = z.array(torrentStatusSchema);

@@ -49,7 +49,11 @@ the viewer plainly which stream their line can carry.
   reader refreshes the entry's streaming activity. The hash → entry index is
   re-read from the library at most every 15 s; TorrServer is asked for cache
   state only for working torrents without a target. Streaming ages out five
-  minutes after the player disconnects.
+  minutes after the player disconnects. TorrServer reports `download_speed`
+  and similar live stats as `null` for a working torrent with no measurable
+  speed yet; the list schema now accepts that instead of rejecting the whole
+  list (which had hidden every stream from discovery), and a failed list is
+  logged as `playback_discovery_failed` at most every five minutes.
 - Tests: `tests/playback-telemetry.test.ts`, `tests/runway-ui.test.ts`, new
   `cacheState` cases in `tests/torrserver-client.test.ts`, the route in
   `tests/routes.dispatch.test.ts`.

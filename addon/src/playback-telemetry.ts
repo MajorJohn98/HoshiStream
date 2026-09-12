@@ -22,6 +22,7 @@ export const WARN_INTERVAL_MS = 30_000;
 export const SUSTAIN_MARGIN = 1.2;
 // How long the hash → entry index is reused before re-reading the library.
 export const OWNER_INDEX_TTL_MS = 15_000;
+export const LIST_FAILURE_LOG_INTERVAL_MS = 300_000;
 
 export interface StreamTarget {
   entryId: string;
@@ -156,6 +157,7 @@ export class PlaybackTelemetry {
   readonly #samples = new Map<string, PlaybackSample[]>();
   readonly #lastWarned = new Map<string, number>();
   #owners: { at: number; index: Map<string, LibraryEntry> } | undefined;
+  #lastListFailure = 0;
   #timer: NodeJS.Timeout | undefined;
   #sampling = false;
 
@@ -220,7 +222,19 @@ export class PlaybackTelemetry {
     let torrents: TorrentStatus[];
     try {
       torrents = await this.#torrServer.list();
-    } catch {
+    } catch (error) {
+      // Discovery is best-effort, but a persistent failure here hides every
+      // stream the add-on did not hand out — say so, without flooding.
+      if (now - this.#lastListFailure >= LIST_FAILURE_LOG_INTERVAL_MS) {
+        this.#lastListFailure = now;
+        this.#log(
+          JSON.stringify({
+            level: "warn",
+            event: "playback_discovery_failed",
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
       return;
     }
     const known = new Set(
