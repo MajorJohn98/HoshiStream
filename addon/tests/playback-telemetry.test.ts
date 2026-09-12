@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { markStreamActivity } from "../src/activity.ts";
+import { markStreamActivity, recentEntryActivity } from "../src/activity.ts";
 import {
   activeStreamTargets,
   bytesAhead,
@@ -261,6 +261,42 @@ describe("PlaybackTelemetry", () => {
     await expect(telemetry.sample(clock)).resolves.toBeUndefined();
     expect(telemetry.report(clock)).toHaveLength(1);
     clock += 400_000;
+    await telemetry.sample(clock);
+    expect(telemetry.report(clock)).toEqual([]);
+  });
+
+  it("keeps an entry streaming while a reader is open, then lets it age out", async () => {
+    const reader = [{ startPiece: 0, endPiece: 40, readerPiece: 0 }];
+    const cacheState = vi
+      .fn<TorrServerClient["cacheState"]>()
+      .mockResolvedValueOnce(cache([0, 1], reader))
+      .mockResolvedValueOnce(cache([0, 1], reader))
+      .mockResolvedValue(cache([0, 1], []));
+    let clock = 30_000_000;
+    const telemetry = new PlaybackTelemetry(
+      { cacheState } as unknown as TorrServerClient,
+      { now: () => clock },
+    );
+    noteStreamTarget({
+      entryId: "hoshi:d",
+      hash: "d".repeat(40),
+      fileId: 1,
+      title: "D",
+      bitrateMbps: 8,
+    });
+    markStreamActivity(clock, "hoshi:d");
+    // Well past the five-minute stream window on every step: only the open
+    // reader observed in the previous sample keeps the entry alive.
+    for (let step = 0; step < 2; step += 1) {
+      await telemetry.sample(clock);
+      clock += 240_000;
+      expect(recentEntryActivity("hoshi:d", clock)).toBe("streaming");
+    }
+    // Reader gone: this sample still lands, but nothing refreshes activity.
+    await telemetry.sample(clock);
+    expect(telemetry.report(clock)).toHaveLength(1);
+    clock += 400_000;
+    expect(recentEntryActivity("hoshi:d", clock)).toBeUndefined();
     await telemetry.sample(clock);
     expect(telemetry.report(clock)).toEqual([]);
   });

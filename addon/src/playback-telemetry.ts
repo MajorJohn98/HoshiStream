@@ -3,7 +3,7 @@
 // seconds of playback are already cached ahead of the playhead, and whether
 // the swarm is keeping up with the file's bitrate. Observation only — nothing
 // here changes what the player receives. Everything stays in memory.
-import { recentEntryActivity } from "./activity.ts";
+import { markStreamActivity, recentEntryActivity } from "./activity.ts";
 import type { CacheState, TorrServerClient } from "./torrserver-client.ts";
 
 export const SAMPLE_INTERVAL_MS = 2_000;
@@ -191,6 +191,11 @@ export class PlaybackTelemetry {
     }
     if (!cache) return;
     const sample = sampleFrom(cache, target.bitrateMbps, now);
+    // Playback goes straight to TorrServer, so the stream request is the
+    // add-on's only direct signal and it ages out after a few minutes. An
+    // open reader means a player is still pulling bytes: keep the entry
+    // counted as streaming (and this target sampled) until readers drop.
+    if (sample.readers > 0) markStreamActivity(now, target.entryId);
     const ring = this.#samples.get(target.entryId) ?? [];
     ring.push(sample);
     if (ring.length > this.#ringSize)

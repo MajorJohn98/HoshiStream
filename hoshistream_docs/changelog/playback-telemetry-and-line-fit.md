@@ -38,6 +38,12 @@ the viewer plainly which stream their line can carry.
   below), `No reader attached`, or `Runway unknown` (no bitrate yet).
 - Wiring: `src/index.ts` starts/stops the sampler with the archiver;
   `getStreams` registers the served file as a telemetry target.
+- **Reader keep-alive (2026-09-12 fix).** Playback goes straight to
+  TorrServer, so the `stream` request was the add-on's only signal and the
+  entry fell back to `Idle` — and the runway row vanished — five minutes into
+  any film. Each sample that sees an open TorrServer reader now refreshes the
+  entry's streaming activity, so the Activity page tracks the whole playback
+  and ages out five minutes after the player disconnects.
 - Tests: `tests/playback-telemetry.test.ts`, `tests/runway-ui.test.ts`, new
   `cacheState` cases in `tests/torrserver-client.test.ts`, the route in
   `tests/routes.dispatch.test.ts`.
@@ -48,7 +54,7 @@ Phase 3 (playback-aware TorrServer tuning) is started.
 
 ## Phase 2 — Bitrate-aware stream presentation
 
-- **One rule** (`src/line-fit.ts`): a file *fits* when its average bitrate is
+- **One rule** (`src/line-fit.ts`): a file _fits_ when its average bitrate is
   at most 80 % of the line speed (`LINE_FIT_MARGIN = 0.8`). `lineFit(line)`
   returns `{ lineMbps, fitMbps }`; `fitsLine` returns `undefined` when either
   side is unknown so nothing is demoted on missing data.
