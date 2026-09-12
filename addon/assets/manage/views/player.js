@@ -53,6 +53,28 @@ function goEpisode(entryId, fileId) {
   location.hash = "#/play/" + encodeURIComponent(entryId) + "/" + fileId;
 }
 
+// Stremio-style protocol id for a title or one episode of it.
+export function protocolId(entry, file) {
+  return entry.type === "series" && file
+    ? `${entry.id}:${file.season}:${file.episode}`
+    : entry.id;
+}
+
+// The <track> elements the browser can render from the add-on's subtitles
+// reply: WebVTT only (the server converts SRT); ASS/SSA are for Stremio
+// clients with their own renderer.
+export function sidecarTracks(subtitles) {
+  if (!Array.isArray(subtitles)) return [];
+  return subtitles
+    .filter((subtitle) => /\.vtt$/i.test(subtitle?.url ?? ""))
+    .map((subtitle) => ({
+      id: subtitle.id,
+      src: subtitle.url,
+      label: subtitle.label || subtitle.lang || "Subtitle",
+      srclang: subtitle.lang || "und",
+    }));
+}
+
 const positionKey = (entryId, fileId) =>
   `hoshi-position-${entryId}-${fileId ?? "auto"}`;
 // The quality the viewer last picked for this title (e.g. "Compatible"),
@@ -176,6 +198,7 @@ export function PlayerView() {
   const recoveryNotice = useRef("");
   const [request, setRequest] = useState(params());
   const [streams, setStreams] = useState(null);
+  const [subtitles, setSubtitles] = useState([]);
   const [active, setActive] = useState(0);
   const [error, setError] = useState(null);
   const [streamStatus, setStreamStatus] = useState("idle");
@@ -252,10 +275,7 @@ export function PlayerView() {
     setActive(0);
     setError(null);
     setStreamStatus("loading-streams");
-    const id =
-      entry.type === "series" && file
-        ? `${entry.id}:${file.season}:${file.episode}`
-        : entry.id;
+    const id = protocolId(entry, file);
     fetch(
       "/addon/" +
         encodeURIComponent(token) +
@@ -318,6 +338,35 @@ export function PlayerView() {
       alive = false;
       controller.abort();
     };
+  }, [entry?.id, file?.id, reload]);
+
+  // Sidecar subtitles for the same title/episode; failures just mean none.
+  useEffect(() => {
+    setSubtitles([]);
+    if (!entry) return;
+    const controller = new AbortController();
+    fetch(
+      "/addon/" +
+        encodeURIComponent(token) +
+        "/subtitles/" +
+        entry.type +
+        "/" +
+        encodeURIComponent(protocolId(entry, file)) +
+        ".json",
+      {
+        signal: AbortSignal.any([
+          controller.signal,
+          AbortSignal.timeout(60_000),
+        ]),
+      },
+    )
+      .then((response) => (response.ok ? response.json() : { subtitles: [] }))
+      .then((data) => {
+        if (!controller.signal.aborted)
+          setSubtitles(sidecarTracks(data.subtitles));
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
   }, [entry?.id, file?.id, reload]);
 
   // Attach the active stream, resume, and keep the server's position current.
@@ -524,7 +573,7 @@ export function PlayerView() {
     return () => {
       for (const name of events) video.removeEventListener(name, sync);
     };
-  }, [streams, active, scrubbing]);
+  }, [streams, active, scrubbing, subtitles]);
 
   // Keyboard transport.
   useEffect(() => {
@@ -719,7 +768,19 @@ export function PlayerView() {
         onEnded=${() => {
           if (autoNext && next) goEpisode(entry.id, next.id);
         }}
-      ></video>
+      >
+        ${subtitles.map(
+          (track) => html`
+            <track
+              key=${track.id}
+              kind="subtitles"
+              src=${track.src}
+              label=${track.label}
+              srclang=${track.srclang}
+            />
+          `,
+        )}
+      </video>
 
       ${
         waiting && !error

@@ -5,6 +5,7 @@ import { manifest } from "./manifest.ts";
 import { getMetadata } from "./metadata.ts";
 import type { AddonInterface } from "./server-types.ts";
 import { getStreams } from "./streams.ts";
+import { SubtitleService } from "./subtitle-service.ts";
 import type { TorrServerClient } from "./torrserver-client.ts";
 
 export function createAddon(
@@ -13,6 +14,7 @@ export function createAddon(
   publicTorrServerUrl: string,
   publicAddonUrl: string,
   accessToken: string,
+  subtitles: SubtitleService = new SubtitleService(library, torrServer),
 ): AddonInterface {
   const builder = new sdk.addonBuilder(manifest);
   builder.defineCatalogHandler(({ type, extra }) =>
@@ -31,6 +33,9 @@ export function createAddon(
       type,
       id,
     ),
+  );
+  builder.defineSubtitlesHandler(({ type, id }) =>
+    subtitles.list(type, id, publicAddonUrl, accessToken),
   );
   return builder.getInterface() as AddonInterface;
 }

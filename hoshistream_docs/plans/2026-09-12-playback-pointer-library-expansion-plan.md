@@ -2,9 +2,10 @@
 
 Date: 2026-09-12
 Status: Phases 1–2 implemented (see
-[changelog](../changelog/playback-telemetry-and-line-fit.md)); Phase 3 waits
-on the Phase 1 exit criterion. Implement one phase at a time, in order, and
-stop for review between phases.
+[changelog](../changelog/playback-telemetry-and-line-fit.md)); Phase 6
+implemented (see [changelog](../changelog/subtitle-sidecars.md)); Phase 3
+waits on the Phase 1 exit criterion. Implement one phase at a time, in order,
+and stop for review between phases.
 
 ## Goal and scope
 

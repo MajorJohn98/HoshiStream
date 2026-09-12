@@ -14,6 +14,7 @@ import { MdnsResponder } from "./mdns.ts";
 import { PointerClient } from "./pointer.ts";
 import { DeviceNames } from "./device-names.ts";
 import { Tags } from "./tags.ts";
+import { SubtitleService } from "./subtitle-service.ts";
 import { runSpeedTest, stopSpeedTest } from "./speedtest.ts";
 import { VolumeRegistry } from "./volumes.ts";
 import { DiskCleanup } from "./disk-copy.ts";
@@ -84,12 +85,14 @@ export async function startHoshiStream(settings = config) {
       }),
     );
   }
+  const subtitles = new SubtitleService(library, torrServer);
   const addon = createAddon(
     library,
     torrServer,
     settings.PUBLIC_TORRSERVER_URL,
     settings.PUBLIC_ADDON_URL,
     settings.ACCESS_TOKEN,
+    subtitles,
   );
   const playback = new Playback(library, torrServer, settings.PLAYER);
   const telemetry = new PlaybackTelemetry(torrServer);
@@ -117,6 +120,7 @@ export async function startHoshiStream(settings = config) {
       },
       lanRedirect: settings.LAN_REDIRECT,
       playback,
+      subtitles,
       telemetry,
       transcode,
       resourceDirs: {

@@ -15,6 +15,7 @@ import { bearerToken, validToken } from "./security.ts";
 import type { AddonInterface } from "./server-types.ts";
 import { setConfiguredSpeed } from "./speedtest.ts";
 import type { PublicUrls } from "./streams.ts";
+import { SubtitleService } from "./subtitle-service.ts";
 import type { TorrServerClient } from "./torrserver-client.ts";
 import type { TranscodeManager } from "./transcode.ts";
 import type { VolumeRegistry } from "./volumes.ts";
@@ -45,6 +46,7 @@ import {
   handleDiskMedia,
   handleHls,
   handleLocalMedia,
+  handleSubtitleFile,
 } from "./routes/media.ts";
 import { handleProtocol, handlePublic } from "./routes/protocol.ts";
 import {
@@ -79,6 +81,7 @@ export interface HandlerOptions {
   publicUrls: PublicUrls;
   lanRedirect?: "auto" | "off";
   playback?: Playback;
+  subtitles?: SubtitleService;
   telemetry?: PlaybackTelemetry;
   transcode?: TranscodeManager;
   resourceDirs?: ResourceDirs;
@@ -103,6 +106,7 @@ const OPEN_ROUTES: RouteHandler[] = [
   handleHls,
   handleLocalMedia,
   handleDiskMedia,
+  handleSubtitleFile,
 ];
 
 // Everything under /api/* requires a bearer token (checked once in the
@@ -153,6 +157,9 @@ export function createHandler(options: HandlerOptions) {
     lanRedirect: options.lanRedirect ?? "auto",
     playback:
       options.playback ?? new Playback(options.library, options.torrServer),
+    subtitles:
+      options.subtitles ??
+      new SubtitleService(options.library, options.torrServer),
   };
   return async (request: IncomingMessage, response: ServerResponse) => {
     try {

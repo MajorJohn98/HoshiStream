@@ -4,7 +4,7 @@
 // and nothing leaves the Mac.
 
 export type ClientResource =
-  "manifest" | "catalog" | "meta" | "stream" | "playback";
+  "manifest" | "catalog" | "meta" | "stream" | "subtitles" | "playback";
 
 export interface ClientActivity {
   ip: string;

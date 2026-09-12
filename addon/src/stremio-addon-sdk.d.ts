@@ -10,6 +10,7 @@ declare module "stremio-addon-sdk" {
     defineCatalogHandler(handler: Handler): this;
     defineMetaHandler(handler: Handler): this;
     defineStreamHandler(handler: Handler): this;
+    defineSubtitlesHandler(handler: Handler): this;
     getInterface(): unknown;
   }
 

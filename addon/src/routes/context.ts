@@ -14,6 +14,7 @@ import type { ResourceDirs } from "../resources.ts";
 import type { ImportService } from "../imports/service.ts";
 import type { AddonInterface } from "../server-types.ts";
 import type { PublicUrls } from "../streams.ts";
+import type { SubtitleService } from "../subtitle-service.ts";
 import type { Tags } from "../tags.ts";
 import type { TorrServerClient } from "../torrserver-client.ts";
 import type { TranscodeManager } from "../transcode.ts";
@@ -32,6 +33,7 @@ export interface HandlerContext {
   publicUrls: PublicUrls;
   lanRedirect: "auto" | "off";
   playback: Playback;
+  subtitles: SubtitleService;
   telemetry?: PlaybackTelemetry;
   transcode?: TranscodeManager;
   resourceDirs?: ResourceDirs;

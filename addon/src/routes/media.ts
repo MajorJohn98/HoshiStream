@@ -5,6 +5,7 @@ import { serveMediaSource } from "../media-source.ts";
 import { directPlayForFile } from "../media-facts.ts";
 import type { DirectPlay } from "../direct-play.ts";
 import { validToken } from "../security.ts";
+import type { SubtitlePayload } from "../subtitle-service.ts";
 import { repairTier, TranscodeBusyError } from "../transcode.ts";
 import {
   isReadMethod,
@@ -161,5 +162,47 @@ export const handleDiskMedia: RouteHandler = async (
     torrServer,
     library,
   );
+  return true;
+};
+
+// Subtitle sidecars listed by the Stremio `subtitles` resource. Whole-file
+// replies (they are small), converted to WebVTT when the source is SRT, and
+// cacheable for an hour to match the service's own memory cache.
+export const handleSubtitleFile: RouteHandler = async (
+  { library, accessToken, subtitles },
+  { request, response, url, method },
+) => {
+  const subtitleMatch =
+    /^\/subtitles\/([^/]+)\/([^/]+)\/([0-9a-f]{40}:\d+|l:[A-Za-z0-9_-]+)\.(vtt|ass|ssa)$/.exec(
+      url.pathname,
+    );
+  if (
+    !subtitleMatch ||
+    !isReadMethod(method) ||
+    !validToken(decodeURIComponent(subtitleMatch[1]), accessToken)
+  )
+    return false;
+  const entryId = decodeURIComponent(subtitleMatch[2]);
+  if (!(await library.get(entryId))) return false;
+  let payload: SubtitlePayload | undefined;
+  try {
+    payload = await subtitles.fetch(
+      entryId,
+      subtitleMatch[3],
+      subtitleMatch[4] as "vtt" | "ass" | "ssa",
+    );
+  } catch {
+    return reply(response, 502, { error: "Subtitle source unavailable" });
+  }
+  if (!payload) return reply(response, 404, { error: "Unknown subtitle" });
+  observeClient(request, "playback");
+  response.writeHead(200, {
+    "content-type": payload.contentType,
+    "content-length": payload.body.length,
+    "cache-control": "max-age=3600",
+    "access-control-allow-origin": "*",
+    "x-content-type-options": "nosniff",
+  });
+  response.end(method === "HEAD" ? undefined : payload.body);
   return true;
 };

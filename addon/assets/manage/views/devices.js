@@ -24,6 +24,7 @@ const RESOURCE_LABELS = {
   catalog: "Browsed catalog",
   meta: "Viewed details",
   stream: "Listed streams",
+  subtitles: "Listed subtitles",
   playback: "Played media",
 };
 

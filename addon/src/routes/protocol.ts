@@ -23,7 +23,7 @@ const MANAGE_ASSET_TYPES: Record<string, string> = {
 };
 
 export function noStoreProtocolResource(resource: string): boolean {
-  return ["catalog", "meta", "stream"].includes(resource);
+  return ["catalog", "meta", "stream", "subtitles"].includes(resource);
 }
 
 export function manageAssetPath(pathname: string): string | undefined {
@@ -132,6 +132,7 @@ export const handleProtocol: RouteHandler = async (
     lanRedirect,
     transcode,
     tags,
+    subtitles,
   },
   { request, response, url, method },
 ) => {
@@ -146,12 +147,27 @@ export const handleProtocol: RouteHandler = async (
     );
   }
   const protocolMatch =
-    /^\/(catalog|meta|stream)\/(movie|series)\/([^/]+)(?:\/([^/]+))?\.json$/.exec(
+    /^\/(catalog|meta|stream|subtitles)\/(movie|series)\/([^/]+)(?:\/([^/]+))?\.json$/.exec(
       addonPath,
     );
   if (!protocolMatch || method !== "GET") return false;
   const [, resource, type, rawId, rawExtra] = protocolMatch;
-  observeClient(request, resource as "catalog" | "meta" | "stream");
+  observeClient(
+    request,
+    resource as "catalog" | "meta" | "stream" | "subtitles",
+  );
+  // Subtitle URLs point back at this add-on, so like streams they need the
+  // origin the client actually reached us on rather than the configured one.
+  if (resource === "subtitles") {
+    const resolved = resolvePublicUrls(request.headers.host, publicUrls);
+    const result = await subtitles.list(
+      type,
+      decodeURIComponent(rawId),
+      resolved.addonUrl,
+      accessToken,
+    );
+    return noStoreReply(response, 200, result);
+  }
   if (resource === "stream") {
     const clientIp = request.headers["cf-connecting-ip"];
     const ownIp =

@@ -97,6 +97,7 @@
 
 ## Changelog
 
+- [changelog/subtitle-sidecars.md](changelog/subtitle-sidecars.md) — Stremio `subtitles` resource serving `.srt/.vtt/.ass/.ssa` sidecars already in the torrent or on disk, SRT→VTT conversion, and browser `<track>` elements (Phase 6 of the expansion plan).
 - [changelog/playback-telemetry-and-line-fit.md](changelog/playback-telemetry-and-line-fit.md) — TorrServer `/cache` runway sampling with an Activity runway line, and bitrate-aware stream ordering with a single line-fit rule (Phases 1–2 of the expansion plan).
 - [changelog/pointer-freshness-and-slow-link-tuning.md](changelog/pointer-freshness-and-slow-link-tuning.md) — Immutable pointer Blob versions (fresh reads after every push) and TorrServer `UploadRateLimit`/`ConnectionsLimit` defaults for slow asymmetric lines.
 - [changelog/closed-beta-identity-and-pointer.md](changelog/closed-beta-identity-and-pointer.md) — Phase 1-7 repository implementation: identity, pointer, distribution, quick starts, recovery, privacy and gated cohort operations.

@@ -134,6 +134,16 @@ episodes, or a mix:
 
 Supported extensions: `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.m4v`.
 
+### Subtitle sidecars
+
+Subtitle files already sitting next to a video — in the torrent or in a linked
+folder — are offered automatically to Nuvio and the browser player; there is
+no subtitle search or download. `.srt`, `.vtt`, `.ass` and `.ssa` files match
+a video by name: `Movie.srt`, `Movie.en.srt`, `Movie.eng.forced.srt`, or a
+`Subs/` copy of the same name. For a movie torrent with a single video file,
+every sidecar in the torrent is offered (release groups often name them by
+language alone). SRT is converted to WebVTT on the fly; nothing is stored.
+
 ## Management API (curl)
 
 All `/api/*` requests need `Authorization: Bearer <ACCESS_TOKEN>`. Full reference: [management-api-reference](../api/management-api-reference.md).

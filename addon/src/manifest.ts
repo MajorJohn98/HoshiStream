@@ -8,7 +8,7 @@ export const manifest = {
   version: releaseInfo.version,
   name: "HoshiStream",
   description: "Private local library for legally owned or authorized media",
-  resources: ["catalog", "meta", "stream"],
+  resources: ["catalog", "meta", "stream", "subtitles"],
   types: ["movie", "series"],
   idPrefixes: ["hoshi:"],
   behaviorHints: { p2p: true },

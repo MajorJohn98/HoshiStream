@@ -16,7 +16,7 @@ new calls against the pinned source or running Swagger at
 | `POST /torrents` `{action:"list"}` | List registered torrents |
 | `POST /torrents` `{action:"rem", hash}` | Remove a torrent |
 | `POST /torrent/upload` (multipart) | Register one `.torrent` file; returns one `state.TorrentStatus` object, not an array (confirmed against the running pinned Swagger) |
-| `GET /play/{hash}/{id}` | Direct playback URL handed to Nuvio (rewritten to the public URL); also read by the disk-copy archiver with standard `Range` headers to copy authorized files onto registered storage volumes |
+| `GET /play/{hash}/{id}` | Direct playback URL handed to Nuvio (rewritten to the public URL); also read by the disk-copy archiver with standard `Range` headers to copy authorized files onto registered storage volumes, and read whole-file (≤ 10 MiB, 20 s timeout) by `subtitle-service.ts` for subtitle sidecars |
 | `POST /cache` `{action:"get", hash}` | Cache window for one torrent (`storage/state.CacheState`): `Capacity`, `Filled`, `PiecesLength`, `Pieces{index → {Completed,…}}`, `Readers[{Start,End,Reader}]` (piece indexes) and the embedded `Torrent` status. Polled every 2 s per actively streamed entry by `playback-telemetry.ts`; never retried. Answers `{}` before the cache exists, 404 for an unknown hash |
 
 ## Client behavior

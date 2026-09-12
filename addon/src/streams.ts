@@ -98,7 +98,7 @@ export function rewritePublicUrl(
   return internal.toString();
 }
 
-function requestedFile(
+export function requestedFile(
   files: SelectedFile[],
   type: string,
   id: string,
