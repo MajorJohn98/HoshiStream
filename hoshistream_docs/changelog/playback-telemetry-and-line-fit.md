@@ -38,12 +38,18 @@ the viewer plainly which stream their line can carry.
   below), `No reader attached`, or `Runway unknown` (no bitrate yet).
 - Wiring: `src/index.ts` starts/stops the sampler with the archiver;
   `getStreams` registers the served file as a telemetry target.
-- **Reader keep-alive (2026-09-12 fix).** Playback goes straight to
-  TorrServer, so the `stream` request was the add-on's only signal and the
-  entry fell back to `Idle` — and the runway row vanished — five minutes into
-  any film. Each sample that sees an open TorrServer reader now refreshes the
-  entry's streaming activity, so the Activity page tracks the whole playback
-  and ages out five minutes after the player disconnects.
+- **Streams TorrServer serves on its own (2026-09-12 fix).** Playback goes
+  straight to TorrServer, so the `stream` request was the add-on's only
+  signal: a film fell back to `Idle` (and lost its runway row) five minutes
+  in, and a client that reused a cached stream URL or resumed after a restart
+  was never seen at all. The sampler now also lists TorrServer's working
+  torrents each tick; any torrent owned by a library entry that has an open
+  cache reader becomes a target (file located from the reader's piece offset,
+  bitrate from the cached media facts), and every sample that still sees a
+  reader refreshes the entry's streaming activity. The hash → entry index is
+  re-read from the library at most every 15 s; TorrServer is asked for cache
+  state only for working torrents without a target. Streaming ages out five
+  minutes after the player disconnects.
 - Tests: `tests/playback-telemetry.test.ts`, `tests/runway-ui.test.ts`, new
   `cacheState` cases in `tests/torrserver-client.test.ts`, the route in
   `tests/routes.dispatch.test.ts`.

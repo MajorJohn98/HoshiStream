@@ -4,7 +4,14 @@
 // the swarm is keeping up with the file's bitrate. Observation only — nothing
 // here changes what the player receives. Everything stays in memory.
 import { markStreamActivity, recentEntryActivity } from "./activity.ts";
-import type { CacheState, TorrServerClient } from "./torrserver-client.ts";
+import { directPlayForFile } from "./media-facts.ts";
+import { rawFileId } from "./media-file-selection.ts";
+import type {
+  CacheState,
+  TorrentStatus,
+  TorrServerClient,
+} from "./torrserver-client.ts";
+import type { LibraryEntry } from "./types.ts";
 
 export const SAMPLE_INTERVAL_MS = 2_000;
 export const RING_SIZE = 60;
@@ -13,6 +20,8 @@ export const WARN_INTERVAL_MS = 30_000;
 // The swarm must beat the bitrate by this factor before we call it sustained;
 // anything closer leaves no room for peer churn.
 export const SUSTAIN_MARGIN = 1.2;
+// How long the hash → entry index is reused before re-reading the library.
+export const OWNER_INDEX_TTL_MS = 15_000;
 
 export interface StreamTarget {
   entryId: string;
@@ -107,7 +116,26 @@ export function resetStreamTargets(): void {
   targets.clear();
 }
 
+// The torrent file a reader is inside, from the byte offset of its current
+// piece. TorrServer lists file_stats in torrent order, so offsets accumulate.
+export function fileAtPiece(
+  files: TorrentStatus["file_stats"],
+  piece: number,
+  pieceLength: number,
+): TorrentStatus["file_stats"][number] | undefined {
+  const byte = piece * pieceLength;
+  let offset = 0;
+  for (const file of files) {
+    if (byte >= offset && byte < offset + file.length) return file;
+    offset += file.length;
+  }
+  return files.at(-1);
+}
+
 export interface PlaybackTelemetryOptions {
+  // Library lookup for discovering streams the add-on never handed out: a
+  // client that cached the stream URL plays straight from TorrServer.
+  entries?: () => Promise<LibraryEntry[]>;
   intervalMs?: number;
   ringSize?: number;
   lowRunwaySeconds?: number;
@@ -118,6 +146,7 @@ export interface PlaybackTelemetryOptions {
 
 export class PlaybackTelemetry {
   readonly #torrServer: TorrServerClient;
+  readonly #entries: (() => Promise<LibraryEntry[]>) | undefined;
   readonly #intervalMs: number;
   readonly #ringSize: number;
   readonly #lowRunwaySeconds: number;
@@ -126,6 +155,7 @@ export class PlaybackTelemetry {
   readonly #log: (line: string) => void;
   readonly #samples = new Map<string, PlaybackSample[]>();
   readonly #lastWarned = new Map<string, number>();
+  #owners: { at: number; index: Map<string, LibraryEntry> } | undefined;
   #timer: NodeJS.Timeout | undefined;
   #sampling = false;
 
@@ -134,6 +164,7 @@ export class PlaybackTelemetry {
     options: PlaybackTelemetryOptions = {},
   ) {
     this.#torrServer = torrServer;
+    this.#entries = options.entries;
     this.#intervalMs = options.intervalMs ?? SAMPLE_INTERVAL_MS;
     this.#ringSize = options.ringSize ?? RING_SIZE;
     this.#lowRunwaySeconds = options.lowRunwaySeconds ?? LOW_RUNWAY_SECONDS;
@@ -158,6 +189,7 @@ export class PlaybackTelemetry {
     if (this.#sampling) return;
     this.#sampling = true;
     try {
+      await this.#discover(now);
       const active = activeStreamTargets(now);
       const activeIds = new Set(active.map((target) => target.entryId));
       for (const entryId of this.#samples.keys())
@@ -178,6 +210,90 @@ export class PlaybackTelemetry {
       const samples = this.#samples.get(target.entryId) ?? [];
       return { ...target, samples, latest: samples.at(-1) ?? null };
     });
+  }
+
+  // Working torrents owned by a library entry that have an open reader but
+  // no target yet: the player went to TorrServer without asking us for the
+  // stream (cached URL, resumed playback, restarted add-on).
+  async #discover(now: number): Promise<void> {
+    if (!this.#entries) return;
+    let torrents: TorrentStatus[];
+    try {
+      torrents = await this.#torrServer.list();
+    } catch {
+      return;
+    }
+    const known = new Set(
+      activeStreamTargets(now).map((target) => target.hash.toLowerCase()),
+    );
+    // stat 3 = TorrentWorking (MatriX state.go).
+    const candidates = torrents.filter(
+      (torrent) => torrent.stat === 3 && !known.has(torrent.hash.toLowerCase()),
+    );
+    if (!candidates.length) return;
+    const owners = await this.#ownerIndex(now);
+    if (!owners) return;
+    await Promise.all(
+      candidates.map(async (torrent) => {
+        const entry = owners.get(torrent.hash.toLowerCase());
+        if (!entry) return;
+        let cache: CacheState | undefined;
+        try {
+          cache = await this.#torrServer.cacheState(torrent.hash);
+        } catch {
+          return;
+        }
+        const reader = cache?.readers[0];
+        if (!cache || !reader) return;
+        const torrentFile = fileAtPiece(
+          torrent.file_stats,
+          reader.readerPiece,
+          cache.pieceLength,
+        );
+        // Extra-source files carry composite ids; TorrServer's are raw.
+        const selected = entry.inspectionCache?.selectedFiles.find(
+          (file) =>
+            torrentFile !== undefined &&
+            rawFileId(file.id) === torrentFile.id &&
+            (file.hash ?? entry.inspectionCache?.hash)?.toLowerCase() ===
+              torrent.hash.toLowerCase(),
+        );
+        markStreamActivity(now, entry.id);
+        noteStreamTarget({
+          entryId: entry.id,
+          hash: torrent.hash,
+          fileId: selected?.id ?? torrentFile?.id ?? 0,
+          title: entry.name,
+          bitrateMbps: selected
+            ? directPlayForFile(entry, selected, torrent.hash)?.bitrateMbps
+            : undefined,
+        });
+      }),
+    );
+  }
+
+  async #ownerIndex(
+    now: number,
+  ): Promise<Map<string, LibraryEntry> | undefined> {
+    if (this.#owners && now - this.#owners.at < OWNER_INDEX_TTL_MS)
+      return this.#owners.index;
+    if (!this.#entries) return undefined;
+    let entries: LibraryEntry[];
+    try {
+      entries = await this.#entries();
+    } catch {
+      return undefined;
+    }
+    const index = new Map<string, LibraryEntry>();
+    for (const entry of entries) {
+      const cache = entry.inspectionCache;
+      if (!cache) continue;
+      index.set(cache.hash.toLowerCase(), entry);
+      for (const file of cache.selectedFiles)
+        if (file.hash) index.set(file.hash.toLowerCase(), entry);
+    }
+    this.#owners = { at: now, index };
+    return index;
   }
 
   async #sampleTarget(target: StreamTarget, now: number): Promise<void> {

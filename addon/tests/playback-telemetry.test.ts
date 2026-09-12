@@ -3,12 +3,18 @@ import { markStreamActivity, recentEntryActivity } from "../src/activity.ts";
 import {
   activeStreamTargets,
   bytesAhead,
+  fileAtPiece,
   noteStreamTarget,
   PlaybackTelemetry,
   resetStreamTargets,
   sampleFrom,
 } from "../src/playback-telemetry.ts";
-import type { CacheState, TorrServerClient } from "../src/torrserver-client.ts";
+import type {
+  CacheState,
+  TorrentStatus,
+  TorrServerClient,
+} from "../src/torrserver-client.ts";
+import { libraryEntrySchema } from "../src/types.ts";
 
 const PIECE = 4 * 1024 * 1024;
 
@@ -134,6 +140,24 @@ describe("stream targets", () => {
     expect(activeStreamTargets(now).map((t) => t.entryId)).toEqual([
       "hoshi:fresh",
     ]);
+  });
+});
+
+describe("fileAtPiece", () => {
+  const files = [
+    { id: 0, path: "a", length: 10 * PIECE },
+    { id: 1, path: "b", length: PIECE / 2 },
+    { id: 2, path: "c", length: 5 * PIECE },
+  ];
+  it("finds the file whose byte range holds the piece", () => {
+    expect(fileAtPiece(files, 0, PIECE)?.id).toBe(0);
+    expect(fileAtPiece(files, 9, PIECE)?.id).toBe(0);
+    expect(fileAtPiece(files, 10, PIECE)?.id).toBe(1);
+    expect(fileAtPiece(files, 11, PIECE)?.id).toBe(2);
+  });
+  it("falls back to the last file past the end and to nothing when empty", () => {
+    expect(fileAtPiece(files, 99, PIECE)?.id).toBe(2);
+    expect(fileAtPiece([], 0, PIECE)).toBeUndefined();
   });
 });
 
@@ -299,6 +323,104 @@ describe("PlaybackTelemetry", () => {
     expect(recentEntryActivity("hoshi:d", clock)).toBeUndefined();
     await telemetry.sample(clock);
     expect(telemetry.report(clock)).toEqual([]);
+  });
+
+  it("discovers a stream the player started straight from TorrServer", async () => {
+    const hash = "e".repeat(40);
+    const entry = libraryEntrySchema.parse({
+      id: "hoshi:e",
+      type: "series",
+      name: "E",
+      sourceHash: hash,
+      magnetUri: `magnet:?xt=urn:btih:${hash}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      inspectionCache: {
+        hash,
+        inspectedAt: new Date().toISOString(),
+        selectedFiles: [
+          { id: 0, path: "S01E01.mkv", length: 10 * PIECE, episode: 1 },
+          { id: 1, path: "S01E02.mkv", length: 10 * PIECE, episode: 2 },
+        ],
+      },
+    });
+    const torrent: TorrentStatus = {
+      title: "E",
+      hash,
+      stat: 3,
+      stat_string: "Torrent working",
+      file_stats: [
+        { id: 0, path: "S01E01.mkv", length: 10 * PIECE },
+        { id: 1, path: "S01E02.mkv", length: 10 * PIECE },
+      ],
+    };
+    const reader = { startPiece: 10, endPiece: 19, readerPiece: 13 };
+    const list = vi
+      .fn<TorrServerClient["list"]>()
+      .mockResolvedValue([
+        torrent,
+        { ...torrent, hash: "f".repeat(40), title: "unowned" },
+        { ...torrent, hash: "9".repeat(40), stat: 2 },
+      ]);
+    const cacheState = vi
+      .fn<TorrServerClient["cacheState"]>()
+      .mockResolvedValue(cache([13, 14], [reader], { hash }));
+    const entries = vi.fn().mockResolvedValue([entry]);
+    let clock = 40_000_000;
+    const telemetry = new PlaybackTelemetry(
+      { list, cacheState } as unknown as TorrServerClient,
+      { now: () => clock, entries },
+    );
+    await telemetry.sample(clock);
+    expect(recentEntryActivity("hoshi:e", clock)).toBe("streaming");
+    const [target] = activeStreamTargets(clock);
+    expect(target).toMatchObject({ entryId: "hoshi:e", hash, fileId: 1 });
+    const [stream] = telemetry.report(clock);
+    expect(stream.latest?.aheadBytes).toBe(2 * PIECE);
+    // Only the owned, working torrent was probed for readers.
+    expect(cacheState.mock.calls.map(([h]) => h)).toEqual([hash, hash]);
+    // A known target is not rediscovered on the next tick.
+    clock += 2000;
+    await telemetry.sample(clock);
+    expect(cacheState).toHaveBeenCalledTimes(3);
+    expect(entries).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores working torrents without a reader", async () => {
+    const hash = "e".repeat(40);
+    const entry = libraryEntrySchema.parse({
+      id: "hoshi:e",
+      type: "movie",
+      name: "E",
+      sourceHash: hash,
+      magnetUri: `magnet:?xt=urn:btih:${hash}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      inspectionCache: {
+        hash,
+        inspectedAt: new Date().toISOString(),
+        selectedFiles: [{ id: 1, path: "E.mkv", length: PIECE }],
+      },
+    });
+    const list = vi.fn<TorrServerClient["list"]>().mockResolvedValue([
+      {
+        title: "E",
+        hash,
+        stat: 3,
+        stat_string: "Torrent working",
+        file_stats: [{ id: 1, path: "E.mkv", length: PIECE }],
+      },
+    ]);
+    const cacheState = vi
+      .fn<TorrServerClient["cacheState"]>()
+      .mockResolvedValue(cache([0], [], { hash }));
+    const telemetry = new PlaybackTelemetry(
+      { list, cacheState } as unknown as TorrServerClient,
+      { entries: async () => [entry] },
+    );
+    await telemetry.sample(50_000_000);
+    expect(activeStreamTargets(50_000_000)).toEqual([]);
+    expect(recentEntryActivity("hoshi:e", 50_000_000)).toBeUndefined();
   });
 
   it("start() schedules sampling and stop() ends it", async () => {

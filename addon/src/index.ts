@@ -96,7 +96,9 @@ export async function startHoshiStream(settings = config) {
     subtitles,
   );
   const playback = new Playback(library, torrServer, settings.PLAYER);
-  const telemetry = new PlaybackTelemetry(torrServer);
+  const telemetry = new PlaybackTelemetry(torrServer, {
+    entries: () => library.list(),
+  });
   const analysis = new LibraryAnalysis(library, defaultAnalyzer(sourceChecks));
   const pointer = new PointerClient({
     pointerUrl: settings.POINTER_URL,
