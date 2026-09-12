@@ -14,6 +14,7 @@ import type {
   TorrentStatus,
   TorrServerClient,
 } from "../src/torrserver-client.ts";
+import { entrySourceDefinitionRevision } from "../src/imports/source-identity.ts";
 import { libraryEntrySchema } from "../src/types.ts";
 
 const PIECE = 4 * 1024 * 1024;
@@ -384,6 +385,96 @@ describe("PlaybackTelemetry", () => {
     await telemetry.sample(clock);
     expect(cacheState).toHaveBeenCalledTimes(3);
     expect(entries).toHaveBeenCalledTimes(1);
+  });
+
+  it("credits a shared torrent to the owner already streaming, else the analyzed one", async () => {
+    const hash = "d".repeat(40);
+    const build = (id: string, lastStreamedAt: string) =>
+      libraryEntrySchema.parse({
+        id,
+        type: "series",
+        name: id,
+        sourceHash: hash,
+        magnetUri: `magnet:?xt=urn:btih:${hash}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastStreamedAt,
+        inspectionCache: {
+          hash,
+          inspectedAt: new Date().toISOString(),
+          selectedFiles: [
+            { id: 0, path: "S01E01.mkv", length: 10 * PIECE, episode: 1 },
+            { id: 1, path: "S01E02.mkv", length: 10 * PIECE, episode: 2 },
+          ],
+        },
+      });
+    const older = build("hoshi:older", "2026-01-01T00:00:00.000Z");
+    const newer = build("hoshi:newer", "2026-02-01T00:00:00.000Z");
+    const analyzed = libraryEntrySchema.parse({
+      ...older,
+      mediaFacts: [
+        {
+          revision: entrySourceDefinitionRevision(older),
+          jobId: "11111111-1111-4111-8111-111111111111",
+          fileId: 1,
+          sourceHash: hash,
+          filePath: "S01E02.mkv",
+          fileLength: 10 * PIECE,
+          technical: { sizeBytes: 10 * PIECE, bitrateMbps: 4.2 },
+          observedAt: new Date().toISOString(),
+        },
+      ],
+    });
+    const torrent: TorrentStatus = {
+      title: "shared",
+      hash,
+      stat: 3,
+      stat_string: "Torrent working",
+      file_stats: [
+        { id: 0, path: "S01E01.mkv", length: 10 * PIECE },
+        { id: 1, path: "S01E02.mkv", length: 10 * PIECE },
+      ],
+    };
+    const reader = { startPiece: 10, endPiece: 19, readerPiece: 13 };
+    const torrServer = {
+      list: vi.fn<TorrServerClient["list"]>().mockResolvedValue([torrent]),
+      cacheState: vi
+        .fn<TorrServerClient["cacheState"]>()
+        .mockResolvedValue(cache([13, 14], [reader], { hash })),
+    } as unknown as TorrServerClient;
+    let clock = 50_000_000;
+
+    // The most recently streamed owner wins when nothing else distinguishes.
+    await new PlaybackTelemetry(torrServer, {
+      now: () => clock,
+      entries: async () => [older, newer],
+    }).sample(clock);
+    expect(activeStreamTargets(clock).map((t) => t.entryId)).toEqual([
+      "hoshi:newer",
+    ]);
+
+    // A bitrate for the file being read beats recency.
+    resetStreamTargets();
+    clock += 10 * 60_000;
+    await new PlaybackTelemetry(torrServer, {
+      now: () => clock,
+      entries: async () => [analyzed, newer],
+    }).sample(clock);
+    expect(activeStreamTargets(clock)).toMatchObject([
+      { entryId: "hoshi:older", fileId: 1, bitrateMbps: 4.2 },
+    ]);
+
+    // An owner the add-on already saw streaming beats both.
+    resetStreamTargets();
+    clock += 10 * 60_000;
+    markStreamActivity(clock, "hoshi:newer");
+    await new PlaybackTelemetry(torrServer, {
+      now: () => clock,
+      entries: async () => [analyzed, newer],
+    }).sample(clock);
+    expect(activeStreamTargets(clock).map((t) => t.entryId)).toEqual([
+      "hoshi:newer",
+    ]);
   });
 
   it("logs a rate-limited warning when TorrServer's list cannot be read", async () => {

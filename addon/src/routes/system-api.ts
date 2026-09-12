@@ -116,31 +116,49 @@ export const handlePlaybackSessions: RouteHandler = async (
 ) => {
   if (url.pathname !== "/api/playback" || method !== "GET") return false;
   const torrents = await torrServer.list().catch(() => []);
-  // Torrent hash → library entry, via the primary and extra source hashes.
-  const owners = new Map<string, string>();
+  // Torrent hash → library entries, via the primary and extra source hashes.
+  // Several entries can share one torrent (a re-added series, say), so the
+  // session reports whichever owner is actually busy rather than the last
+  // one indexed.
+  const owners = new Map<string, string[]>();
   for (const entry of await library.list()) {
     const cache = entry.inspectionCache;
     if (!cache) continue;
-    owners.set(cache.hash.toLowerCase(), entry.id);
+    const hashes = new Set([cache.hash.toLowerCase()]);
     for (const file of cache.selectedFiles)
-      if (file.hash) owners.set(file.hash.toLowerCase(), entry.id);
+      if (file.hash) hashes.add(file.hash.toLowerCase());
+    for (const hash of hashes) {
+      const list = owners.get(hash) ?? [];
+      list.push(entry.id);
+      owners.set(hash, list);
+    }
   }
   const copying = archiver?.activeEntryId();
-  const classify = (hash: string): SessionActivity => {
-    const entryId = owners.get(hash.toLowerCase());
-    if (!entryId) return "idle";
-    if (copying === entryId) return "downloading";
-    return recentEntryActivity(entryId) ?? "idle";
+  const classify = (
+    hash: string,
+  ): { entryId?: string; activity: SessionActivity } => {
+    const candidates = owners.get(hash.toLowerCase()) ?? [];
+    let chosen: { entryId?: string; activity: SessionActivity } = {
+      entryId: candidates[0],
+      activity: "idle",
+    };
+    for (const entryId of candidates) {
+      if (copying === entryId) return { entryId, activity: "downloading" };
+      const activity = recentEntryActivity(entryId);
+      if (activity === "streaming") return { entryId, activity };
+      if (activity && chosen.activity === "idle")
+        chosen = { entryId, activity };
+    }
+    return chosen;
   };
   return reply(response, 200, {
     // stat 3 = TorrentWorking (MatriX state.go): actively serving.
     sessions: torrents.map((torrent) => ({
       hash: torrent.hash,
-      entryId: owners.get(torrent.hash.toLowerCase()),
+      ...classify(torrent.hash),
       title: torrent.title || torrent.name || "Unknown torrent",
       statString: torrent.stat_string,
       active: torrent.stat === 3,
-      activity: classify(torrent.hash),
       downloadSpeedBps: torrent.download_speed ?? 0,
       uploadSpeedBps: torrent.upload_speed ?? 0,
       activePeers: torrent.active_peers ?? 0,

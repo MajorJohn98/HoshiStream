@@ -6,6 +6,7 @@
 import { markStreamActivity, recentEntryActivity } from "./activity.ts";
 import { directPlayForFile } from "./media-facts.ts";
 import { rawFileId } from "./media-file-selection.ts";
+import type { SelectedFile } from "./media-file-selection.ts";
 import type {
   CacheState,
   TorrentStatus,
@@ -133,6 +134,52 @@ export function fileAtPiece(
   return files.at(-1);
 }
 
+// The library file the reader is inside. Extra-source files carry composite
+// ids; TorrServer's are raw.
+function selectedFileFor(
+  entry: LibraryEntry,
+  hash: string,
+  torrentFile: TorrentStatus["file_stats"][number] | undefined,
+): SelectedFile | undefined {
+  if (!torrentFile) return undefined;
+  return entry.inspectionCache?.selectedFiles.find(
+    (file) =>
+      rawFileId(file.id) === torrentFile.id &&
+      (file.hash ?? entry.inspectionCache?.hash)?.toLowerCase() ===
+        hash.toLowerCase(),
+  );
+}
+
+// Which of several entries sharing a torrent to credit with the stream: the
+// one the add-on already saw stream, else one with a bitrate for the file
+// being read, else the most recently streamed.
+export function pickOwner(
+  candidates: readonly LibraryEntry[],
+  hash: string,
+  torrentFile: TorrentStatus["file_stats"][number] | undefined,
+  now: number,
+): { entry: LibraryEntry; selected: SelectedFile | undefined } {
+  const resolved = candidates.map((entry) => ({
+    entry,
+    selected: selectedFileFor(entry, hash, torrentFile),
+  }));
+  const streaming = resolved.find(
+    ({ entry }) => recentEntryActivity(entry.id, now) === "streaming",
+  );
+  if (streaming) return streaming;
+  const analyzed = resolved.find(
+    ({ entry, selected }) =>
+      selected && directPlayForFile(entry, selected, hash) !== undefined,
+  );
+  if (analyzed) return analyzed;
+  return resolved.reduce((best, item) =>
+    Date.parse(item.entry.lastStreamedAt ?? "") >
+    Date.parse(best.entry.lastStreamedAt ?? "")
+      ? item
+      : best,
+  );
+}
+
 export interface PlaybackTelemetryOptions {
   // Library lookup for discovering streams the add-on never handed out: a
   // client that cached the stream URL plays straight from TorrServer.
@@ -156,7 +203,7 @@ export class PlaybackTelemetry {
   readonly #log: (line: string) => void;
   readonly #samples = new Map<string, PlaybackSample[]>();
   readonly #lastWarned = new Map<string, number>();
-  #owners: { at: number; index: Map<string, LibraryEntry> } | undefined;
+  #owners: { at: number; index: Map<string, LibraryEntry[]> } | undefined;
   #lastListFailure = 0;
   #timer: NodeJS.Timeout | undefined;
   #sampling = false;
@@ -249,8 +296,8 @@ export class PlaybackTelemetry {
     if (!owners) return;
     await Promise.all(
       candidates.map(async (torrent) => {
-        const entry = owners.get(torrent.hash.toLowerCase());
-        if (!entry) return;
+        const candidates = owners.get(torrent.hash.toLowerCase());
+        if (!candidates?.length) return;
         let cache: CacheState | undefined;
         try {
           cache = await this.#torrServer.cacheState(torrent.hash);
@@ -264,13 +311,11 @@ export class PlaybackTelemetry {
           reader.readerPiece,
           cache.pieceLength,
         );
-        // Extra-source files carry composite ids; TorrServer's are raw.
-        const selected = entry.inspectionCache?.selectedFiles.find(
-          (file) =>
-            torrentFile !== undefined &&
-            rawFileId(file.id) === torrentFile.id &&
-            (file.hash ?? entry.inspectionCache?.hash)?.toLowerCase() ===
-              torrent.hash.toLowerCase(),
+        const { entry, selected } = pickOwner(
+          candidates,
+          torrent.hash,
+          torrentFile,
+          now,
         );
         markStreamActivity(now, entry.id);
         noteStreamTarget({
@@ -288,7 +333,7 @@ export class PlaybackTelemetry {
 
   async #ownerIndex(
     now: number,
-  ): Promise<Map<string, LibraryEntry> | undefined> {
+  ): Promise<Map<string, LibraryEntry[]> | undefined> {
     if (this.#owners && now - this.#owners.at < OWNER_INDEX_TTL_MS)
       return this.#owners.index;
     if (!this.#entries) return undefined;
@@ -298,13 +343,20 @@ export class PlaybackTelemetry {
     } catch {
       return undefined;
     }
-    const index = new Map<string, LibraryEntry>();
+    // Several entries may share one torrent; keep every owner so discovery
+    // can credit the one that is actually being watched.
+    const index = new Map<string, LibraryEntry[]>();
     for (const entry of entries) {
       const cache = entry.inspectionCache;
       if (!cache) continue;
-      index.set(cache.hash.toLowerCase(), entry);
+      const hashes = new Set([cache.hash.toLowerCase()]);
       for (const file of cache.selectedFiles)
-        if (file.hash) index.set(file.hash.toLowerCase(), entry);
+        if (file.hash) hashes.add(file.hash.toLowerCase());
+      for (const hash of hashes) {
+        const list = index.get(hash) ?? [];
+        list.push(entry);
+        index.set(hash, list);
+      }
     }
     this.#owners = { at: now, index };
     return index;

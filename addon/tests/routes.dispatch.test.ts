@@ -3,11 +3,15 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { markStreamActivity } from "../src/activity.ts";
 import { Library } from "../src/library.ts";
 import { NativePicker } from "../src/native-picker.ts";
 import { createHandler } from "../src/routes.ts";
 import type { AddonInterface } from "../src/server-types.ts";
-import type { TorrServerClient } from "../src/torrserver-client.ts";
+import type {
+  TorrentStatus,
+  TorrServerClient,
+} from "../src/torrserver-client.ts";
 
 const TOKEN = "an-access-token-for-route-tests";
 
@@ -16,9 +20,10 @@ const addon: AddonInterface = {
   get: async (resource, type) => ({ resource, type, metas: [] }),
 };
 
+let torrents: TorrentStatus[] = [];
 const torrServer = {
   health: async () => "1.0",
-  list: async () => [],
+  list: async () => torrents,
   get: async () => {
     throw new Error("unknown");
   },
@@ -28,10 +33,12 @@ const torrServer = {
 let server: Server;
 let baseUrl: string;
 let library: Library;
+let libraryPath: string;
 
 beforeEach(async () => {
+  torrents = [];
   const directory = await mkdtemp(join(tmpdir(), "hoshistream-routes-"));
-  const libraryPath = join(directory, "library.json");
+  libraryPath = join(directory, "library.json");
   await writeFile(libraryPath, "[]\n");
   library = new Library(libraryPath);
   server = createServer(
@@ -169,6 +176,41 @@ describe("createHandler dispatch", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(await response.json()).toEqual({ streams: [] });
+  });
+
+  it("credits a torrent shared by several entries to the one streaming", async () => {
+    const hash = "c".repeat(40);
+    const stamp = new Date().toISOString();
+    const entry = (id: string) => ({
+      id,
+      type: "series",
+      name: id,
+      sourceHash: hash,
+      magnetUri: `magnet:?xt=urn:btih:${hash}`,
+      createdAt: stamp,
+      updatedAt: stamp,
+      inspectionCache: {
+        hash,
+        inspectedAt: stamp,
+        selectedFiles: [{ id: 0, path: "S01E01.mkv", length: 1000 }],
+      },
+    });
+    await writeFile(
+      libraryPath,
+      JSON.stringify([entry("hoshi:first"), entry("hoshi:second")]),
+    );
+    torrents = [
+      { title: "shared", hash, stat: 3, stat_string: "Torrent working" },
+    ];
+    const idle = await (await api("/api/playback")).json();
+    expect(idle.sessions).toMatchObject([
+      { hash, entryId: "hoshi:first", activity: "idle" },
+    ]);
+    markStreamActivity(Date.now(), "hoshi:second");
+    const streaming = await (await api("/api/playback")).json();
+    expect(streaming.sessions).toMatchObject([
+      { hash, entryId: "hoshi:second", activity: "streaming" },
+    ]);
   });
 
   it("reports status and falls through to 404 for unknown paths", async () => {

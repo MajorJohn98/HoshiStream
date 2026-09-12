@@ -54,6 +54,14 @@ the viewer plainly which stream their line can carry.
   speed yet; the list schema now accepts that instead of rejecting the whole
   list (which had hidden every stream from discovery), and a failed list is
   logged as `playback_discovery_failed` at most every five minutes.
+- **Several entries sharing one torrent (2026-09-13 fix).** A series added
+  twice (same infohash, two library entries) was credited to whichever entry
+  the hash → entry maps indexed last, so the Activity page showed `Idle` and
+  no runway row while the other entry was in fact streaming. `/api/playback`
+  and the sampler's owner index now keep every owner per hash: the session
+  reports the owner that is streaming (or downloading), and discovery
+  credits the owner already seen streaming, else one holding a bitrate for
+  the file being read, else the most recently streamed.
 - Tests: `tests/playback-telemetry.test.ts`, `tests/runway-ui.test.ts`, new
   `cacheState` cases in `tests/torrserver-client.test.ts`, the route in
   `tests/routes.dispatch.test.ts`.
