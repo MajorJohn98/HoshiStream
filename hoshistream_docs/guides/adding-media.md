@@ -192,4 +192,4 @@ Average bitrate and the recommended speed with 50% headroom are estimates.
 download connection, not swarm throughput, client Wi-Fi, or remote upload
 capacity. They do not determine a playable/unplayable verdict.
 
-If automatic file selection is wrong, set `preferredFileIndex` to an inspected playable file ID. For series, `fileOverrides` can include/exclude files and pin season/episode numbers.
+If automatic file selection is wrong, set `preferredFileIndex` to an inspected playable file ID. For series, `fileOverrides` can include/exclude files per source, and `episodeOverrides` pins season/episode numbers per file after everything else has been applied. In the management UI, open the entry's **Files** tab after inspecting: edit the season/episode boxes, use **Shift up / Shift down** to renumber a whole season at once, and save — rows that would land two files on one episode are highlighted and block saving, and gaps in a season are called out below the toolbar. **Restore automatic mapping** clears both kinds of override.

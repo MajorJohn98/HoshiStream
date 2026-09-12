@@ -42,7 +42,7 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `GET /api/clients` | Recent clients (in-memory): `{ip, device, hostname?, name?, firstSeen, lastSeen, requests, lastResource}` |
 | `POST /api/clients/name` | Assign a device name: `{ip, name}`; empty name clears it |
 | `GET /api/playback` | Live TorrServer sessions: speeds, peers/seeders, progress, plus `entryId` (when the hash maps to a library entry) and `activity` — `streaming` (a client requested this entry's stream in the last 5 min), `downloading` (the archiver is copying it), `inspecting` (metadata read in the last 2 min), or `idle`. A "working" torrent is not necessarily being watched |
-| `GET /api/pointer/status` | Local-only setup and registration evidence: enabled, configured, suggested endpoint/operator, state/message, usable, last push, expiry and private manifest URL |
+| `GET /api/pointer/status` | Local-only setup and registration evidence: enabled, configured, suggested endpoint/operator, state/message, usable, last push, expiry and private manifest URL. Includes `drift` when the automatic start-up / LAN-change check has run this session: `{outcome, trigger, checkedAt, remoteBaseUrl?, localBaseUrl?, state, message}` with `outcome` one of `match`, `remote-mismatch`, `expired`, `remote-without-local-push`, `unreachable`. Memory only; superseded by the next manual push, check or removal |
 | `POST /api/pointer/settings` | Save `{enabled,pointerUrl}` privately; no service contact, credential input or restart |
 | `GET /api/pointer/remote` | Explicit manual service check; reachability, registration evidence, expiry, and actionable state/message |
 | `POST /api/pointer/push` | Push the current LAN base URL + manifest to the pointer server |
@@ -204,6 +204,15 @@ Exactly one source is required: `magnetUri` (must start `magnet:?`), `torrentFil
 | `preferredFileIndex` | int ≥ 0 | force a TorrServer file ID |
 | `fileOverrides` | `[{id, included, season?, episode?}]` | per-file include/episode mapping (primary source's own IDs) |
 | `extraSources` | `[{magnetUri?\|torrentFilePath?, seasonHint?, fileOverrides?}]` | additional torrents merged into a torrent-backed **series**; rejected on movies and local entries |
+| `releaseInfo` | string | year or year range (`2019`, `2019-2021`); nullable on PATCH |
+| `runtime` | string ≤ 40 | as shown, e.g. `1h 52m`; movies fall back to the probe's duration when blank; nullable on PATCH |
+| `imdbRating` | string | `0`–`10`, at most one decimal, e.g. `7.8`; nullable on PATCH |
+| `cast`, `director`, `writer` | `string[]` ≤ 50 | short names; nullable on PATCH |
+| `country`, `language`, `awards` | string | short free text; nullable on PATCH |
+| `logo` | URL | nullable on PATCH |
+| `trailers` | `[{source, type: "Trailer"}]` ≤ 10 | `source` is an 11-character YouTube id; nullable on PATCH |
+| `posterShape` | `"poster" \| "landscape" \| "square"` | per-entry; omitted means `poster`; nullable on PATCH |
+| `episodeOverrides` | `[{id, season, episode}]` | manual season/episode repairs keyed by the entry-wide (composite) file id; applied after automatic mapping and source merging, so they survive re-inspection. Rejected when a file appears twice or two files share one S/E. `[]` clears. Changing it drops `inspectionCache` but leaves source checks and probes alone |
 | `nativePathGrant` | string | POST only; redeems a native-picker grant into a local path |
 
 `managedMedia` is server-controlled and stripped from client input. Browser-supplied local paths are validated server-side; `id`, `createdAt`, `updatedAt` are server-generated.

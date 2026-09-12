@@ -43,6 +43,36 @@ const fileOverrideSchema = z.object({
   season: z.number().int().nonnegative().optional(),
   episode: z.number().int().positive().optional(),
 });
+// Explicit season/episode for one file, keyed by the entry-wide (composite)
+// file id. Applied after automatic mapping and source merging, so
+// re-inspection and later sources never silently undo a repair.
+const episodeOverrideSchema = z.object({
+  id: z.number().int().nonnegative(),
+  season: z.number().int().nonnegative(),
+  episode: z.number().int().positive(),
+});
+export const episodeOverridesSchema = z
+  .array(episodeOverrideSchema)
+  .superRefine((overrides, ctx) => {
+    const ids = new Set<number>();
+    const slots = new Set<string>();
+    for (const override of overrides) {
+      if (ids.has(override.id))
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `File ${override.id} is mapped more than once`,
+        });
+      ids.add(override.id);
+      const slot = `${override.season}:${override.episode}`;
+      if (slots.has(slot))
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Two files are mapped to season ${override.season} episode ${override.episode}`,
+        });
+      slots.add(slot);
+    }
+  });
+export type EpisodeOverride = z.infer<typeof episodeOverrideSchema>;
 const cachedFileSchema = z.object({
   id: z.number().int().nonnegative(),
   path: z.string().min(1),
@@ -171,6 +201,46 @@ export const seriesSourceSchema = z
     message: "Each extra source needs magnetUri or torrentFilePath",
   });
 
+// Optional presentation metadata Stremio renders on the detail page. All
+// additive and user-entered; shapes are validated but nothing is fetched.
+const shortText = z.string().trim().min(1).max(200);
+const nameList = z.array(shortText).max(50);
+export const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
+export const trailerSchema = z.object({
+  source: z.string().regex(YOUTUBE_ID, "Expected an 11-character YouTube id"),
+  type: z.literal("Trailer"),
+});
+export const posterShapeSchema = z.enum(["poster", "landscape", "square"]);
+export const titleMetadataSchema = z.object({
+  // "2019" or "2019-2021".
+  releaseInfo: z
+    .string()
+    .trim()
+    .regex(/^\d{4}(?:[-–]\d{0,4})?$/, "Expected a year or a year range")
+    .optional(),
+  // Free text as Stremio shows it, e.g. "1h 52m".
+  runtime: z.string().trim().min(1).max(40).optional(),
+  // 0–10 with at most one decimal, kept as the string Stremio displays.
+  imdbRating: z
+    .string()
+    .trim()
+    .regex(/^(?:10(?:\.0)?|[0-9](?:\.[0-9])?)$/, "Expected 0–10, one decimal")
+    .optional(),
+  cast: nameList.optional(),
+  director: nameList.optional(),
+  writer: nameList.optional(),
+  country: shortText.optional(),
+  language: shortText.optional(),
+  logo: z.string().url().optional(),
+  awards: z.string().trim().min(1).max(300).optional(),
+  trailers: z.array(trailerSchema).max(10).optional(),
+  posterShape: posterShapeSchema.optional(),
+});
+export type TitleMetadata = z.infer<typeof titleMetadataSchema>;
+export const TITLE_METADATA_FIELDS = Object.keys(
+  titleMetadataSchema.shape,
+) as (keyof TitleMetadata)[];
+
 export const libraryEntrySchema = z
   .object({
     id: z.string().min(1),
@@ -181,6 +251,7 @@ export const libraryEntrySchema = z
     background: z.string().url().optional(),
     // Genre-style labels from the tag registry (src/tags.ts), stored by name.
     tags: entryTagsSchema.optional(),
+    ...titleMetadataSchema.shape,
     magnetUri: z.string().startsWith("magnet:?").optional(),
     torrentFilePath: z.string().endsWith(".torrent").optional(),
     localFilePath: absolutePath.optional(),
@@ -195,6 +266,8 @@ export const libraryEntrySchema = z
     // Additional torrents merged into this series' episode list. Torrent-
     // backed series only; validated by entrySourceRules below.
     extraSources: z.array(seriesSourceSchema).optional(),
+    // Manual season/episode repairs; see episodeOverrideSchema.
+    episodeOverrides: episodeOverridesSchema.optional(),
     // Always offer the repaired "Compatible" stream, even when the probe
     // verdict predicts direct play would work (ADR 0010).
     forceTranscode: z.boolean().optional(),
@@ -272,12 +345,25 @@ export const createEntrySchema = libraryEntrySchema
     message: "extraSources requires a torrent-backed series entry",
   });
 
+// null clears the field; every optional presentation field is clearable.
+const nullableMetadata = Object.fromEntries(
+  Object.entries(titleMetadataSchema.shape).map(([key, schema]) => [
+    key,
+    schema.nullable(),
+  ]),
+) as {
+  [K in keyof TitleMetadata]: z.ZodNullable<
+    (typeof titleMetadataSchema.shape)[K]
+  >;
+};
+
 export const patchEntrySchema = createEntrySchema.partial().extend({
   description: z.string().nullable().optional(),
   // null clears every tag from the entry.
   tags: entryTagsSchema.nullable().optional(),
   poster: z.string().url().nullable().optional(),
   background: z.string().url().nullable().optional(),
+  ...nullableMetadata,
 });
 
 export type LibraryEntry = z.infer<typeof libraryEntrySchema>;

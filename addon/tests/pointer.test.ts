@@ -1038,3 +1038,155 @@ describe("private persistence failures", () => {
     await pushed;
   });
 });
+
+describe("automatic drift observation", () => {
+  it("contacts nothing and records nothing when the pointer is not configured", async () => {
+    const fetchImpl = upstream(remoteBody());
+    const pointer = client({ fetchImpl, pushSecret: undefined });
+    expect(await pointer.observeDrift("start")).toBeUndefined();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect((await pointer.status()).drift).toBeUndefined();
+  });
+
+  it("reports a match when the remote record points at this LAN address", async () => {
+    const fetchImpl = upstream();
+    const pointer = client({ fetchImpl });
+    await pointer.push(MANIFEST);
+    fetchImpl.mockResolvedValueOnce(Response.json(remoteBody()));
+    const drift = await pointer.observeDrift("start");
+    expect(drift).toEqual({
+      outcome: "match",
+      trigger: "start",
+      checkedAt: NOW,
+      remoteBaseUrl: BASE_URL,
+      localBaseUrl: BASE_URL,
+      state: "registered",
+      message: expect.any(String),
+    });
+    expect((await pointer.status()).drift).toEqual(drift);
+    // Only the status read happened; a drift check never pushes.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[1][1]).toMatchObject({ method: "GET" });
+  });
+
+  it("flags a remote record that points at another address and never pushes", async () => {
+    const fetchImpl = upstream();
+    let ip = "192.168.1.42";
+    const pointer = client({ fetchImpl, lanIp: () => ip });
+    await pointer.push(MANIFEST);
+    ip = "192.168.1.77";
+    fetchImpl.mockResolvedValueOnce(Response.json(remoteBody()));
+    const drift = await pointer.observeDrift("lan-change");
+    expect(drift).toMatchObject({
+      outcome: "remote-mismatch",
+      trigger: "lan-change",
+      remoteBaseUrl: BASE_URL,
+      localBaseUrl: "http://192.168.1.77:7001",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(
+      fetchImpl.mock.calls.filter(([, init]) => init?.method === "POST"),
+    ).toHaveLength(1);
+    // The hint rides along on the status payload for the UI and menu bar.
+    expect(await pointer.status()).toMatchObject({
+      state: "stale",
+      drift: { outcome: "remote-mismatch" },
+    });
+  });
+
+  it("distinguishes a remote record without local push evidence", async () => {
+    const fetchImpl = upstream(remoteBody());
+    const pointer = client({ fetchImpl });
+    expect(await pointer.observeDrift("start")).toMatchObject({
+      outcome: "remote-without-local-push",
+      remoteBaseUrl: BASE_URL,
+      localBaseUrl: BASE_URL,
+      state: "recovery-required",
+    });
+  });
+
+  it("reports an expired remote record", async () => {
+    const fetchImpl = upstream();
+    const pointer = client({ fetchImpl });
+    await pointer.push(MANIFEST);
+    fetchImpl.mockResolvedValueOnce(
+      Response.json({
+        ...remoteBody(),
+        updatedAt: "2026-05-01T00:00:00.000Z",
+        expiresAt: "2026-09-01T00:00:00.000Z",
+      }),
+    );
+    expect(await pointer.observeDrift("start")).toMatchObject({
+      outcome: "expired",
+      state: "expired",
+    });
+  });
+
+  it.each([
+    ["network", () => Promise.reject(new Error("offline")), "unreachable"],
+    [
+      "authentication",
+      () => Promise.resolve(Response.json({}, { status: 401 })),
+      "authentication-failed",
+    ],
+  ])(
+    "records an unreachable outcome on %s failure with the sanitized reason",
+    async (_label, failing, state) => {
+      const fetchImpl = upstream();
+      const pointer = client({ fetchImpl });
+      await pointer.push(MANIFEST);
+      fetchImpl.mockImplementationOnce(failing);
+      const drift = await pointer.observeDrift("start");
+      expect(drift).toMatchObject({ outcome: "unreachable", state });
+      expect(drift?.remoteBaseUrl).toBeUndefined();
+      expect(JSON.stringify(drift)).not.toContain(SECRET);
+    },
+  );
+
+  it("uses a short timeout for automatic checks", async () => {
+    const fetchImpl = upstream();
+    const pointer = client({ fetchImpl });
+    await pointer.push(MANIFEST);
+    fetchImpl.mockResolvedValueOnce(Response.json(remoteBody()));
+    vi.spyOn(AbortSignal, "timeout");
+    await pointer.observeDrift("start", { timeoutMs: 1234 });
+    expect(AbortSignal.timeout).toHaveBeenLastCalledWith(1234);
+  });
+
+  it("drops the hint once a manual push, check, or removal supersedes it", async () => {
+    const fetchImpl = upstream();
+    let ip = "192.168.1.42";
+    const pointer = client({ fetchImpl, lanIp: () => ip });
+    await pointer.push(MANIFEST);
+    ip = "192.168.1.77";
+    fetchImpl.mockResolvedValueOnce(Response.json(remoteBody()));
+    await pointer.observeDrift("lan-change");
+    expect((await pointer.status()).drift?.outcome).toBe("remote-mismatch");
+    await pointer.push(MANIFEST);
+    expect((await pointer.status()).drift).toBeUndefined();
+
+    fetchImpl.mockResolvedValueOnce(Response.json(remoteBody()));
+    await pointer.observeDrift("lan-change");
+    expect((await pointer.status()).drift).toBeDefined();
+    fetchImpl.mockResolvedValueOnce(
+      Response.json({ ...remoteBody(), baseUrl: "http://192.168.1.77:7001" }),
+    );
+    await pointer.remoteStatus();
+    expect((await pointer.status()).drift).toBeUndefined();
+
+    fetchImpl.mockResolvedValueOnce(Response.json(remoteBody()));
+    await pointer.observeDrift("lan-change");
+    fetchImpl.mockResolvedValueOnce(Response.json({ ok: true }));
+    await pointer.remove();
+    expect((await pointer.status()).drift).toBeUndefined();
+  });
+
+  it("does not survive a restart: the hint is memory only", async () => {
+    const fetchImpl = upstream();
+    const pointer = client({ fetchImpl });
+    await pointer.push(MANIFEST);
+    fetchImpl.mockResolvedValueOnce(Response.json(remoteBody()));
+    await pointer.observeDrift("start");
+    expect((await client().status()).drift).toBeUndefined();
+  });
+});

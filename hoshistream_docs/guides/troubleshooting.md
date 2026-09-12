@@ -96,6 +96,9 @@ an add-on path redirects (any `/addon/<token>/catalog/...` URL answers `307`
 with a `Location` on the Mac's LAN). A target that does not match the Mac's
 current LAN address means the remote record is stale even though the app shows
 the last push as successful. Push again from Pointer → Update Remote Pointer.
+Since the drift check landed, the app reads the record itself at start-up and
+after a LAN change; a mismatch shows on the Pointer card with **Update now**
+and as a one-off notification, so this usually no longer needs `curl`.
 A pointer server deployed before
 [ADR 0024](../decisions/0024-immutable-pointer-blob-versions.md) could keep
 serving an overwritten record for days; redeploy it, then push once.

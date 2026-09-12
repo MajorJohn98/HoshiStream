@@ -165,6 +165,27 @@ const remoteStatusSchema = z
   .refine((value) => Date.parse(value.expiresAt) > Date.parse(value.updatedAt));
 const deleteResponseSchema = z.object({ ok: z.literal(true) });
 
+// What an automatic read of the remote record found, compared with this
+// computer's LAN address at that moment. Kept in memory only: it is a hint to
+// the viewer, not push evidence, and it never triggers a push by itself.
+export type DriftOutcome =
+  | "match"
+  | "remote-mismatch"
+  | "remote-without-local-push"
+  | "expired"
+  | "unreachable";
+export type DriftTrigger = "start" | "lan-change";
+
+export interface DriftObservation {
+  outcome: DriftOutcome;
+  trigger: DriftTrigger;
+  checkedAt: string;
+  remoteBaseUrl?: string;
+  localBaseUrl?: string;
+  state: PointerLifecycleState;
+  message: string;
+}
+
 export interface PointerStatus {
   configured: boolean;
   enabled: boolean;
@@ -180,6 +201,7 @@ export interface PointerStatus {
   state: PointerLifecycleState;
   message: string;
   usable: boolean;
+  drift?: DriftObservation;
 }
 
 export interface RemotePointerStatus {
@@ -272,6 +294,7 @@ export class PointerClient {
   #loaded = false;
   #explicitSettings = false;
   #storageFailed = false;
+  #drift: DriftObservation | undefined;
   #queue: Promise<unknown> = Promise.resolve();
 
   constructor(options: PointerClientOptions) {
@@ -397,7 +420,7 @@ export class PointerClient {
     } else {
       state = "registered";
       message =
-        "The last confirmed manual push matches this LAN address and has not expired. The service is not checked automatically.";
+        "The last confirmed manual push matches this LAN address and has not expired. The service is read once at start-up and after a LAN change, never on a schedule.";
     }
     return {
       configured,
@@ -414,6 +437,7 @@ export class PointerClient {
       state,
       message,
       usable: state === "registered",
+      ...(this.#drift ? { drift: this.#drift } : {}),
     };
   }
 
@@ -512,6 +536,7 @@ export class PointerClient {
   async #request(
     suffix: string,
     init: RequestInit,
+    timeoutMs = 10_000,
   ): Promise<
     { response: Response } | { failure: FailureCode; reachable: boolean }
   > {
@@ -525,7 +550,7 @@ export class PointerClient {
       response = await this.#fetch(this.#settings.pointerUrl + suffix, {
         ...init,
         redirect: "error",
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
       await this.#observe("network");
@@ -596,6 +621,9 @@ export class PointerClient {
         pushedAt: parsed.data.updatedAt,
         expiresAt: parsed.data.expiresAt,
       });
+      // The push just confirmed the remote record; any earlier drift hint is
+      // superseded until the next automatic check.
+      this.#drift = undefined;
       return this.#snapshot();
     });
   }
@@ -628,89 +656,137 @@ export class PointerClient {
       }
       this.#state = undefined;
       this.#legacyState = undefined;
+      this.#drift = undefined;
     });
   }
 
   remoteStatus(): Promise<RemotePointerStatus> {
     return this.#serial(async () => {
       await this.#load();
+      // A manual check is fresher than the automatic hint and is shown in
+      // its own right, so the hint steps aside.
+      this.#drift = undefined;
+      return this.#remoteStatus(10_000);
+    });
+  }
+
+  // Automatic drift check, run once per trigger by PointerDriftMonitor. It is
+  // the same read as a manual "Check service" — including the evidence rules
+  // above — plus an in-memory comparison against the current LAN address so
+  // the UI and menu bar can point at the fix. Never pushes.
+  observeDrift(
+    trigger: DriftTrigger,
+    options: { timeoutMs?: number } = {},
+  ): Promise<DriftObservation | undefined> {
+    return this.#serial(async () => {
+      await this.#load();
       const before = this.#snapshot();
       if (!before.configured || (this.#state && !this.#identityMatches()))
-        return {
-          reachable: false,
-          registered: false,
-          state: before.state,
-          message: before.message,
-          usable: false,
-        };
-      const result = await this.#request("/api/pointer/status", {
+        return undefined;
+      const remote = await this.#remoteStatus(options.timeoutMs ?? 5_000);
+      const localBaseUrl = this.currentBaseUrl();
+      let outcome: DriftOutcome;
+      if (!remote.registered) outcome = "unreachable";
+      else if (this.#state?.observation === "remote-without-local-push")
+        outcome = "remote-without-local-push";
+      else if (Date.parse(remote.expiresAt!) <= Date.now()) outcome = "expired";
+      else if (!localBaseUrl || remote.baseUrl !== localBaseUrl)
+        outcome = "remote-mismatch";
+      else outcome = "match";
+      this.#drift = {
+        outcome,
+        trigger,
+        checkedAt: new Date().toISOString(),
+        ...(remote.baseUrl ? { remoteBaseUrl: remote.baseUrl } : {}),
+        ...(localBaseUrl ? { localBaseUrl } : {}),
+        state: remote.state,
+        message: remote.message,
+      };
+      return this.#drift;
+    });
+  }
+
+  async #remoteStatus(timeoutMs: number): Promise<RemotePointerStatus> {
+    const before = this.#snapshot();
+    if (!before.configured || (this.#state && !this.#identityMatches()))
+      return {
+        reachable: false,
+        registered: false,
+        state: before.state,
+        message: before.message,
+        usable: false,
+      };
+    const result = await this.#request(
+      "/api/pointer/status",
+      {
         method: "GET",
         headers: {
           authorization: `Bearer ${this.#pushSecret}`,
           "x-addon-token": this.#token,
         },
-      });
-      if ("failure" in result)
-        return {
-          reachable: result.reachable,
-          registered: false,
-          ...failures[result.failure],
-          usable: false,
-        };
-      const parsed = remoteStatusSchema.safeParse(
-        await result.response.json().catch(() => undefined),
-      );
-      if (!parsed.success) {
-        await this.#observe("invalid-response");
-        return {
-          reachable: true,
-          registered: false,
-          ...failures["invalid-response"],
-          usable: false,
-        };
-      }
-      const remote = parsed.data;
-      // A remote read cannot substitute for a local push. It may invalidate
-      // existing evidence, but never create or extend that evidence.
-      const local = this.#scopedState();
-      const cleared = { ...local };
-      delete cleared.observation;
-      await this.#save({
-        ...cleared,
-        ...(local.expiresAt
-          ? {
-              expiresAt: new Date(
-                Math.min(
-                  Date.parse(local.expiresAt),
-                  Date.parse(remote.expiresAt),
-                ),
-              ).toISOString(),
-            }
-          : {}),
-        ...(local.baseUrl && local.baseUrl !== remote.baseUrl
-          ? { observation: "remote-mismatch" as const }
-          : {}),
-        ...(!local.baseUrl
-          ? { observation: "remote-without-local-push" as const }
-          : {}),
-      });
-      const status = this.#snapshot();
-      const expired = Date.parse(remote.expiresAt) <= Date.now();
-      const stale = remote.baseUrl !== this.currentBaseUrl();
+      },
+      timeoutMs,
+    );
+    if ("failure" in result)
+      return {
+        reachable: result.reachable,
+        registered: false,
+        ...failures[result.failure],
+        usable: false,
+      };
+    const parsed = remoteStatusSchema.safeParse(
+      await result.response.json().catch(() => undefined),
+    );
+    if (!parsed.success) {
+      await this.#observe("invalid-response");
       return {
         reachable: true,
-        registered: true,
-        baseUrl: remote.baseUrl,
-        updatedAt: remote.updatedAt,
-        expiresAt: remote.expiresAt,
-        state: expired ? "expired" : stale ? "stale" : status.state,
-        message: expired
-          ? "The remote pointer has expired. Manually update it to renew."
-          : stale
-            ? "The remote pointer does not match this LAN address. Manually update it."
-            : status.message,
-        usable: !expired && !stale && status.usable,
+        registered: false,
+        ...failures["invalid-response"],
+        usable: false,
       };
+    }
+    const remote = parsed.data;
+    // A remote read cannot substitute for a local push. It may invalidate
+    // existing evidence, but never create or extend that evidence.
+    const local = this.#scopedState();
+    const cleared = { ...local };
+    delete cleared.observation;
+    await this.#save({
+      ...cleared,
+      ...(local.expiresAt
+        ? {
+            expiresAt: new Date(
+              Math.min(
+                Date.parse(local.expiresAt),
+                Date.parse(remote.expiresAt),
+              ),
+            ).toISOString(),
+          }
+        : {}),
+      ...(local.baseUrl && local.baseUrl !== remote.baseUrl
+        ? { observation: "remote-mismatch" as const }
+        : {}),
+      ...(!local.baseUrl
+        ? { observation: "remote-without-local-push" as const }
+        : {}),
     });
+    const status = this.#snapshot();
+    const expired = Date.parse(remote.expiresAt) <= Date.now();
+    const stale = remote.baseUrl !== this.currentBaseUrl();
+    return {
+      reachable: true,
+      registered: true,
+      baseUrl: remote.baseUrl,
+      updatedAt: remote.updatedAt,
+      expiresAt: remote.expiresAt,
+      state: expired ? "expired" : stale ? "stale" : status.state,
+      message: expired
+        ? "The remote pointer has expired. Manually update it to renew."
+        : stale
+          ? "The remote pointer does not match this LAN address. Manually update it."
+          : status.message,
+      usable: !expired && !stale && status.usable,
+    };
   }
 }

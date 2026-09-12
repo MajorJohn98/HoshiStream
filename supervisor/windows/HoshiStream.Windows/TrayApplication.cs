@@ -36,6 +36,10 @@ internal sealed class TrayApplication : ApplicationContext
     private bool ready, polling, draining, stopping, disposed, attemptedWelcome, receivedActivation;
     private int generation, retries, environmentChanged;
     private DateTimeOffset startedAt, readyAt;
+    // checkedAt of the last drift observation shown, so one automatic check
+    // produces at most one balloon.
+    private string? notifiedDriftAt;
+    private bool driftBalloonShown;
 
     public TrayApplication(RuntimePaths paths, SafeLog log, Activation initial)
     {
@@ -71,6 +75,13 @@ internal sealed class TrayApplication : ApplicationContext
         menu.Items.Add(speedItem);
         pointerItem.Click += (_, _) => RunAction(PushPointerAsync);
         menu.Items.Add(pointerItem);
+        tray.BalloonTipClicked += (_, _) =>
+        {
+            if (!driftBalloonShown) return;
+            driftBalloonShown = false;
+            RunAction(PushPointerAsync);
+        };
+        tray.BalloonTipClosed += (_, _) => driftBalloonShown = false;
         menu.Items.Add(new ToolStripSeparator());
         loginItem.Click += (_, _) => RunAction(ToggleLoginAsync);
         menu.Items.Add(loginItem);
@@ -302,6 +313,7 @@ internal sealed class TrayApplication : ApplicationContext
                 pointerItem.Visible = summary.PointerConfigured;
                 if (pointerItem.Enabled)
                     pointerItem.Text = summary.PointerStale ? "&Update Remote Pointer - IP changed" : "&Update Remote Pointer";
+                NotifyPointerDrift(summary.Drift);
                 SetStatus($"Ready - {summary.LibraryCount} titles - {summary.Speed:0.#} Mbps");
                 await DrainAsync();
                 if (summary.WelcomePending && !attemptedWelcome && !receivedActivation && !stopping)
@@ -384,6 +396,17 @@ internal sealed class TrayApplication : ApplicationContext
             Notify("Speed check complete", $"Measured connection speed: {speed:0.#} Mbps.");
         }
         finally { speedItem.Enabled = true; speedItem.Text = "Check &Speed"; }
+    }
+
+    // One balloon per automatic drift observation that a push would fix;
+    // clicking it runs the same manual push as the menu item.
+    private void NotifyPointerDrift(PointerDrift? drift)
+    {
+        if (drift is null || drift.Outcome != "remote-mismatch" || drift.CheckedAt == notifiedDriftAt) return;
+        notifiedDriftAt = drift.CheckedAt;
+        driftBalloonShown = true;
+        Notify("Remote pointer is out of date",
+            $"Remote points at {drift.RemoteHost ?? "unknown"}; this PC is {drift.LocalHost ?? "unknown"}. Click to update it.");
     }
 
     private async Task PushPointerAsync()

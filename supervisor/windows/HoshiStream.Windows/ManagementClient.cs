@@ -13,7 +13,11 @@ internal sealed record Credentials(int Port, string Token)
 }
 
 internal sealed record ServerSummary(int LibraryCount, double Speed, bool Streaming, bool PointerConfigured,
-    bool PointerStale, bool WelcomePending);
+    bool PointerStale, bool WelcomePending, PointerDrift? Drift = null);
+
+// The addon's automatic remote-record read (start-up and LAN change). Only
+// "remote-mismatch" is surfaced as a balloon; the rest already shows in the menu.
+internal sealed record PointerDrift(string Outcome, string CheckedAt, string? RemoteHost, string? LocalHost);
 
 internal sealed class ManagementClient : IDisposable
 {
@@ -85,8 +89,22 @@ internal sealed class ManagementClient : IDisposable
         var welcome = root.TryGetProperty("onboarding", out var onboarding)
             && onboarding.GetProperty("welcomePending").GetBoolean();
         return new(count, speed, root.GetProperty("streamingActive").GetBoolean(), configured,
-            configured && pointer.TryGetProperty("stale", out var stale) && stale.GetBoolean(), welcome);
+            configured && pointer.TryGetProperty("stale", out var stale) && stale.GetBoolean(), welcome,
+            configured ? ReadDrift(pointer) : null);
     }
+
+    private static PointerDrift? ReadDrift(JsonElement pointer)
+    {
+        if (!pointer.TryGetProperty("drift", out var drift) || drift.ValueKind != JsonValueKind.Object) return null;
+        var outcome = drift.TryGetProperty("outcome", out var o) ? o.GetString() : null;
+        var checkedAt = drift.TryGetProperty("checkedAt", out var c) ? c.GetString() : null;
+        if (outcome is null || checkedAt is null) return null;
+        return new(outcome, checkedAt, Host(drift, "remoteBaseUrl"), Host(drift, "localBaseUrl"));
+    }
+
+    private static string? Host(JsonElement drift, string name) =>
+        drift.TryGetProperty(name, out var value) && value.GetString() is { } url
+            && Uri.TryCreate(url, UriKind.Absolute, out var parsed) ? parsed.Host : null;
 
     public Task<JsonDocument> ApiAsync(string path, HttpMethod? method = null, object? body = null,
         TimeSpan? timeout = null, CancellationToken cancellation = default)

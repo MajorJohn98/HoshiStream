@@ -1,11 +1,17 @@
 # Playback, pointer, library and operations expansion
 
 Date: 2026-09-12
-Status: Phases 1–2 implemented (see
-[changelog](../changelog/playback-telemetry-and-line-fit.md)); Phase 6
-implemented (see [changelog](../changelog/subtitle-sidecars.md)); Phase 3
-waits on the Phase 1 exit criterion. Implement one phase at a time, in order,
-and stop for review between phases.
+Status: **Phases 1, 2, 4, 6, 7, 12 and 14 done** — see
+[playback telemetry and line fit](../changelog/playback-telemetry-and-line-fit.md),
+[subtitle sidecars](../changelog/subtitle-sidecars.md),
+[pointer drift detection](../changelog/pointer-drift-detection.md),
+[episode mapping repair](../changelog/episode-mapping-repair.md),
+[rich title metadata](../changelog/rich-title-metadata.md) and
+[stream descriptions](../changelog/stream-descriptions.md). Phase 3 waits on
+the Phase 1 exit criterion. Phases 12–15 (Stremio protocol coverage) were
+added 2026-09-12 after a review of protocol features the add-on does not use.
+Implement one phase at a time and stop for review between phases; a phase
+heading carries ✅ once its changelog entry exists.
 
 ## Goal and scope
 
@@ -20,6 +26,11 @@ local-first, direct-play add-on with manually added media.
    disk-copy policies on top of the existing archiver.
 4. **Operations and trust** — supportable diagnostics, a small settings UI,
    signing, and cross-platform smoke coverage.
+5. **Stremio protocol coverage** — use the meta, stream and catalog fields
+   the protocol already renders (year, runtime, cast, trailers, episode
+   thumbnails, stream descriptions, tag rows) so the Nuvio detail page looks
+   like a library rather than a file list. Everything stays user-entered or
+   derived locally with the vendored ffmpeg; no metadata providers.
 
 Out of scope, and requiring a new ADR before any work: torrent search or
 scraping, generic Torznab, transcoding expansion, a database, a dashboard
@@ -78,7 +89,7 @@ on 2026-09-12. Anything not listed here must be re-verified before use.
 - TorrServer settings are seeded once from `packaging/torrserver-settings.json`
   and never rewritten by the launcher (except `TorrentsSavePath`).
 
-## Phase 1 — Playback telemetry (observe before gating)
+## Phase 1 — Playback telemetry (observe before gating) ✅
 
 Goal: know, per active stream, whether the swarm is keeping ahead of the
 playhead. No behavior change for the player.
@@ -108,7 +119,7 @@ playhead. No behavior change for the player.
 Exit: while a TV stream stalls, the Activity page shows runway hitting zero
 and swarm speed below bitrate — or shows the opposite, which redirects Phase 2.
 
-## Phase 2 — Bitrate-aware stream presentation
+## Phase 2 — Bitrate-aware stream presentation ✅
 
 Goal: stop stalls before they start by telling the client which files fit the
 line. Uses only data the add-on already has plus Phase 1's speed.
@@ -158,7 +169,7 @@ Exit: on a fresh torrent, time-to-first-frame on the TV is not worse than
 before and the first 20 s play without a stall on a swarm that can sustain the
 bitrate. Record measurements in the changelog.
 
-## Phase 4 — Pointer drift detection and one-click push
+## Phase 4 — Pointer drift detection and one-click push ✅
 
 Goal: a stale remote record is never silent again. Pushes stay manual.
 
@@ -204,7 +215,7 @@ TorrServer's `/viewed` plus add-on-side progress.
 Exit: an episode played to the end on the TV shows as watched in the browser
 and the next episode appears in Continue Watching.
 
-## Phase 6 — Subtitles
+## Phase 6 — Subtitles ✅
 
 Goal: serve subtitle sidecars that already exist in the torrent or on disk.
 
@@ -223,7 +234,13 @@ Goal: serve subtitle sidecars that already exist in the torrent or on disk.
 Exit: a torrent with `Movie.en.srt` shows an English subtitle option in Nuvio
 and the browser player.
 
-## Phase 7 — Episode mapping repair
+Done 2026-09-12 — [changelog](../changelog/subtitle-sidecars.md). Deviations
+from the sketch above: the file key is `<infohash>:<fileId>` for torrents and
+`l:<base64url(relative path)>` for disk files; a movie with a single video
+claims every sidecar in the torrent; `hi` is Hindi unless another language
+token is present.
+
+## Phase 7 — Episode mapping repair ✅
 
 Goal: fix mis-numbered or mis-ordered episodes without re-importing.
 
@@ -315,6 +332,117 @@ Goal: remove install friction and catch platform drift.
 Exit: a signed DMG opens without the "damaged" dialog on a clean Mac; CI
 smoke passes on both platforms.
 
+## Phase 12 — Rich title metadata ✅
+
+Goal: fill the Stremio detail page from fields the viewer enters once.
+
+Today `toMetaPreview` emits `name`, `description`, `poster`, `background` and
+`genres`. Stremio also renders `releaseInfo` (year or `2019-2021`),
+`runtime` (`"1h 52m"`), `imdbRating`, `cast[]`, `director[]`, `writer[]`,
+`country`, `language`, `logo`, `awards`, `trailers[{source, type: "Trailer"}]`
+(YouTube ids) and `links[]`.
+
+1. Extend `LibraryEntry` (Zod, additive, all optional) with `releaseInfo`,
+   `runtime`, `imdbRating`, `cast`, `director`, `writer`, `country`,
+   `language`, `logo`, `awards`, `trailers`. Validate shapes (rating `0–10`
+   with one decimal, YouTube id `[A-Za-z0-9_-]{11}`, arrays ≤ 50 short
+   strings). `runtime` may be derived from the existing probe duration when
+   the field is empty.
+2. Emit them from `toMetaPreview` for both `catalog` and `meta`; emit
+   `links[]` for genres and cast as `stremio:///search?search=<name>` so they
+   are clickable, and `behaviorHints.defaultVideoId` for movies so the detail
+   page opens straight into the stream picker.
+3. Management UI: a **Metadata** tab on the entry sheet (form fields, comma
+   lists for people, trailer id or URL parsed to an id). PATCH through the
+   existing `/api/library/:id` route.
+4. `posterShape` becomes a per-entry choice (`poster` default, `landscape`,
+   `square`) for home-video folders.
+5. Tests: Zod acceptance/rejection, `toMetaPreview` output, PATCH round-trip,
+   `links` generation.
+
+Exit: a movie with year, runtime, three cast names and a trailer set in the
+sheet shows all of them — and a playable trailer — on the Nuvio detail page.
+
+## Phase 13 — Episode metadata and thumbnails
+
+Goal: series episodes read as episodes, not file paths.
+
+`meta.videos[]` currently carries `title: file.path` and
+`released: entry.createdAt`. The protocol renders `title`, `overview`,
+`thumbnail`, `released`, and honours `behaviorHints.hasScheduledVideos`.
+
+1. Per-episode overrides on the entry (`episodes: { "S:E": { title,
+overview, released } }`), editable from the **Episodes** tab; blank falls
+   back to a cleaned filename (strip release-group noise, keep `SxxEyy`).
+2. Thumbnails: a `thumbnail-service.ts` that grabs one frame per episode with
+   the vendored `ffmpeg` (`-ss` at 20 % of duration, 480 px wide JPEG) once
+   the file is archived to disk or when the viewer presses **Generate
+   thumbnails**; stored under the state dir, served from
+   `/thumbnails/<token>/<entry>/<S>/<E>.jpg` with a long `max-age` and an
+   ETag. Never grabbed from a live torrent automatically (it would pull
+   pieces the viewer did not ask for).
+3. `hasScheduledVideos: true` for series the viewer marks **Ongoing**, so
+   Stremio keeps them on the Board.
+4. Tests: filename cleaning, override precedence, thumbnail route containment
+   and 404, ffmpeg invocation arguments (spawn mocked).
+
+Exit: an archived season shows a frame and a readable title for every episode
+in Nuvio; a torrent-only season shows readable titles with no thumbnail.
+
+## Phase 14 — Stream descriptions and web-readiness hints ✅
+
+Goal: make the stream picker informative and stop web players from choosing
+files they cannot decode.
+
+Streams carry `filename`, `videoSize` and `bingeGroup`. Stremio also shows a
+multi-line `description` and reads `behaviorHints.notWebReady`,
+`behaviorHints.videoHash` and `behaviorHints.videoSize`.
+
+1. `description`: built from the existing probe — resolution, video codec,
+   audio codec and languages, size, average bitrate, and the Phase 2 line-fit
+   verdict (`fits your line` / `above your line`). Plain text, ≤ 4 lines.
+2. `notWebReady: true` for files the compatibility probe already flags for
+   browsers (HEVC, AVI/MPEG-4 ASP, DTS/TrueHD-only audio); Stremio Web then
+   offers its external-player path instead of a black screen.
+3. `videoHash` (OpenSubtitles hash: size + first/last 64 KiB) computed only
+   for archived disk files, so Stremio's built-in subtitle matching works for
+   viewers who have a subtitle add-on installed. Not computed over `/play`.
+4. Tests: description composition per codec set, `notWebReady` matrix, hash
+   against a known vector.
+
+Exit: the stream list for an HEVC file reads `2160p · HEVC · TrueHD 7.1 (eng)
+· 18.2 GB · above your line` and Stremio Web routes it to an external player.
+
+Done 2026-09-12 — [changelog](../changelog/stream-descriptions.md). The
+probe summary carries no audio language or channel layout, so the line reads
+`Torrent · 2160p · HEVC · TrueHD · 18.2 GB` with the verdict on its own line;
+channel/language labels wait on a richer probe.
+
+## Phase 15 — Board rows and add-on identity
+
+Goal: surface the library on Stremio's Board, not only behind a picker.
+
+1. Extra catalogs: **Recently added** and **Unwatched** (Phase 5 dependency
+   for the latter) per type, plus one catalog per tag the viewer pins
+   (`catalog.id: "tag-<key>"`, name = tag). Catalog list is built per manifest
+   request like `manifestWithGenres` today; cap pinned tags at 8 so the Board
+   stays usable.
+2. Manifest `logo`, `background` and `contactEmail` (an address the viewer
+   sets, default empty) so the add-on tile is not blank.
+3. `videos[].streams` embedded on series meta when the inspection is already
+   cached, letting Stremio skip the `stream` round-trip on episode switch.
+   Falls back to the `stream` resource when uncached.
+4. Tests: manifest catalog generation with pinned tags, catalog filtering for
+   the new ids, embedded streams present only when cached.
+
+Exit: the Board shows a "Recently added" row and one row per pinned tag;
+switching episodes on the TV starts playback without a visible stream fetch.
+
+Explicitly not planned: `configurable` / `configurationRequired` (the tokened
+management URL already serves that role), `addon_catalog`, `proxyHeaders`,
+`countryWhitelist`, `externalUrl` streams, and any provider-backed metadata
+or subtitle lookup.
+
 ## Ordering and dependencies
 
 ```mermaid
@@ -330,9 +458,16 @@ flowchart LR
   P7[7 Mapping repair]
   P9 --> P11[11 Signing + CI smoke]
   P10 --> P11
+  P12[12 Rich title metadata]
+  P12 --> P13[13 Episode metadata + thumbnails]
+  P2 --> P14[14 Stream descriptions]
+  P5 --> P15[15 Board rows + identity]
+  P12 --> P15
 ```
 
-Phases 4, 6 and 7 are independent and can be scheduled whenever convenient.
+Phases 4, 7 and 12 are independent and can be scheduled whenever convenient
+(Phase 6 was too, and is done). Phase 14 needs only Phase 2's line fit, which exists.
+Phase 15's **Unwatched** row needs Phase 5; the rest of 15 needs Phase 12.
 Phase 3 is explicitly conditional on Phase 1's evidence.
 
 ## Cross-cutting rules
@@ -357,6 +492,12 @@ npm run format:check` in `addon/`, a changelog entry, and index updates.
   version supports.
 - Phase 11: availability of a Developer ID; without it, Phase 11 reduces to
   CI smoke only.
+- Phase 12: whether Nuvio renders `trailers[]` and `links[]` (Stremio desktop
+  and web do); verify on the TV before building the trailer field UI.
+- Phase 13: acceptable thumbnail size on disk for a large library (budget:
+  ≤ 40 KiB per episode) and whether Nuvio requests `thumbnail` at all.
+- Phase 14: whether the installed `stremio-addon-sdk` typings accept
+  `videoHash` on `behaviorHints`, or the field needs the local `.d.ts` shim.
 
 ## References
 

@@ -67,7 +67,7 @@
 
 ## Plans
 
-- [plans/2026-09-12-playback-pointer-library-expansion-plan.md](plans/2026-09-12-playback-pointer-library-expansion-plan.md) — Eleven-phase expansion: playback telemetry and buffer-ahead gate, bitrate-aware streams, pointer drift detection, watched state, subtitles, mapping repair, disk-copy policies, diagnostics, TorrServer settings UI, signing and CI smoke.
+- [plans/2026-09-12-playback-pointer-library-expansion-plan.md](plans/2026-09-12-playback-pointer-library-expansion-plan.md) — Fifteen-phase expansion (1, 2, 6 done): playback telemetry and buffer-ahead gate, bitrate-aware streams, pointer drift detection, watched state, subtitles, mapping repair, disk-copy policies, diagnostics, TorrServer settings UI, signing and CI smoke, plus Stremio protocol coverage (rich title and episode metadata, thumbnails, stream descriptions, Board rows).
 - [plans/2026-09-12-stale-pointer-reads-and-slow-link-tuning.md](plans/2026-09-12-stale-pointer-reads-and-slow-link-tuning.md) — Root causes and fixes for stale pointer redirects (Blob CDN) and TV buffering on a ~9 Mbps line (TorrServer upload/connection tuning).
 - [plans/2026-09-07-public-setup-guide.md](plans/2026-09-07-public-setup-guide.md) — Approved static setup guide and documentation-only GitHub Pages publication plan.
 - [plans/2026-09-07-closed-beta-readiness-plan.md](plans/2026-09-07-closed-beta-readiness-plan.md) — macOS-first closed beta phases, deferred blocker register, installed pointer provisioning, quick starts, release acceptance, recovery and support.
@@ -97,6 +97,10 @@
 
 ## Changelog
 
+- [changelog/rich-title-metadata.md](changelog/rich-title-metadata.md) — Optional presentation fields on entries (year, runtime, rating, people, trailers, poster shape), emitted in catalog/meta with search `links[]` and `defaultVideoId`; Metadata tab in the entry sheet (Phase 12 of the expansion plan).
+- [changelog/stream-descriptions.md](changelog/stream-descriptions.md) — Stream picker text now names resolution, codecs, size, bitrate and the line-fit verdict; `notWebReady` for browser-hostile formats; OpenSubtitles `videoHash` for disk-resident files (Phase 14 of the expansion plan).
+- [changelog/episode-mapping-repair.md](changelog/episode-mapping-repair.md) — `episodeOverrides` on library entries, applied after automatic mapping and source merging; Files-tab editor with shift-by-N, duplicate blocking and gap hints (Phase 7 of the expansion plan).
+- [changelog/pointer-drift-detection.md](changelog/pointer-drift-detection.md) — Automatic start-up / LAN-change read of the remote pointer record, a Pointer-card row with **Update now**, and one-off macOS/Windows notifications; pushes stay manual (Phase 4 of the expansion plan).
 - [changelog/subtitle-sidecars.md](changelog/subtitle-sidecars.md) — Stremio `subtitles` resource serving `.srt/.vtt/.ass/.ssa` sidecars already in the torrent or on disk, SRT→VTT conversion, and browser `<track>` elements (Phase 6 of the expansion plan).
 - [changelog/playback-telemetry-and-line-fit.md](changelog/playback-telemetry-and-line-fit.md) — TorrServer `/cache` runway sampling with an Activity runway line, and bitrate-aware stream ordering with a single line-fit rule (Phases 1–2 of the expansion plan).
 - [changelog/pointer-freshness-and-slow-link-tuning.md](changelog/pointer-freshness-and-slow-link-tuning.md) — Immutable pointer Blob versions (fresh reads after every push) and TorrServer `UploadRateLimit`/`ConnectionsLimit` defaults for slow asymmetric lines.

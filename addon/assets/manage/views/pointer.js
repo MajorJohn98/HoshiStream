@@ -15,6 +15,108 @@ const labels = {
   "storage-error": "Local setup unavailable",
 };
 
+const hostOf = (baseUrl) => {
+  try {
+    return new URL(baseUrl).hostname;
+  } catch {
+    return baseUrl;
+  }
+};
+
+// The automatic start-up / LAN-change read of the remote record, compared
+// with this computer's address. `actionable` means one push fixes it.
+export function driftSummary(drift) {
+  if (!drift) return null;
+  const when =
+    (drift.trigger === "lan-change"
+      ? "Checked after the LAN address changed"
+      : "Checked at start-up") +
+    (drift.checkedAt
+      ? " · " + new Date(drift.checkedAt).toLocaleTimeString()
+      : "");
+  const here = drift.localBaseUrl
+    ? "this computer is " + hostOf(drift.localBaseUrl)
+    : "this computer has no LAN address";
+  switch (drift.outcome) {
+    case "match":
+      return {
+        tone: "ok",
+        label: "Remote pointer matches this computer",
+        detail: hostOf(drift.remoteBaseUrl) + " · " + when,
+        actionable: false,
+      };
+    case "remote-mismatch":
+      return {
+        tone: "warn",
+        label: "Remote pointer is out of date",
+        detail:
+          "Remote points at " +
+          hostOf(drift.remoteBaseUrl) +
+          "; " +
+          here +
+          " · " +
+          when,
+        actionable: Boolean(drift.localBaseUrl),
+      };
+    case "expired":
+      return {
+        tone: "warn",
+        label: "Remote pointer has expired",
+        detail:
+          "Remote pointed at " + hostOf(drift.remoteBaseUrl) + " · " + when,
+        actionable: Boolean(drift.localBaseUrl),
+      };
+    case "remote-without-local-push":
+      return {
+        tone: "warn",
+        label: "Remote record without local push evidence",
+        detail:
+          "Remote points at " +
+          hostOf(drift.remoteBaseUrl) +
+          "; " +
+          here +
+          " · " +
+          when,
+        actionable: Boolean(drift.localBaseUrl),
+      };
+    default:
+      return {
+        tone: "bad",
+        label: "Remote check failed",
+        detail:
+          (drift.message || "The service could not be read.") + " · " + when,
+        actionable: false,
+      };
+  }
+}
+
+function DriftRow({ drift, busy, onUpdate }) {
+  const summary = driftSummary(drift);
+  if (!summary) return null;
+  return html`
+    <ul class="rows stacked-sm" id="pointer-drift">
+      <li class="rowitem">
+        <span class="lead"><i class="dot ${summary.tone}"></i></span>
+        <span class="main">
+          <strong class="wrap">${summary.label}</strong>
+          <span class="meta wrap">${summary.detail}</span>
+        </span>
+        <span class="trail">
+          ${
+            summary.actionable
+              ? html`
+                  <button class="primary" disabled=${busy} onClick=${onUpdate}>
+                    Update now
+                  </button>
+                `
+              : null
+          }
+        </span>
+      </li>
+    </ul>
+  `;
+}
+
 export function PointerCard() {
   const [local, setLocal] = useState(null);
   const [remote, setRemote] = useState(null);
@@ -190,6 +292,15 @@ export function PointerCard() {
                 </div>
               </form>
               <p class="stacked-sm" role="status">${current?.message}</p>
+              ${
+                local.configured
+                  ? html`<${DriftRow}
+                      drift=${local.drift}
+                      busy=${busy}
+                      onUpdate=${() => act("push")}
+                    />`
+                  : null
+              }
               ${
                 local.configured
                   ? html`

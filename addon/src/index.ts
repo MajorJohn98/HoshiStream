@@ -12,6 +12,7 @@ import { TorrServerClient } from "./torrserver-client.ts";
 import { TranscodeManager, detectVideoEncoder } from "./transcode.ts";
 import { MdnsResponder } from "./mdns.ts";
 import { PointerClient } from "./pointer.ts";
+import { PointerDriftMonitor } from "./pointer-drift.ts";
 import { DeviceNames } from "./device-names.ts";
 import { Tags } from "./tags.ts";
 import { SubtitleService } from "./subtitle-service.ts";
@@ -105,6 +106,7 @@ export async function startHoshiStream(settings = config) {
     statePath: settings.POINTER_STATE_PATH,
     settingsPath: settings.POINTER_SETTINGS_PATH,
   });
+  const pointerDrift = new PointerDriftMonitor(pointer);
   const server = createServer(
     createHandler({
       library,
@@ -147,6 +149,7 @@ export async function startHoshiStream(settings = config) {
     closePromise ??= (async () => {
       closing = true;
       mdns?.close();
+      pointerDrift.stop();
       playback.stop();
       telemetry.stop();
       const analysisStopped = analysis.cancel();
@@ -202,6 +205,7 @@ export async function startHoshiStream(settings = config) {
     }
     await archiver.start();
     telemetry.start();
+    pointerDrift.start();
     void runSpeedTest().catch((error: unknown) => {
       if (!closing)
         console.error(

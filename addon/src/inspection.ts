@@ -4,6 +4,7 @@ import type { LibraryEntry, SearchImport, SeriesSource } from "./types.ts";
 import type { Library } from "./library.ts";
 import { inspectLocalEntry } from "./local-media.ts";
 import {
+  applyEpisodeOverrides,
   compositeFileId,
   fileSourceIndex,
   rawFileId,
@@ -94,7 +95,10 @@ export async function inspectEntry(
       hash: "",
       name: entry.name,
       files: local?.files ?? [],
-      selectedFiles: local?.selectedFiles ?? [],
+      selectedFiles: applyEpisodeOverrides(
+        local?.selectedFiles ?? [],
+        entry.episodeOverrides,
+      ),
     };
   }
   const sources = torrentSources(entry);
@@ -143,19 +147,25 @@ export async function inspectEntry(
               .filter((file) => fileSourceIndex(file.id) === sourceIndex)
               .map((file) => ({ ...file, id: rawFileId(file.id) })),
     }));
-    const merged = mergeSelectedFiles(known);
-    const shadowed = sources
-      .slice(index + 1)
-      .some((later) =>
-        later.fileOverrides?.some(
-          (override) =>
-            override.included &&
-            override.season !== undefined &&
-            override.episode !== undefined &&
-            override.season === requested.season &&
-            override.episode === requested.episode,
-        ),
-      );
+    const merged = mergeSelectedFiles(known, entry.episodeOverrides);
+    // A manual repair pins the file to its slot regardless of later sources.
+    const repaired = entry.episodeOverrides?.some(
+      (override) => override.id === options.fileId,
+    );
+    const shadowed =
+      !repaired &&
+      sources
+        .slice(index + 1)
+        .some((later) =>
+          later.fileOverrides?.some(
+            (override) =>
+              override.included &&
+              override.season !== undefined &&
+              override.episode !== undefined &&
+              override.season === requested.season &&
+              override.episode === requested.episode,
+          ),
+        );
     if (shadowed || !merged.some((file) => file.id === options.fileId))
       throw new MediaSelectionError(
         "A later source replaces the requested episode",
@@ -217,7 +227,7 @@ export async function inspectEntry(
     });
   }
   const primary = inspected[0]!;
-  const selectedFiles = mergeSelectedFiles(inspected);
+  const selectedFiles = mergeSelectedFiles(inspected, entry.episodeOverrides);
   options.signal?.throwIfAborted();
   if (library && selectedFiles.length) {
     await library
@@ -272,7 +282,13 @@ export async function resolveStreamSource(
 ): Promise<{ hash: string; selectedFiles: SelectedFile[] }> {
   if (entry.localFilePath || entry.localFolderPath) {
     const local = await inspectLocalEntry(entry);
-    return { hash: "", selectedFiles: local?.selectedFiles ?? [] };
+    return {
+      hash: "",
+      selectedFiles: applyEpisodeOverrides(
+        local?.selectedFiles ?? [],
+        entry.episodeOverrides,
+      ),
+    };
   }
   if (entry.inspectionCache) {
     const { hash, selectedFiles } = entry.inspectionCache;

@@ -7,6 +7,19 @@ import { state, setState, useStore, load } from "../store.js";
 import { TagPicker } from "../components/tag-picker.js";
 import { editableSource } from "../import-state.js";
 import {
+  describeGaps,
+  mappingIssues,
+  mappingPatch,
+  mappingRows,
+  shiftEpisodes,
+} from "./episode-mapping.js";
+import {
+  POSTER_SHAPES,
+  joinNameList,
+  joinTrailers,
+  metadataPatch,
+} from "./title-metadata.js";
+import {
   SourceCheckPanel,
   pickSourceCheckFileId,
   sourceCheckBadge,
@@ -202,6 +215,125 @@ ${entry.magnetUri}</textarea>
             >Changes apply to Stremio on its next catalog refresh.</span
           >
           <button class="primary">Save changes</button>
+        </div>
+      </form>
+    <//>
+  `;
+}
+
+function MetadataTab({ state }) {
+  const entry = state.selected;
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const d = metadataPatch(Object.fromEntries(new FormData(e.target)));
+      syncSelectedEntry(await patch(state, d));
+      notify("Metadata saved");
+    } catch (error) {
+      notify(error.message);
+    }
+  };
+  // Uncontrolled fields, for the same reason as OverviewTab.
+  return html`
+    <${Section}
+      id="metadata"
+      title="Metadata"
+      note="Extra details Stremio shows on the title page. Everything is optional; blanks clear a field."
+    >
+      <form class="form-grid" key=${entry.id} onSubmit=${onSubmit}>
+        <label>
+          Year or range
+          <input
+            name="releaseInfo"
+            placeholder="2019 or 2019-2021"
+            defaultValue=${entry.releaseInfo || ""}
+          />
+        </label>
+        <label>
+          Runtime
+          <input
+            name="runtime"
+            placeholder=${entry.type === "movie" ? "From the probe when blank" : "e.g. 45m"}
+            defaultValue=${entry.runtime || ""}
+          />
+        </label>
+        <label>
+          Rating (0–10)
+          <input
+            name="imdbRating"
+            inputmode="decimal"
+            placeholder="7.8"
+            defaultValue=${entry.imdbRating || ""}
+          />
+        </label>
+        <label>
+          Poster shape
+          <select name="posterShape">
+            ${POSTER_SHAPES.map(
+              ([value, label]) => html`
+                <option
+                  value=${value}
+                  selected=${(entry.posterShape || "poster") === value}
+                >
+                  ${label}
+                </option>
+              `,
+            )}
+          </select>
+        </label>
+        <label class="span2">
+          Cast
+          <input
+            name="cast"
+            placeholder="Comma-separated names"
+            defaultValue=${joinNameList(entry.cast)}
+          />
+        </label>
+        <label>
+          Director
+          <input
+            name="director"
+            placeholder="Comma-separated"
+            defaultValue=${joinNameList(entry.director)}
+          />
+        </label>
+        <label>
+          Writer
+          <input
+            name="writer"
+            placeholder="Comma-separated"
+            defaultValue=${joinNameList(entry.writer)}
+          />
+        </label>
+        <label>
+          Country
+          <input name="country" defaultValue=${entry.country || ""} />
+        </label>
+        <label>
+          Language
+          <input name="language" defaultValue=${entry.language || ""} />
+        </label>
+        <label class="span2">
+          Logo URL
+          <input name="logo" type="url" defaultValue=${entry.logo || ""} />
+        </label>
+        <label class="span2">
+          Awards
+          <input name="awards" defaultValue=${entry.awards || ""} />
+        </label>
+        <label class="span2">
+          Trailers
+          <textarea
+            name="trailers"
+            placeholder="One YouTube link or id per line"
+          >
+${joinTrailers(entry.trailers)}</textarea>
+        </label>
+        <div class="span2 row between">
+          <span class="inline-note"
+            >Cast and tags become tappable search links in Stremio.</span
+          >
+          <button class="primary">Save metadata</button>
         </div>
       </form>
     <//>
@@ -547,53 +679,79 @@ function CachedFilesTable({ state, cache }) {
 }
 
 function MappingTable({ state }) {
-  const tableRef = useRef(null);
   const [busy, run] = useInspect(state);
-  const overrides = new Map(
-    (state.selected.fileOverrides || []).map((x) => [x.id, x]),
+  const initialRows = mappingRows(
+    state.inspection.files,
+    state.inspection.selectedFiles,
+    state.selected.fileOverrides,
   );
+  const [rows, setRows] = useState(initialRows);
+  const [shiftBy, setShiftBy] = useState(1);
+  const issues = mappingIssues(rows);
+  const dirty = JSON.stringify(rows) !== JSON.stringify(initialRows);
+  const repaired = Boolean(state.selected.episodeOverrides?.length);
+  const update = (id, change) =>
+    setRows((current) =>
+      current.map((row) => (row.id === id ? { ...row, ...change } : row)),
+    );
   const automap = async () => {
     setState({
-      selected: await patch(state, { fileOverrides: [] }),
+      selected: await patch(state, { fileOverrides: [], episodeOverrides: [] }),
       inspection: null,
     });
+    notify("Automatic mapping restored");
     await run(false);
   };
   const saveMap = async () => {
-    const fileOverrides = [
-      ...tableRef.current.querySelectorAll("[data-file]"),
-    ].map((r) => ({
-      id: Number(r.dataset.file),
-      included: r.querySelector(".include").checked,
-      season: Number(r.querySelector(".season").value),
-      episode: Number(r.querySelector(".episode").value),
-    }));
+    if (issues.duplicates.size) {
+      notify("Two files share one episode. Fix the highlighted rows first.");
+      return;
+    }
     setState({
-      selected: await patch(state, { fileOverrides }),
+      selected: await patch(
+        state,
+        mappingPatch(rows, initialRows, state.selected),
+      ),
       inspection: null,
     });
     notify("Mapping saved");
     await run(false);
   };
-  const seasonOfFile = (f) => {
-    const o = overrides.get(f.id);
-    const sel = state.inspection.selectedFiles.find((x) => x.id === f.id);
-    return o?.season ?? sel?.season;
-  };
+  const rowOf = new Map(rows.map((row) => [row.id, row]));
+  const seasonOfFile = (f) => rowOf.get(f.id)?.season;
   const tabs = useSeasonTabs(state.inspection.files, seasonOfFile);
+  const shift = (direction) => {
+    const by = direction * Math.abs(Number(shiftBy) || 0);
+    const next = shiftEpisodes(
+      rows,
+      by,
+      (row) => tabs.seasons.length < 2 || row.season === tabs.season,
+    );
+    if (!next) {
+      notify("That shift would push an episode below 1.");
+      return;
+    }
+    setRows(next);
+  };
+  const scope = tabs.seasons.length < 2 ? "all" : "season " + tabs.season;
   return html`
     <${Section}
       id="files"
       title="Files"
       note=${
         state.inspection.files.length +
-        " files found. Choose which to use and map seasons and episodes."
+        " files found. Choose which to use and map seasons and episodes." +
+        (repaired ? " This series has a saved manual mapping." : "")
       }
       action=${html`
         <button class="secondary" disabled=${busy} onClick=${automap}>
           Restore automatic mapping
         </button>
-        <button class="primary" disabled=${busy} onClick=${saveMap}>
+        <button
+          class="primary"
+          disabled=${busy || !dirty || issues.duplicates.size > 0}
+          onClick=${saveMap}
+        >
           Save mapping
         </button>
       `}
@@ -603,11 +761,41 @@ function MappingTable({ state }) {
         season=${tabs.season}
         onChange=${tabs.setSeason}
         counts=${(season) =>
-          state.inspection.files.filter((f) => seasonOfFile(f) === season)
-            .length}
+          rows.filter((row) => row.included && row.season === season).length}
       />
+      <div class="row mapping-tools">
+        <label class="row">
+          <span class="muted">Shift episodes (${scope}) by</span>
+          <input
+            type="number"
+            min="1"
+            class="shift-by"
+            value=${shiftBy}
+            onInput=${(e) => setShiftBy(Number(e.target.value))}
+          />
+        </label>
+        <button class="secondary" disabled=${busy} onClick=${() => shift(-1)}>
+          − Shift down
+        </button>
+        <button class="secondary" disabled=${busy} onClick=${() => shift(1)}>
+          + Shift up
+        </button>
+      </div>
+      ${
+        issues.duplicates.size
+          ? html`<p class="inline-note danger-note">
+              Two files are mapped to the same episode. Change one of the
+              highlighted rows before saving.
+            </p>`
+          : issues.gaps.length
+            ? html`<p class="inline-note muted">
+                ${describeGaps(issues.gaps)}. Gaps are allowed; check that
+                nothing is mis-numbered.
+              </p>`
+            : null
+      }
       <div class="tablewrap scroll-table">
-        <table class="files" ref=${tableRef}>
+        <table class="files mapping">
           <thead>
             <tr>
               <th>Use</th>
@@ -618,18 +806,23 @@ function MappingTable({ state }) {
             </tr>
           </thead>
           <tbody>
-            ${state.inspection.files.map((f, i) => {
-              const o = overrides.get(f.id);
-              const s = state.inspection.selectedFiles.find(
-                (x) => x.id === f.id,
-              );
+            ${state.inspection.files.map((f) => {
+              const row = rowOf.get(f.id);
+              const dup = issues.duplicates.has(f.id);
               return html`
-                <tr key=${f.id} data-file=${f.id} hidden=${!tabs.visible(f)}>
+                <tr
+                  key=${f.id}
+                  data-file=${f.id}
+                  hidden=${!tabs.visible(f)}
+                  class=${dup ? "dup" : row.included ? "" : "off"}
+                >
                   <td>
                     <input
                       class="include"
                       type="checkbox"
-                      checked=${o?.included ?? Boolean(s)}
+                      checked=${row.included}
+                      onChange=${(e) =>
+                        update(f.id, { included: e.target.checked })}
                     />
                   </td>
                   <td class="filename" title=${f.path}>${baseName(f.path)}</td>
@@ -638,8 +831,10 @@ function MappingTable({ state }) {
                     <input
                       class="season"
                       type="number"
-                      min="1"
-                      defaultValue=${o?.season || s?.season || 1}
+                      min="0"
+                      value=${row.season}
+                      onInput=${(e) =>
+                        update(f.id, { season: Number(e.target.value) })}
                     />
                   </td>
                   <td>
@@ -647,7 +842,9 @@ function MappingTable({ state }) {
                       class="episode"
                       type="number"
                       min="1"
-                      defaultValue=${o?.episode || s?.episode || i + 1}
+                      value=${row.episode}
+                      onInput=${(e) =>
+                        update(f.id, { episode: Number(e.target.value) })}
                     />
                   </td>
                 </tr>
@@ -1164,6 +1361,7 @@ function StorageTab({ state }) {
 // stays short. state.tab (also set by Storage deep links) picks the tab.
 const SECTIONS = [
   ["overview", "Details", OverviewTab],
+  ["metadata", "Metadata", MetadataTab],
   ["source", "Source", SourceTab],
   ["files", "Files", FilesTab],
   ["playback", "Playback check", PlaybackTab],

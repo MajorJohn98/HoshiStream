@@ -1479,6 +1479,33 @@ table.files input[type="number"] {
   padding: 5px 8px;
   border-radius: 8px;
 }
+.mapping-tools {
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 12px;
+  flex-wrap: wrap;
+}
+.mapping-tools label {
+  gap: 8px;
+  align-items: center;
+}
+.mapping-tools .shift-by {
+  width: 56px;
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+.inline-note.danger-note {
+  color: var(--red);
+}
+table.mapping tr.off td.filename {
+  color: var(--muted);
+}
+table.mapping tr.dup td {
+  background: rgba(255, 119, 119, 0.08);
+}
+table.mapping tr.dup input[type="number"] {
+  border-color: var(--red);
+}
 .tablewrap > p {
   padding: 0 16px 14px;
 }

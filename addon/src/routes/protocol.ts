@@ -133,6 +133,7 @@ export const handleProtocol: RouteHandler = async (
     transcode,
     tags,
     subtitles,
+    volumes,
   },
   { request, response, url, method },
 ) => {
@@ -196,6 +197,8 @@ export const handleProtocol: RouteHandler = async (
             ),
           }
         : undefined,
+      undefined,
+      volumes,
     );
     return noStoreReply(response, 200, result);
   }

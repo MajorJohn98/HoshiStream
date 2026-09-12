@@ -126,7 +126,17 @@ use the whole-stack command for generated recipient credentials.
 ## When your IP changes
 
 Pointer-based requests can fail until you click **Register / update** again.
-The menu flags a changed address. This is not automatic IP tracking.
+This is not automatic IP tracking: nothing is pushed without a click.
+
+What the app does on its own is **read** the remote record once at start-up
+and once more whenever this computer's LAN address changes, using the same
+request as **Check service**. The result appears as a row on the Pointer card
+(Devices) — "Remote points at 192.168.1.2; this computer is 192.168.1.4" —
+with an **Update now** button that runs the ordinary push. The macOS menu bar
+and Windows tray show one notification per such observation with an
+**Update Remote Pointer** action. There is no retry loop and no polling of
+the service; if the check fails (offline at login), the card says so and the
+next LAN change or a manual **Check service** tries again.
 **Get started > Copy direct LAN URL** and the native **Copy Direct LAN URL**
 remain available when the pointer service is unavailable. Browser clients
 that block HTTPS-to-HTTP LAN redirects must use this direct URL; it needs
@@ -135,8 +145,9 @@ reinstalling in those clients when the LAN address changes.
 ## States and recovery
 
 Opening Activity or saving setup only reads/writes local state. **Check service**
-is a separate manual request. Status is observed evidence, not a continuous
-guarantee of service availability.
+is a separate manual request; the automatic start-up / LAN-change read above is
+the only other time the service is contacted without a click. Status is
+observed evidence, not a continuous guarantee of service availability.
 
 | State | Action |
 |---|---|

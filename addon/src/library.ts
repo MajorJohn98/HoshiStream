@@ -22,6 +22,7 @@ import {
 import { sourceCheckSchema, type SourceCheck } from "./source-check-types.ts";
 import {
   libraryEntrySchema,
+  TITLE_METADATA_FIELDS,
   type CreateEntry,
   type DiskCopy,
   type InspectionCache,
@@ -270,6 +271,15 @@ export class Library {
         if (input.poster === null) delete candidate.poster;
         if (input.background === null) delete candidate.background;
         if (input.tags === null) delete candidate.tags;
+        for (const field of TITLE_METADATA_FIELDS)
+          if (input[field] === null) delete candidate[field];
+        if ("episodeOverrides" in input) {
+          // Repairs are not part of the source definition: the cached
+          // selection is stale, but source checks and probes still apply.
+          if (!input.episodeOverrides?.length)
+            delete candidate.episodeOverrides;
+          delete candidate.inspectionCache;
+        }
         if (input.extraSources) {
           candidate.extraSources = input.extraSources.map((source) => {
             const original = current.extraSources?.find(

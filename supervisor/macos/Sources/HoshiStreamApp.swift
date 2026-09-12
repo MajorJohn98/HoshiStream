@@ -4,8 +4,9 @@ import Darwin
 import IOKit.pwr_mgt
 import ServiceManagement
 import UniformTypeIdentifiers
+import UserNotifications
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let status = NSMenuItem(title: "Starting…", action: nil, keyEquivalent: "")
     private let startItem = NSMenuItem(title: "Restart Server", action: #selector(restartServer), keyEquivalent: "r")
@@ -22,6 +23,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sleepAssertionHeld = false
     private var receivedMagnetThisLaunch = false
     private var attemptedWelcome = false
+    // `checkedAt` of the last drift observation we notified about, so one
+    // automatic check produces at most one banner.
+    private var notifiedDriftAt: String?
+    private static let driftCategory = "com.hoshistream.pointer-drift"
+    private static let driftAction = "com.hoshistream.pointer-drift.update"
     private lazy var magnetLinks = MagnetLinkReceiver(
         credentials: { [weak self] in
             guard let self, let token = self.token else { return nil }
@@ -104,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        registerNotificationCategories()
         statusItem.button?.image = NSImage(systemSymbolName: "sparkles.tv", accessibilityDescription: "HoshiStream")
         status.isEnabled = false
         startItem.target = self
@@ -358,6 +365,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         pointerItem.isHidden = false
+        notifyPointerDrift(pointer.drift)
         if pointerItem.isEnabled {
             switch pointer.state {
             case "stale": pointerItem.title = "Update Remote Pointer — IP changed"
@@ -367,6 +375,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case "unregistered": pointerItem.title = "Register Remote Pointer"
             default: pointerItem.title = "Update Remote Pointer"
             }
+        }
+    }
+
+    // Notifications need a bundle; the guard keeps a bare dev binary from
+    // tripping UNUserNotificationCenter's bundle-proxy assertion.
+    private var notificationsAvailable: Bool { Bundle.main.bundleIdentifier != nil }
+
+    private func registerNotificationCategories() {
+        guard notificationsAvailable else { return }
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        let update = UNNotificationAction(identifier: Self.driftAction, title: "Update Remote Pointer", options: [])
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: Self.driftCategory, actions: [update], intentIdentifiers: [], options: []),
+        ])
+    }
+
+    // The addon reads the remote record once at start-up and once per LAN
+    // address change. When it points somewhere else, say so once and offer the
+    // same manual push the menu item runs. Nothing here pushes on its own.
+    private func notifyPointerDrift(_ drift: PointerDrift?) {
+        guard let drift, drift.outcome == "remote-mismatch",
+              let checkedAt = drift.checkedAt, checkedAt != notifiedDriftAt,
+              notificationsAvailable else { return }
+        notifiedDriftAt = checkedAt
+        let host = { (value: String?) in value.flatMap { URL(string: $0)?.host } ?? "unknown" }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Remote pointer is out of date"
+            content.body = "Remote points at \(host(drift.remoteBaseUrl)); this Mac is \(host(drift.localBaseUrl))."
+            content.categoryIdentifier = Self.driftCategory
+            center.add(UNNotificationRequest(identifier: Self.driftCategory, content: content, trigger: nil))
+        }
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        defer { completionHandler() }
+        guard response.notification.request.content.categoryIdentifier == Self.driftCategory else { return }
+        switch response.actionIdentifier {
+        case Self.driftAction, UNNotificationDefaultActionIdentifier:
+            DispatchQueue.main.async { [weak self] in self?.pushPointer() }
+        default:
+            break
         }
     }
 
@@ -623,12 +688,20 @@ private struct SpeedResult: Decodable {
     let mbps: Double
 }
 
+private struct PointerDrift: Decodable {
+    let outcome: String
+    let checkedAt: String?
+    let remoteBaseUrl: String?
+    let localBaseUrl: String?
+}
+
 private struct PointerStatus: Decodable {
     let configured: Bool
     let stale: Bool?
     let state: String?
     let usable: Bool?
     let manifestUrl: String?
+    let drift: PointerDrift?
 }
 
 private struct PointerFailure: Decodable {

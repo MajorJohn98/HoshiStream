@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   compatibleStreams,
+  describe as describeStream,
+  notWebReady,
   presentStreams,
+  resolutionLabel,
   resolveClientAwareUrls,
   resolvePublicUrls,
   rewritePublicUrl,
   streamBehaviorHints,
 } from "../src/streams.ts";
+import type { DirectPlay } from "../src/direct-play.ts";
 
 const fallback = {
   addonUrl: "http://192.168.1.50:7000",
@@ -117,6 +121,125 @@ describe("rewritePublicUrl", () => {
       videoSize: 1_000,
       bingeGroup: "hoshistream-hoshi:test",
     });
+  });
+
+  it("flags formats browsers cannot decode and carries the subtitle hash", () => {
+    const file = { id: 1, path: "Movie.mkv", length: 10 };
+    expect(
+      streamBehaviorHints("hoshi:x", file, {
+        directPlay: {
+          videoCodec: "hevc",
+          audioCodec: "aac",
+          compatibility: "risky",
+          warnings: [],
+        },
+        videoHash: "8e245d9679d31e12",
+      }),
+    ).toMatchObject({ notWebReady: true, videoHash: "8e245d9679d31e12" });
+    const clean = streamBehaviorHints("hoshi:x", file, {
+      directPlay: {
+        videoCodec: "h264",
+        audioCodec: "aac",
+        container: "mkv",
+        compatibility: "direct",
+        warnings: [],
+      },
+    });
+    expect(clean).not.toHaveProperty("notWebReady");
+    expect(clean).not.toHaveProperty("videoHash");
+  });
+});
+
+describe("notWebReady", () => {
+  const probe = (fields: Partial<DirectPlay>): DirectPlay => ({
+    compatibility: "direct",
+    warnings: [],
+    ...fields,
+  });
+  it.each([
+    [{ videoCodec: "hevc" }, true],
+    [{ videoCodec: "H265" }, true],
+    [{ videoCodec: "mpeg4" }, true],
+    [{ videoCodec: "vc1" }, true],
+    [{ audioCodec: "dts" }, true],
+    [{ audioCodec: "truehd" }, true],
+    [{ container: "avi" }, true],
+    [
+      { container: "matroska,webm", videoCodec: "h264", audioCodec: "aac" },
+      false,
+    ],
+    [{ videoCodec: "av1", audioCodec: "opus" }, false],
+    [{ audioCodec: "ac3" }, false],
+    [{}, false],
+  ])("judges %j as %s", (fields, expected) => {
+    expect(notWebReady(probe(fields))).toBe(expected);
+  });
+});
+
+describe("describe", () => {
+  const file = { id: 1, path: "Movie.mkv", length: 4_500_000_000 };
+
+  it("names the source, resolution, codecs, and size on one line", () => {
+    expect(
+      describeStream("Torrent", file, {
+        directPlay: {
+          width: 1920,
+          height: 800,
+          videoCodec: "h264",
+          audioCodec: "eac3",
+          bitrateMbps: 6.24,
+          compatibility: "direct",
+          warnings: [],
+        },
+      }),
+    ).toBe("Torrent · 1080p · H.264 · E-AC3 · 4.5 GB\n6.2 Mbps average");
+  });
+
+  it("adds the player caveat as its own line and skips unknowns", () => {
+    const text = describeStream("Disk", file, {
+      directPlay: {
+        videoCodec: "hevc",
+        compatibility: "risky",
+        warnings: ["hevc video needs a capable player"],
+      },
+    });
+    expect(text.split("\n")).toEqual([
+      "Disk · HEVC · 4.5 GB",
+      "Check player: hevc video needs a capable player",
+    ]);
+  });
+
+  it("falls back to the bare source and size before a probe", () => {
+    expect(describeStream("Local", file, {})).toBe("Local · 4.5 GB");
+  });
+
+  it("upper-cases codecs it has no friendly name for", () => {
+    expect(
+      describeStream("Torrent", file, {
+        directPlay: {
+          videoCodec: "prores",
+          audioCodec: "alac",
+          compatibility: "direct",
+          warnings: [],
+        },
+      }).split("\n")[0],
+    ).toBe("Torrent · PRORES · ALAC · 4.5 GB");
+  });
+});
+
+describe("resolutionLabel", () => {
+  it.each([
+    [3840, 2160, "2160p"],
+    [3840, 1600, "2160p"],
+    [1920, 1080, "1080p"],
+    [1920, 804, "1080p"],
+    [1280, 720, "720p"],
+    [720, 576, "576p"],
+    [720, 480, "480p"],
+    [640, 360, "360p"],
+    [undefined, undefined, undefined],
+  ])("labels %sx%s as %s", (width, height, label) => {
+    expect(resolutionLabel(width, height)).toBe(label);
   });
 });
 
@@ -253,9 +376,9 @@ describe("presentStreams", () => {
       lower.url,
       direct.url,
     ]);
-    expect(streams[0].description).toBe(lower.description);
+    expect(streams[0].description).toBe(`${lower.description}\nfits your line`);
     expect(streams[1].description).toBe(
-      "Torrent • Movie.mkv • needs 12.0 Mbps, line ~9 Mbps",
+      "Torrent • Movie.mkv\nabove your line · needs 12.0 Mbps, line ~9 Mbps",
     );
     expect(streams.every((stream) => !("bitrateMbps" in stream))).toBe(true);
   });
@@ -266,7 +389,9 @@ describe("presentStreams", () => {
       direct.url,
       lower.url,
     ]);
-    expect(streams[0].description).toBe(direct.description);
+    expect(streams[0].description).toBe(
+      `${direct.description}\nfits your line`,
+    );
   });
 
   it("changes nothing when the bitrate or line speed is unknown", () => {

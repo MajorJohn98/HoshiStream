@@ -29,6 +29,7 @@ export type FileOverride = {
   season?: number;
   episode?: number;
 };
+export type EpisodeOverride = { id: number; season: number; episode: number };
 
 // Multi-torrent series: TorrServer file ids are per-torrent indexes, so files
 // from source k get `k * SOURCE_STRIDE + id` to stay unique per entry. Source
@@ -138,12 +139,18 @@ export function selectMediaFiles(
 // Combines per-source selections into one episode list: ids become composite,
 // each file remembers its torrent's hash, and when two sources claim the same
 // (season, episode) the later source wins — adding a better pack afterwards
-// replaces the older episodes.
+// replaces the older episodes. Manual repairs (episodeOverrides, keyed by
+// composite id) are applied here so a repaired file always keeps its slot and
+// is never dropped as an automatic duplicate.
 export function mergeSelectedFiles(
   sources: { hash: string; selectedFiles: SelectedFile[] }[],
+  overrides: EpisodeOverride[] = [],
 ): SelectedFile[] {
-  const byEpisode = new Map<string, SelectedFile>();
-  const unmapped: SelectedFile[] = [];
+  const byOverrideId = new Map(
+    overrides.map((override) => [override.id, override]),
+  );
+  const repaired: SelectedFile[] = [];
+  const automatic: SelectedFile[] = [];
   for (const [sourceIndex, source] of sources.entries()) {
     for (const file of source.selectedFiles) {
       const mapped: SelectedFile = {
@@ -151,30 +158,95 @@ export function mergeSelectedFiles(
         id: compositeFileId(sourceIndex, file.id),
         ...(sourceIndex > 0 ? { hash: source.hash } : {}),
       };
-      if (mapped.season === undefined || mapped.episode === undefined) {
-        unmapped.push(mapped);
-        continue;
+      const override = byOverrideId.get(mapped.id);
+      if (override) {
+        repaired.push({
+          ...mapped,
+          season: override.season,
+          episode: override.episode,
+        });
+      } else {
+        automatic.push(mapped);
       }
-      const key = `${mapped.season}:${mapped.episode}`;
-      const existing = byEpisode.get(key);
-      if (existing) {
-        console.log(
-          JSON.stringify({
-            level: "warn",
-            event: "duplicate_episode_dropped",
-            season: mapped.season,
-            episode: mapped.episode,
-            droppedFileId: existing.id,
-          }),
-        );
-      }
-      byEpisode.set(key, mapped);
     }
   }
-  return [...byEpisode.values(), ...unmapped].sort(
+  const claimed = new Set(
+    repaired.map((file) => `${file.season}:${file.episode}`),
+  );
+  const byEpisode = new Map<string, SelectedFile>();
+  const unmapped: SelectedFile[] = [];
+  for (const file of automatic) {
+    if (file.season === undefined || file.episode === undefined) {
+      unmapped.push(file);
+      continue;
+    }
+    const key = `${file.season}:${file.episode}`;
+    if (claimed.has(key)) {
+      logDropped("episode_override_shadowed", file);
+      continue;
+    }
+    const existing = byEpisode.get(key);
+    if (existing) logDropped("duplicate_episode_dropped", existing);
+    byEpisode.set(key, file);
+  }
+  return sortEpisodes([...repaired, ...byEpisode.values(), ...unmapped]);
+}
+
+function logDropped(event: string, file: SelectedFile): void {
+  console.log(
+    JSON.stringify({
+      level: "warn",
+      event,
+      season: file.season,
+      episode: file.episode,
+      droppedFileId: file.id,
+    }),
+  );
+}
+
+function sortEpisodes(files: SelectedFile[]): SelectedFile[] {
+  return files.sort(
     (a, b) =>
       (a.season ?? 0) - (b.season ?? 0) ||
       (a.episode ?? 0) - (b.episode ?? 0) ||
       a.path.localeCompare(b.path),
   );
+}
+
+// Applies manual season/episode repairs to a single-source selection (local
+// folders, which never go through mergeSelectedFiles). Overridden files keep
+// their slot; an automatically mapped file on the same (season, episode) is
+// dropped so Stremio never sees two videos for one episode. Overrides for
+// files that are no longer selected are ignored.
+export function applyEpisodeOverrides(
+  files: SelectedFile[],
+  overrides: EpisodeOverride[] = [],
+): SelectedFile[] {
+  if (!overrides.length) return files;
+  const byId = new Map(overrides.map((override) => [override.id, override]));
+  const repaired: SelectedFile[] = [];
+  const automatic: SelectedFile[] = [];
+  for (const file of files) {
+    const override = byId.get(file.id);
+    if (override) {
+      repaired.push({
+        ...file,
+        season: override.season,
+        episode: override.episode,
+      });
+    } else {
+      automatic.push(file);
+    }
+  }
+  if (!repaired.length) return files;
+  const claimed = new Set(
+    repaired.map((file) => `${file.season}:${file.episode}`),
+  );
+  const kept = automatic.filter((file) => {
+    if (file.season === undefined || file.episode === undefined) return true;
+    if (!claimed.has(`${file.season}:${file.episode}`)) return true;
+    logDropped("episode_override_shadowed", file);
+    return false;
+  });
+  return sortEpisodes([...repaired, ...kept]);
 }

@@ -26,7 +26,7 @@ GET /addon/{token}/meta/{movie|series}/{id}.json
 GET /addon/{token}/stream/{movie|series}/{id}.json
 ```
 
-`{extra}` is a URL-encoded query string (e.g. `search=title`, `genre=Comedy`, or `skip=100`). `genre` matches entry tags case-insensitively; catalog and meta previews carry the entry's tags as `genres`. Manifest, catalog, meta, and stream responses are served with `cache-control: no-store` so library changes appear immediately; all responses send `access-control-allow-origin: *`.
+`{extra}` is a URL-encoded query string (e.g. `search=title`, `genre=Comedy`, or `skip=100`). `genre` matches entry tags case-insensitively; catalog and meta previews carry the entry's tags as `genres`. Both previews also carry whatever presentation metadata the entry has (`releaseInfo`, `runtime`, `imdbRating`, `cast`, `director`, `writer`, `country`, `language`, `logo`, `awards`, `trailers`), the entry's `posterShape` (default `poster`), `links[]` for every tag (`Genres`) and cast member (`Cast`) as `stremio:///search?search=<name>`, and — for movies — `behaviorHints.defaultVideoId` set to the entry id so the detail page opens straight into the stream picker. A movie without a typed `runtime` gets one derived from its current source's probe (`"1h 52m"`). Manifest, catalog, meta, and stream responses are served with `cache-control: no-store` so library changes appear immediately; all responses send `access-control-allow-origin: *`.
 
 ## IDs
 
@@ -40,7 +40,7 @@ For torrent entries, the stream `url` is TorrServer's `/play/{hash}/{id}` with i
 ```json
 {
   "name": "HoshiStream",
-  "description": "Torrent • 1.4 GB",
+  "description": "Torrent · 1080p · H.264 · E-AC3 · 1.4 GB\n6.2 Mbps average\nfits your line",
   "behaviorHints": {
     "filename": "path/inside/torrent.mkv",
     "videoSize": 1400000000,
@@ -49,7 +49,12 @@ For torrent entries, the stream `url` is TorrServer's `/play/{hash}/{id}` with i
 }
 ```
 
-Series episodes are resolved from filename patterns (`S01E02`, `1x02`) or `fileOverrides`; files under bonus-content folders (featurettes, deleted scenes, extras) are excluded when real episodes exist. A missing match returns `{"streams":[]}`.
+The `description` is plain text, up to four lines, built from the cached probe: source label (`Torrent`, `Disk`, `Disk (syncing)`, `Local`), resolution class, video and audio codec, and size on the first line; the average bitrate when known; any `Check player:` caveat; and the line-fit verdict (`fits your line` / `above your line · needs N Mbps, line ~M Mbps`) when both the bitrate and a home speed test exist. Fields the probe did not fill are omitted rather than shown as unknown. Two optional hints appear on the direct stream only:
+
+- `notWebReady: true` when the probe found a format browsers cannot decode natively — HEVC/H.265, MPEG-4 ASP, VC-1, MPEG-2 video, DTS/DTS-HD/TrueHD/Blu-ray PCM audio, or an AVI container — so Stremio Web offers its external-player path. Repaired (`Compatible • …`) streams never carry it.
+- `videoHash`: the OpenSubtitles hash (file size plus the sum of the first and last 64 KiB as 64-bit little-endian words, 16 hex digits) for Stremio's built-in subtitle matching. Computed only from files already on local disk — local entries and complete disk copies whose drive is online — never over TorrServer's `/play`, and cached by path, size and mtime.
+
+Series episodes are resolved from filename patterns (`S01E02`, `1x02`) or `fileOverrides`, then any `episodeOverrides` (manual repairs) are applied on top and win over both filename parsing and later-source replacement; files under bonus-content folders (featurettes, deleted scenes, extras) are excluded when real episodes exist. A missing match returns `{"streams":[]}`.
 
 ## Repaired streams (ADR 0010)
 
