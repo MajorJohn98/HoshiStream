@@ -8,6 +8,7 @@ import type { LibraryAnalysis } from "./library-analysis.ts";
 import type { ImportService } from "./imports/service.ts";
 import type { NativePicker } from "./native-picker.ts";
 import { Playback } from "./playback.ts";
+import type { PlaybackTelemetry } from "./playback-telemetry.ts";
 import type { PointerClient } from "./pointer.ts";
 import type { ResourceDirs } from "./resources.ts";
 import { bearerToken, validToken } from "./security.ts";
@@ -50,6 +51,7 @@ import {
   handleAnalysis,
   handleClients,
   handlePlaybackSessions,
+  handlePlaybackTelemetry,
   handlePlayer,
   handlePointer,
   handleResources,
@@ -77,6 +79,7 @@ export interface HandlerOptions {
   publicUrls: PublicUrls;
   lanRedirect?: "auto" | "off";
   playback?: Playback;
+  telemetry?: PlaybackTelemetry;
   transcode?: TranscodeManager;
   resourceDirs?: ResourceDirs;
   pointer?: PointerClient;
@@ -119,6 +122,7 @@ const API_ROUTES: RouteHandler[] = [
   handleStremioRefresh,
   handlePlayer,
   handleClients,
+  handlePlaybackTelemetry,
   handlePlaybackSessions,
   handlePointer,
   handleStatus,

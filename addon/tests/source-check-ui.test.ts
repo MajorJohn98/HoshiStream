@@ -13,6 +13,7 @@ const {
   sourceCheckSummary,
   sourceCheckKey,
   sourceCheckRows,
+  lineFitLabel,
   sourceCheckRequestOptions,
   hasReadableSample,
 } = module;
@@ -141,6 +142,29 @@ describe("source check UI helpers", () => {
       ]);
     },
   );
+
+  it("shows a line-fit verdict only when the server rule and a bitrate are known", () => {
+    const check = {
+      phase: "complete",
+      technical: { bitrateMbps: 12 },
+    };
+    expect(sourceCheckRows(check)).not.toContainEqual(
+      expect.arrayContaining(["Line fit"]),
+    );
+    expect(
+      sourceCheckRows(check, { lineMbps: 9.4, fitMbps: 7.5 }),
+    ).toContainEqual(["Line fit", "Heavy · needs 12.0 Mbps, line ~9 Mbps"]);
+    expect(lineFitLabel(4, { lineMbps: 9.4, fitMbps: 7.5 })).toBe(
+      "Fits · needs 4.0 Mbps of ~9 Mbps",
+    );
+    expect(lineFitLabel(7.5, { lineMbps: 9.4, fitMbps: 7.5 })).toContain(
+      "Fits",
+    );
+    expect(lineFitLabel(undefined, { lineMbps: 9.4, fitMbps: 7.5 })).toBe(
+      undefined,
+    );
+    expect(lineFitLabel(4, undefined)).toBe(undefined);
+  });
 
   it("reports metadata-only observations without a playback success badge", () => {
     const check = {

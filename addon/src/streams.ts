@@ -4,11 +4,46 @@ import { markStreamActivity } from "./activity.ts";
 import { directPlayLabel } from "./direct-play.ts";
 import { sourceKey } from "./disk-copy.ts";
 import { resolveStreamSource } from "./inspection.ts";
+import { fitsLine, lineFitNote } from "./line-fit.ts";
 import { directPlayForFile } from "./media-facts.ts";
+import { noteStreamTarget } from "./playback-telemetry.ts";
+import { homeSpeedMbps } from "./speedtest.ts";
 import { repairTier, repairDescription } from "./transcode.ts";
 import type { TorrServerClient } from "./torrserver-client.ts";
 
 const episodeId = /^(hoshi:[^:]+):(\d+):(\d+)$/;
+
+export interface Stream {
+  name: string;
+  description: string;
+  url: string;
+  behaviorHints: ReturnType<typeof streamBehaviorHints>;
+}
+
+// A stream plus the average bitrate it will need, known only while the list
+// is assembled; presentStreams strips it before the reply.
+export type AssembledStream = Stream & { bitrateMbps?: number };
+
+// Files the line can carry come first (original order kept within each
+// group); heavier ones stay listed with an explicit reason. Nothing is
+// hidden — the viewer may know their swarm better than a speed test does.
+export function presentStreams(
+  streams: AssembledStream[],
+  lineMbps: number | undefined,
+): Stream[] {
+  const fitting: Stream[] = [];
+  const heavy: Stream[] = [];
+  for (const { bitrateMbps, ...stream } of streams) {
+    const fits = fitsLine(bitrateMbps, lineMbps);
+    if (fits === false && bitrateMbps && lineMbps) {
+      heavy.push({
+        ...stream,
+        description: `${stream.description} • ${lineFitNote(bitrateMbps, lineMbps)}`,
+      });
+    } else fitting.push(stream);
+  }
+  return [...fitting, ...heavy];
+}
 
 export function streamBehaviorHints(entryId: string, file: SelectedFile) {
   return {
@@ -98,6 +133,7 @@ export async function getStreams(
   type: string,
   id: string,
   repair?: RepairOptions,
+  lineMbps: number | undefined = homeSpeedMbps(),
 ) {
   const requested = requestedFile([], type, id);
   const entry = await library.get(requested.entryId);
@@ -114,21 +150,25 @@ export async function getStreams(
     markStreamActivity(Date.now(), entry.id);
     void library.markStreamed(entry.id).catch(() => undefined);
     return {
-      streams: [
-        {
-          name: "HoshiStream",
-          description: describe("Local", file, assessed),
-          url: `${publicAddonUrl}/local/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${file.id}`,
-          behaviorHints: streamBehaviorHints(entry.id, file),
-        },
-        ...compatibleStreams(
-          repair,
-          publicAddonUrl,
-          accessToken,
-          assessed,
-          file,
-        ),
-      ],
+      streams: presentStreams(
+        [
+          {
+            name: "HoshiStream",
+            description: describe("Local", file, assessed),
+            url: `${publicAddonUrl}/local/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${file.id}`,
+            behaviorHints: streamBehaviorHints(entry.id, file),
+            bitrateMbps: assessed.directPlay?.bitrateMbps,
+          },
+          ...compatibleStreams(
+            repair,
+            publicAddonUrl,
+            accessToken,
+            assessed,
+            file,
+          ),
+        ],
+        lineMbps,
+      ),
     };
   }
 
@@ -141,6 +181,13 @@ export async function getStreams(
   };
   markStreamActivity(Date.now(), entry.id);
   void library.markStreamed(entry.id).catch(() => undefined);
+  noteStreamTarget({
+    entryId: entry.id,
+    hash: file.hash ?? source.hash,
+    fileId: file.id,
+    title: entry.name,
+    bitrateMbps: assessed.directPlay?.bitrateMbps,
+  });
 
   // Disk-copy entries get the stable /media URL: the router picks disk or
   // torrent per range request, so the client never reselects a stream when
@@ -174,15 +221,25 @@ export async function getStreams(
     }),
   );
   return {
-    streams: [
-      {
-        name: "HoshiStream",
-        description: describe(label, file, assessed),
-        url,
-        behaviorHints: streamBehaviorHints(entry.id, file),
-      },
-      ...compatibleStreams(repair, publicAddonUrl, accessToken, assessed, file),
-    ],
+    streams: presentStreams(
+      [
+        {
+          name: "HoshiStream",
+          description: describe(label, file, assessed),
+          url,
+          behaviorHints: streamBehaviorHints(entry.id, file),
+          bitrateMbps: assessed.directPlay?.bitrateMbps,
+        },
+        ...compatibleStreams(
+          repair,
+          publicAddonUrl,
+          accessToken,
+          assessed,
+          file,
+        ),
+      ],
+      lineMbps,
+    ),
   };
 }
 
@@ -199,11 +256,12 @@ export function compatibleStreams(
     forceTranscode?: boolean;
   },
   file: SelectedFile,
-) {
+): AssembledStream[] {
   if (!repair) return [];
   const hlsUrl = (variant: string) =>
     `${publicAddonUrl}/hls/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${file.id}/${variant}/index.m3u8`;
-  const streams = [];
+  const streams: AssembledStream[] = [];
+  const bitrate = entry.directPlay?.bitrateMbps;
   let tier = repairTier(entry.directPlay);
   // Tier V needs a hardware encoder (ADR 0010: no software fallback); without
   // one an undecodable entry gets no repaired stream rather than a CPU burn.
@@ -215,11 +273,13 @@ export function compatibleStreams(
       description: repairDescription(tier),
       url: hlsUrl("auto"),
       behaviorHints: streamBehaviorHints(entry.id, file),
+      // Remux and audio repair keep the source video, so its bitrate
+      // stands; a re-encode runs at the configured target.
+      bitrateMbps: tier === "video" ? repair.videoBitrateMbps : bitrate,
     });
   }
   // Remote clients on constrained links get a capped rendition when the
   // original bitrate clearly exceeds the configured target.
-  const bitrate = entry.directPlay?.bitrateMbps;
   if (
     repair.remoteClient &&
     repair.videoEncoder &&
@@ -231,6 +291,7 @@ export function compatibleStreams(
       description: `Lower bitrate • ${repair.videoBitrateMbps} Mbps for remote playback`,
       url: hlsUrl("video"),
       behaviorHints: streamBehaviorHints(entry.id, file),
+      bitrateMbps: repair.videoBitrateMbps,
     });
   }
   return streams;

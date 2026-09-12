@@ -264,7 +264,7 @@ Run inside the app bundle (or headless via `start-native.sh`). Boot sequence:
 
 - `fetch-node-runtime.mjs` / `fetch-torrserver.mjs` download the binaries declared in `node-lock.json` (v26.3.1) and `torrserver-lock.json` (MatriX.141.1) per platform, **verifying SHA-256**, keeping only the binary. Both darwin-arm64 and win32-x64 targets are pinned (Windows groundwork).
 - `build-macos-app.sh`: `tsc` build → assemble `build/HoshiStream.app` (swiftc compile of the two Swift sources — CLT SDK suffices) → copy dist, assets, `node_modules`, vendored binaries → ad-hoc codesign. `Info.plist` gets `HoshiStreamProjectRoot` baked in; notably the script currently hardcodes `DATA_ROOT=/Users/majorjohn/Library/Application Support/HoshiStream`, so the build script needs a tweak for other machines.
-- Shipped TorrServer tuning (`torrserver-settings.json`): 4 GiB disk-backed cache (`UseDisk:true`), 40% preload, 75% readahead, 200 connections, 600 s disconnect timeout, `RemoveCacheOnDrop`, UPnP/Rutor/Torznab search disabled. (The README still quotes older 2 GiB/25-conn/5-min numbers — `packaging/torrserver-settings.json` is what actually ships.)
+- Shipped TorrServer tuning (`torrserver-settings.json`): 4 GiB disk-backed cache (`UseDisk:true`), 40% preload, 75% readahead, 100 connections, 128 KB/s upload cap, 600 s disconnect timeout, `RemoveCacheOnDrop`, UPnP/Rutor/Torznab search disabled. (The README still quotes older 2 GiB/25-conn/5-min numbers — `packaging/torrserver-settings.json` is what actually ships.)
 
 ### Dev/utility scripts (`scripts/`)
 

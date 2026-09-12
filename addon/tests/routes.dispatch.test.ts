@@ -163,6 +163,14 @@ describe("createHandler dispatch", () => {
     });
   });
 
+  it("serves playback telemetry as an uncacheable, token-guarded list", async () => {
+    expect((await fetch(`${baseUrl}/api/playback/telemetry`)).status).toBe(401);
+    const response = await api("/api/playback/telemetry");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(await response.json()).toEqual({ streams: [] });
+  });
+
   it("reports status and falls through to 404 for unknown paths", async () => {
     const status = await api("/api/status");
     expect(status.status).toBe(200);
@@ -170,6 +178,7 @@ describe("createHandler dispatch", () => {
       status: "online",
       torrServer: { online: true, version: "1.0" },
       libraryCount: 0,
+      lineFit: { lineMbps: expect.any(Number), fitMbps: expect.any(Number) },
     });
     expect((await api("/api/nothing-here")).status).toBe(404);
     expect((await fetch(`${baseUrl}/nothing-here`)).status).toBe(404);

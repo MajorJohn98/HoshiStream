@@ -474,6 +474,10 @@ h3 {
 .dot.idle {
   background: var(--muted);
 }
+.dot.warn {
+  background: var(--yellow);
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.55);
+}
 @keyframes pulse {
   50% {
     opacity: 0.45;
@@ -1196,6 +1200,16 @@ span.danger {
 .rowitem .meta.wrap {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+.rowitem .meta.runway {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rowitem .meta.runway .dot {
+  margin: 0;
+  width: 6px;
+  height: 6px;
 }
 .rowitem .trail {
   display: flex;

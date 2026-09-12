@@ -17,11 +17,21 @@ new calls against the pinned source or running Swagger at
 | `POST /torrents` `{action:"rem", hash}` | Remove a torrent |
 | `POST /torrent/upload` (multipart) | Register one `.torrent` file; returns one `state.TorrentStatus` object, not an array (confirmed against the running pinned Swagger) |
 | `GET /play/{hash}/{id}` | Direct playback URL handed to Nuvio (rewritten to the public URL); also read by the disk-copy archiver with standard `Range` headers to copy authorized files onto registered storage volumes |
+| `POST /cache` `{action:"get", hash}` | Cache window for one torrent (`storage/state.CacheState`): `Capacity`, `Filled`, `PiecesLength`, `Pieces{index → {Completed,…}}`, `Readers[{Start,End,Reader}]` (piece indexes) and the embedded `Torrent` status. Polled every 2 s per actively streamed entry by `playback-telemetry.ts`; never retried. Answers `{}` before the cache exists, 404 for an unknown hash |
 
 ## Client behavior
 
 - Every request has a 10 s timeout (`AbortSignal.timeout`); failures raise `TorrServerError`.
 - Responses are parsed with Zod (`hash`, `stat`, `stat_string`, `file_stats[{id,path,length}]`, plus optional live stats `loaded_size`, `torrent_size`, `download_speed`, `upload_speed`, `active_peers`, `connected_seeders` surfaced by `/api/playback` — all verified against MatriX.141 `server/torr/state/state.go`); unexpected shapes fail loudly.
+- `CacheState` has **no JSON tags** (`server/torr/storage/state/state.go`), so
+  its fields arrive Go-cased (`Capacity`, not `capacity`). `Readers[].Start`,
+  `End` and `Reader` are absolute piece indexes from
+  `torrstor.Reader.getPiecesRange()`/`getReaderPiece()`; `End` is the
+  read-ahead window (`CacheSize × ReaderReadAHead %`), capped at the file end.
+  `Pieces` lists only pieces the cache currently holds. `Torrent` is
+  `t.Status()`, so `download_speed` (bytes/s) and `active_peers` come with it —
+  one call per sample. `bit_rate` is only set by TorrServer's own `/ffp`
+  path and is not relied on.
 - File IDs are TorrServer's **one-based** IDs.
 - `save_to_db: false` does not add a persistent database record. Inactive torrent
   expiry depends on settings and active readers, not a fixed five-minute rule.
@@ -45,4 +55,7 @@ new calls against the pinned source or running Swagger at
 Source references: [file listing](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/server/torr/torrent.go#L350-L363),
 [play handler](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/server/web/api/play.go#L64-L84),
 [preload calculation](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/server/torr/apihelper.go#L266-L276),
-[metadata timeout](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/server/torr/torrent.go#L111-L130).
+[metadata timeout](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/server/torr/torrent.go#L111-L130),
+[cache handler](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/server/web/api/cache.go),
+[CacheState struct](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/server/torr/storage/state/state.go),
+[cache GetState and reader ranges](https://github.com/YouROK/TorrServer/blob/d266990face0a530880a19a3e39666d21931aed9/server/torr/storage/torrstor/cache.go).

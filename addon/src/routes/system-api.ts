@@ -5,6 +5,7 @@ import { manifestWithGenres } from "../manifest.ts";
 import { lookupHostname } from "../hostname.ts";
 import { resourceReport } from "../resources.ts";
 import { currentSpeed, homeSpeedMbps, runSpeedTest } from "../speedtest.ts";
+import { lineFit } from "../line-fit.ts";
 import { PointerError, pointerSetupSchema } from "../pointer.ts";
 import { releaseInfo } from "../release.ts";
 import {
@@ -150,6 +151,15 @@ export const handlePlaybackSessions: RouteHandler = async (
   });
 };
 
+export const handlePlaybackTelemetry: RouteHandler = async (
+  { telemetry },
+  { response, url, method },
+) => {
+  if (url.pathname !== "/api/playback/telemetry" || method !== "GET")
+    return false;
+  return noStoreReply(response, 200, { streams: telemetry?.report() ?? [] });
+};
+
 export const handlePointer: RouteHandler = async (
   { pointer, addon, tags },
   { request, response, url, method },
@@ -255,6 +265,8 @@ export const handleStatus: RouteHandler = async (
       : { available: false, welcomePending: false },
     homeSpeedMbps: homeSpeedMbps(),
     speed: currentSpeed(),
+    // Same rule the stream list applies, so the UI verdict never disagrees.
+    lineFit: lineFit(homeSpeedMbps()),
     nativePicker: pickerAvailable,
     // Real client streams only; the archiver and inspections also keep
     // TorrServer busy, and those are reported elsewhere.
@@ -290,7 +302,11 @@ export const handleSpeedTest: RouteHandler = async (
   if (url.pathname !== "/api/speedtest" || method !== "POST") return false;
   try {
     const result = await runSpeedTest();
-    return reply(response, 200, { ...result, source: "measured" });
+    return reply(response, 200, {
+      ...result,
+      source: "measured",
+      effective: currentSpeed(),
+    });
   } catch (error) {
     return reply(response, 502, {
       error: error instanceof Error ? error.message : "Speed test failed",

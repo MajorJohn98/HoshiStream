@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@vercel/blob": "2.0.0",
+    "@vercel/blob": "2.8.0",
     "zod": "4.0.14"
   },
   "devDependencies": {

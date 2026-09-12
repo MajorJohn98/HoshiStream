@@ -61,7 +61,11 @@ Pick one:
    limits are enforced across all serverless instances.
 2. **Vercel Blob (fine for personal use)** — create a **Blob** store and
    connect it (`BLOB_READ_WRITE_TOKEN`). Expiry is enforced at read time and
-   rate limiting is best-effort per instance.
+   rate limiting is best-effort per instance. Records are stored as immutable
+   versions and located with the `list` API
+   ([ADR 0024](../decisions/0024-immutable-pointer-blob-versions.md)); the
+   public store's CDN cannot be trusted to serve an overwritten blob promptly,
+   so never point an older deployment at the same store expecting fresh reads.
 
 ### Optional environment variables
 

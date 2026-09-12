@@ -147,9 +147,64 @@ const ACTIVITY = {
   idle: ["idle", "Idle"],
 };
 
+// Seconds of playback already cached ahead of the player, from the add-on's
+// own sampling of TorrServer's cache window. Null when the file's bitrate is
+// unknown (no media analysis yet) — then only swarm speed is shown.
+export function runwaySummary(latest) {
+  if (!latest) return null;
+  const swarm = latest.downloadMbps.toFixed(1) + " Mbps swarm";
+  if (latest.runwaySeconds === null || latest.bitrateMbps === null) {
+    return {
+      tone: "idle",
+      label: "Runway unknown",
+      detail: swarm + " · bitrate not analyzed",
+    };
+  }
+  const tone =
+    latest.readers === 0
+      ? "idle"
+      : latest.runwaySeconds < 10 || latest.sustainable === false
+        ? "warn"
+        : "ok";
+  const label =
+    latest.readers === 0
+      ? "No reader attached"
+      : "Runway " + Math.round(latest.runwaySeconds) + " s";
+  return {
+    tone,
+    label,
+    detail:
+      swarm +
+      " vs " +
+      latest.bitrateMbps.toFixed(1) +
+      " Mbps needed · " +
+      latest.activePeers +
+      " peers",
+  };
+}
+
+function Runway({ stream }) {
+  const summary = runwaySummary(stream?.latest);
+  if (!summary) return null;
+  return html`
+    <span class="meta runway">
+      <i class="dot ${summary.tone}"></i>
+      <span>${summary.label}</span>
+      <span class="muted">· ${summary.detail}</span>
+    </span>
+  `;
+}
+
 function Playback() {
   const { activity } = useStore();
   const sessions = activity.playback;
+  const telemetry = usePoll("playback/telemetry", 3000);
+  const runways = new Map(
+    (telemetry?.streams ?? []).map((stream) => [
+      stream.hash.toLowerCase(),
+      stream,
+    ]),
+  );
   const streaming = sessions.filter(
     (session) => session.activity === "streaming",
   );
@@ -205,6 +260,13 @@ function Playback() {
                         ${fmt(session.loadedSize)} of
                         ${fmt(session.torrentSize)}
                       </span>
+                      ${
+                        session.activity === "streaming"
+                          ? html`<${Runway}
+                              stream=${runways.get(session.hash.toLowerCase())}
+                            />`
+                          : null
+                      }
                     </span>
                     <span class="trail">
                       <span class="value">

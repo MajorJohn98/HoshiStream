@@ -1,7 +1,7 @@
 import { html, useEffect, useRef, useState } from "../vendor/preact-htm.js";
 import { api, fmt } from "../api.js";
 import { createRequestGate } from "../import-state.js";
-import { markSourceCheckRequested } from "../store.js";
+import { markSourceCheckRequested, state } from "../store.js";
 
 export const ACTIVE_SOURCE_CHECK_PHASES = new Set([
   "queued",
@@ -235,9 +235,21 @@ function agoLabel(iso) {
   return Math.round(hours / 24) + " days ago";
 }
 
-export function sourceCheckRows(check) {
+// `lineFit` is the server's `{ lineMbps, fitMbps }` from /api/status, so the
+// verdict here matches the stream ordering exactly rather than re-deriving it.
+export function lineFitLabel(bitrateMbps, lineFit) {
+  if (!bitrateMbps || !lineFit || !lineFit.fitMbps) return undefined;
+  const need = bitrateMbps.toFixed(1);
+  const line = Math.round(lineFit.lineMbps);
+  return bitrateMbps <= lineFit.fitMbps
+    ? `Fits · needs ${need} Mbps of ~${line} Mbps`
+    : `Heavy · needs ${need} Mbps, line ~${line} Mbps`;
+}
+
+export function sourceCheckRows(check, lineFit) {
   if (!check) return [];
   const technical = check.technical || {};
+  const fit = lineFitLabel(technical.bitrateMbps, lineFit);
   return [
     check.checkedFiles !== undefined && check.totalFiles !== undefined
       ? [
@@ -278,6 +290,7 @@ export function sourceCheckRows(check) {
     technical.bitrateMbps
       ? ["Average bitrate", technical.bitrateMbps.toFixed(1) + " Mbps"]
       : null,
+    fit ? ["Line fit", fit] : null,
     (check.fileLength ?? technical.sizeBytes) !== undefined
       ? ["File size", fmt(check.fileLength ?? technical.sizeBytes)]
       : null,
@@ -456,7 +469,7 @@ export function SourceCheckPanel({
 
   const phase = sourceCheckPhase(check);
   const badge = sourceCheckBadge(check);
-  const rows = sourceCheckRows(check);
+  const rows = sourceCheckRows(check, state.status.lineFit);
   const history = (entry.mediaFacts ?? []).filter(
     (fact) => fact.jobId !== check?.jobId,
   );

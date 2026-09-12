@@ -31,6 +31,63 @@ const torrentListSchema = z.array(torrentStatusSchema);
 
 export type TorrentStatus = z.infer<typeof torrentStatusSchema>;
 
+// `POST /cache {action:"get"}` returns storage/state.CacheState, whose Go
+// struct has no JSON tags (verified at the pinned commit), so fields arrive
+// Go-cased. Reader Start/End/Reader are absolute piece indexes; multiply by
+// PiecesLength for bytes. A torrent without a cache yet answers `{}`.
+const cacheReaderSchema = z.object({
+  Start: z.number().int().nonnegative(),
+  End: z.number().int().nonnegative(),
+  Reader: z.number().int().nonnegative(),
+});
+
+const cachePieceSchema = z.object({
+  Id: z.number().int().nonnegative(),
+  Length: z.number().nonnegative(),
+  Size: z.number().nonnegative(),
+  Completed: z.boolean(),
+  Priority: z.number().int(),
+});
+
+const cacheStateSchema = z.object({
+  Hash: z.string().optional(),
+  Capacity: z.number().nonnegative().optional(),
+  Filled: z.number().nonnegative().optional(),
+  PiecesLength: z.number().positive().optional(),
+  PiecesCount: z.number().int().nonnegative().optional(),
+  Pieces: z.record(z.string(), cachePieceSchema).nullable().optional(),
+  Readers: z.array(cacheReaderSchema).nullable().optional(),
+  Torrent: z
+    .object({
+      download_speed: z.number().optional(),
+      upload_speed: z.number().optional(),
+      active_peers: z.number().optional(),
+      connected_seeders: z.number().optional(),
+    })
+    .nullable()
+    .optional(),
+});
+
+export interface CacheReader {
+  startPiece: number;
+  endPiece: number;
+  readerPiece: number;
+}
+
+export interface CacheState {
+  hash: string;
+  capacity: number;
+  filled: number;
+  pieceLength: number;
+  pieceCount: number;
+  /** Piece index → completed flag, for pieces the cache currently holds. */
+  completed: Map<number, boolean>;
+  readers: CacheReader[];
+  downloadSpeedBps: number;
+  activePeers: number;
+  connectedSeeders: number;
+}
+
 export class TorrServerError extends Error {
   readonly code: string;
   readonly status?: number;
@@ -148,6 +205,53 @@ export class TorrServerClient {
 
   async remove(hash: string): Promise<void> {
     await this.torrentAction({ action: "rem", hash });
+  }
+
+  /**
+   * Cache window for one registered torrent, or undefined when TorrServer
+   * has not built a cache for it yet (metadata still pending).
+   */
+  async cacheState(
+    hash: string,
+    signal?: AbortSignal,
+  ): Promise<CacheState | undefined> {
+    const response = await this.request(
+      "/cache",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "get", hash }),
+        signal,
+      },
+      1,
+    );
+    const parsed = cacheStateSchema.safeParse(await this.json(response));
+    if (!parsed.success)
+      throw new TorrServerError(
+        "TorrServer returned an invalid cache state",
+        "invalid_response",
+      );
+    const raw = parsed.data;
+    if (!raw.PiecesLength) return undefined;
+    const completed = new Map<number, boolean>();
+    for (const [index, piece] of Object.entries(raw.Pieces ?? {}))
+      completed.set(Number(index), piece.Completed);
+    return {
+      hash: raw.Hash ?? hash,
+      capacity: raw.Capacity ?? 0,
+      filled: raw.Filled ?? 0,
+      pieceLength: raw.PiecesLength,
+      pieceCount: raw.PiecesCount ?? 0,
+      completed,
+      readers: (raw.Readers ?? []).map((reader) => ({
+        startPiece: reader.Start,
+        endPiece: reader.End,
+        readerPiece: reader.Reader,
+      })),
+      downloadSpeedBps: raw.Torrent?.download_speed ?? 0,
+      activePeers: raw.Torrent?.active_peers ?? 0,
+      connectedSeeders: raw.Torrent?.connected_seeders ?? 0,
+    };
   }
 
   // Composite ids (multi-torrent series) carry the owning source's hash on

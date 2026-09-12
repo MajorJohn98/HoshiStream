@@ -8,6 +8,7 @@ import type { Library } from "../library.ts";
 import type { LibraryAnalysis } from "../library-analysis.ts";
 import type { NativePicker } from "../native-picker.ts";
 import type { Playback } from "../playback.ts";
+import type { PlaybackTelemetry } from "../playback-telemetry.ts";
 import type { PointerClient } from "../pointer.ts";
 import type { ResourceDirs } from "../resources.ts";
 import type { ImportService } from "../imports/service.ts";
@@ -31,6 +32,7 @@ export interface HandlerContext {
   publicUrls: PublicUrls;
   lanRedirect: "auto" | "off";
   playback: Playback;
+  telemetry?: PlaybackTelemetry;
   transcode?: TranscodeManager;
   resourceDirs?: ResourceDirs;
   pointer?: PointerClient;

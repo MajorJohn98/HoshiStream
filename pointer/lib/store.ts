@@ -1,4 +1,5 @@
-import { BlobNotFoundError, del, head, put } from "@vercel/blob";
+import { BlobNotFoundError, del, get, head, list, put } from "@vercel/blob";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
   POINTER_TTL_SECONDS,
@@ -6,6 +7,8 @@ import {
   legacyPointerRecordSchema,
   pointerRecordSchema,
   recordBlobPathname,
+  recordBlobPrefix,
+  recordBlobVersionPathname,
   type LegacyPointerRecord,
   type PointerRecord,
 } from "./relay.js";
@@ -107,14 +110,110 @@ function redisKey(tokenHash: string): string {
 
 // --- Blob driver (fallback when no Redis is configured) --------------------
 
-async function blobRead(pathname: string): Promise<unknown> {
-  const blob = await head(pathname);
-  const response = await fetch(`${blob.url}?ts=${Date.now()}`, {
-    signal: AbortSignal.timeout(5_000),
+// Blob reads go through Vercel's CDN, which ignores cache-busting query
+// strings and has been observed serving an in-place-overwritten record for
+// days (pushes "succeeded" while the relay kept redirecting to an old LAN
+// address). A public store offers no origin read, so v3 never overwrites:
+// each push is a new immutable blob under the tenant prefix, located with the
+// `list` API (not the CDN), and superseded versions are deleted best-effort.
+
+const BLOB_TIMEOUT_MS = 5_000;
+
+async function blobReadJson(pathname: string): Promise<unknown> {
+  const result = await get(pathname, {
+    access: "public",
+    abortSignal: AbortSignal.timeout(BLOB_TIMEOUT_MS),
   });
-  if (response.status === 404) return undefined;
-  if (!response.ok) throw new Error("Pointer storage read failed");
-  return (await response.json()) as unknown;
+  if (result === null) return undefined;
+  if (result.statusCode !== 200) throw new Error("Pointer storage read failed");
+  return (await new Response(result.stream).json()) as unknown;
+}
+
+interface BlobVersions {
+  newest: { pathname: string; url: string } | undefined;
+  superseded: string[];
+}
+
+async function blobListVersions(tokenHash: string): Promise<BlobVersions> {
+  const prefix = recordBlobPrefix(tokenHash);
+  const blobs: { pathname: string; url: string }[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await list({
+      prefix,
+      cursor,
+      abortSignal: AbortSignal.timeout(BLOB_TIMEOUT_MS),
+    });
+    for (const blob of page.blobs) {
+      blobs.push({ pathname: blob.pathname, url: blob.url });
+    }
+    cursor = page.hasMore ? page.cursor : undefined;
+  } while (cursor);
+  blobs.sort((a, b) => (a.pathname < b.pathname ? 1 : -1));
+  const [newest, ...rest] = blobs;
+  return { newest, superseded: rest.map((blob) => blob.url) };
+}
+
+// Superseded versions are garbage, not state: the newest pathname already
+// wins, so a failed cleanup must never fail the push or the redirect.
+async function blobDeleteQuietly(urls: string[]): Promise<void> {
+  if (urls.length === 0) return;
+  try {
+    await del(urls, { abortSignal: AbortSignal.timeout(BLOB_TIMEOUT_MS) });
+  } catch {
+    // Retried implicitly by the next push or delete.
+  }
+}
+
+async function legacyBlobUrl(tokenHash: string): Promise<string | undefined> {
+  try {
+    const blob = await head(recordBlobPathname(tokenHash), {
+      abortSignal: AbortSignal.timeout(BLOB_TIMEOUT_MS),
+    });
+    return blob.url;
+  } catch (error) {
+    if (error instanceof BlobNotFoundError) return undefined;
+    throw error;
+  }
+}
+
+async function blobSave(record: PointerRecord): Promise<void> {
+  const pathname = recordBlobVersionPathname(
+    record.tokenHash,
+    Date.now(),
+    randomBytes(4).toString("hex"),
+  );
+  await put(pathname, JSON.stringify(record), {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: false,
+    contentType: "application/json",
+    abortSignal: AbortSignal.timeout(BLOB_TIMEOUT_MS),
+  });
+  const { superseded } = await blobListVersions(record.tokenHash);
+  const legacy = await legacyBlobUrl(record.tokenHash).catch(() => undefined);
+  await blobDeleteQuietly([...superseded, ...(legacy ? [legacy] : [])]);
+}
+
+async function blobLoad(tokenHash: string): Promise<unknown> {
+  const { newest } = await blobListVersions(tokenHash);
+  if (newest) return blobReadJson(newest.pathname);
+  // Tenants that have not pushed since the v3 rollout still resolve through
+  // their v2 record (possibly CDN-stale) until their next push replaces it.
+  return blobReadJson(recordBlobPathname(tokenHash));
+}
+
+async function blobDelete(tokenHash: string): Promise<void> {
+  const { newest, superseded } = await blobListVersions(tokenHash);
+  const legacy = await legacyBlobUrl(tokenHash);
+  const urls = [
+    ...(newest ? [newest.url] : []),
+    ...superseded,
+    ...(legacy ? [legacy] : []),
+  ];
+  if (urls.length > 0) {
+    await del(urls, { abortSignal: AbortSignal.timeout(BLOB_TIMEOUT_MS) });
+  }
 }
 
 // --- Public API -------------------------------------------------------------
@@ -134,13 +233,7 @@ export async function savePointerRecord(record: PointerRecord): Promise<void> {
       POINTER_TTL_SECONDS,
     ]);
   } else {
-    await put(recordBlobPathname(record.tokenHash), JSON.stringify(record), {
-      access: "public",
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      contentType: "application/json",
-      cacheControlMaxAge: 60,
-    });
+    await blobSave(record);
   }
   cacheSet(record.tokenHash, record);
 }
@@ -157,7 +250,7 @@ export async function loadPointerRecord(
   try {
     const raw = redisEnv()
       ? await redisCommand(["GET", redisKey(tokenHash)])
-      : await blobRead(recordBlobPathname(tokenHash));
+      : await blobLoad(tokenHash);
     const value = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (value !== undefined && value !== null) {
       const parsed = pointerRecordSchema.parse(value);
@@ -174,12 +267,7 @@ export async function deletePointerRecord(tokenHash: string): Promise<void> {
   if (redisEnv()) {
     await redisCommand(["DEL", redisKey(tokenHash)]);
   } else {
-    try {
-      const blob = await head(recordBlobPathname(tokenHash));
-      await del(blob.url);
-    } catch (error) {
-      if (!(error instanceof BlobNotFoundError)) throw error;
-    }
+    await blobDelete(tokenHash);
   }
   cache.delete(tokenHash);
 }
@@ -191,7 +279,7 @@ export async function loadLegacyPointer(
   pushSecret: string,
 ): Promise<LegacyPointerRecord | undefined> {
   try {
-    const value = await blobRead(blobPathname(pushSecret));
+    const value = await blobReadJson(blobPathname(pushSecret));
     if (value === undefined || value === null) return undefined;
     return legacyPointerRecordSchema.parse(value);
   } catch (error) {

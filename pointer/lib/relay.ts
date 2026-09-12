@@ -126,11 +126,29 @@ export function blobPathname(pushSecret: string): string {
   return `hoshistream-pointer-${hashToken(pushSecret).slice(0, 32)}.json`;
 }
 
-// v2 records are keyed by the token hash so the relay can look any tenant up
-// directly from the URL. The (public) blob URL stays unguessable without the
-// token itself.
+// v2 records were keyed by the token hash and overwritten in place on every
+// push. Kept only so tenants that have not pushed since the v3 rollout still
+// resolve; no new writes go here.
 export function recordBlobPathname(tokenHash: string): string {
   return `hoshistream-pointer-v2-${tokenHash.slice(0, 32)}.json`;
+}
+
+// v3 records are immutable: every push writes a new blob under the tenant's
+// prefix and the newest pathname wins. A fresh pathname can never be served
+// stale by the Blob CDN, which is what broke in-place overwrites (see ADR
+// 0024). Both the prefix and the blob URLs stay unguessable without the token.
+export function recordBlobPrefix(tokenHash: string): string {
+  return `hoshistream-pointer-v3/${tokenHash.slice(0, 32)}/`;
+}
+
+// Zero-padded epoch millis sort lexicographically, so the newest version is
+// simply the greatest pathname; the random tail avoids same-millisecond clashes.
+export function recordBlobVersionPathname(
+  tokenHash: string,
+  now: number,
+  nonce: string,
+): string {
+  return `${recordBlobPrefix(tokenHash)}${String(now).padStart(15, "0")}-${nonce}.json`;
 }
 
 export interface AddonPath {

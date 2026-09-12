@@ -171,4 +171,122 @@ describe("TorrServerClient", () => {
       }),
     ).toBe("http://torrserver:8090/play/extra-hash/4");
   });
+
+  describe("cacheState", () => {
+    // Shape of storage/state.CacheState at the pinned commit: Go-cased
+    // fields (no JSON tags), Pieces keyed by piece index, Readers in piece
+    // indexes, Torrent embedding the tagged TorrentStatus.
+    const fixture = {
+      Hash: "a".repeat(40),
+      Capacity: 4294967296,
+      Filled: 12582912,
+      PiecesLength: 4194304,
+      PiecesCount: 512,
+      Torrent: {
+        title: "Fixture",
+        hash: "a".repeat(40),
+        stat: 3,
+        stat_string: "Torrent working",
+        download_speed: 1234567.8,
+        upload_speed: 1000,
+        active_peers: 9,
+        connected_seeders: 4,
+      },
+      Pieces: {
+        "10": {
+          Id: 10,
+          Length: 4194304,
+          Size: 4194304,
+          Completed: true,
+          Priority: 0,
+        },
+        "11": {
+          Id: 11,
+          Length: 4194304,
+          Size: 4194304,
+          Completed: true,
+          Priority: 0,
+        },
+        "12": {
+          Id: 12,
+          Length: 4194304,
+          Size: 1048576,
+          Completed: false,
+          Priority: 2,
+        },
+      },
+      Readers: [{ Start: 6, End: 40, Reader: 10 }],
+    };
+
+    it("posts the get action and normalizes the Go-cased state", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify(fixture)));
+      vi.stubGlobal("fetch", fetchMock);
+      const state = await new TorrServerClient(
+        "http://torrserver:8090",
+      ).cacheState("a".repeat(40));
+      expect(fetchMock.mock.calls[0][0]).toBe("http://torrserver:8090/cache");
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        action: "get",
+        hash: "a".repeat(40),
+      });
+      expect(state).toMatchObject({
+        hash: "a".repeat(40),
+        capacity: 4294967296,
+        filled: 12582912,
+        pieceLength: 4194304,
+        pieceCount: 512,
+        readers: [{ startPiece: 6, endPiece: 40, readerPiece: 10 }],
+        downloadSpeedBps: 1234567.8,
+        activePeers: 9,
+        connectedSeeders: 4,
+      });
+      expect([...state!.completed]).toEqual([
+        [10, true],
+        [11, true],
+        [12, false],
+      ]);
+    });
+
+    it("returns undefined for the empty struct TorrServer sends before the cache exists", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}")));
+      await expect(
+        new TorrServerClient("http://torrserver:8090").cacheState("abc"),
+      ).resolves.toBeUndefined();
+    });
+
+    it("tolerates null Readers/Pieces/Torrent and rejects wrong shapes", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              ...fixture,
+              Readers: null,
+              Pieces: null,
+              Torrent: null,
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ ...fixture, Readers: "nope" })),
+        )
+        .mockResolvedValueOnce(new Response("missing", { status: 404 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const client = new TorrServerClient("http://torrserver:8090", 1_000, 1);
+      const state = await client.cacheState("abc");
+      expect(state?.readers).toEqual([]);
+      expect(state?.completed.size).toBe(0);
+      expect(state?.downloadSpeedBps).toBe(0);
+      await expect(client.cacheState("abc")).rejects.toMatchObject({
+        code: "invalid_response",
+      });
+      await expect(client.cacheState("abc")).rejects.toMatchObject({
+        code: "not_found",
+      });
+      // Cache lookups are polled; they never retry on their own.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+  });
 });

@@ -110,14 +110,25 @@ to turn it off.
 
 TorrServer is configured for direct play rather than for conservative resource use. The
 values live in `<state dir>/torrserver/config/settings.json`; the reasoning for each is in
-[changelog/0.6.0-performance.md](../changelog/0.6.0-performance.md). Two need action
+[changelog/0.6.0-performance.md](../changelog/0.6.0-performance.md) and
+[changelog/pointer-freshness-and-slow-link-tuning.md](../changelog/pointer-freshness-and-slow-link-tuning.md).
+There is no application-side buffer — the player streams TorrServer's `/play` URL
+directly — so these settings and your line are the only levers. Two need action
 outside the config file:
 
 - **Peer port `32001`.** `PeersListenPort` is fixed. Inbound peer reachability can
   affect torrent throughput; router changes are outside the initial beta
   workflow and are not an installation prerequisite.
-- **Upload is enabled.** BitTorrent peers reciprocate, so a client that refuses to upload
-  gets choked or deprioritized. Use `UploadRateLimit` to cap it rather than disabling it.
+- **Upload is capped, not disabled.** BitTorrent peers reciprocate, so a client that
+  refuses to upload gets choked or deprioritized, but an unthrottled uplink on an
+  asymmetric line starves the download. The shipped `UploadRateLimit` is `128` KB/s
+  (~1 Mbps); raise it to roughly 70–80 % of your measured upload speed if you have
+  more. `ConnectionsLimit` ships at `100`.
+
+The file is seeded from `packaging/torrserver-settings.json` only when it does not
+exist, so an existing install keeps its old values after an update. To adopt new
+defaults: quit HoshiStream, edit the two keys in `settings.json` (or delete the file
+to re-seed it), then start the app again.
 
 ## Security
 

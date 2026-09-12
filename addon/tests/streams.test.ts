@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   compatibleStreams,
+  presentStreams,
   resolveClientAwareUrls,
   resolvePublicUrls,
   rewritePublicUrl,
@@ -226,5 +227,88 @@ describe("compatibleStreams", () => {
         file,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("presentStreams", () => {
+  const hints = { filename: "Movie.mkv", videoSize: 1, bingeGroup: "b" };
+  const direct = {
+    name: "HoshiStream",
+    description: "Torrent • Movie.mkv",
+    url: "http://addon/direct",
+    behaviorHints: hints,
+    bitrateMbps: 12,
+  };
+  const lower = {
+    name: "HoshiStream",
+    description: "Lower bitrate • 6 Mbps for remote playback",
+    url: "http://addon/hls",
+    behaviorHints: hints,
+    bitrateMbps: 6,
+  };
+
+  it("lists what the line can carry first and says why the rest is heavy", () => {
+    const streams = presentStreams([direct, lower], 9);
+    expect(streams.map((stream) => stream.url)).toEqual([
+      lower.url,
+      direct.url,
+    ]);
+    expect(streams[0].description).toBe(lower.description);
+    expect(streams[1].description).toBe(
+      "Torrent • Movie.mkv • needs 12.0 Mbps, line ~9 Mbps",
+    );
+    expect(streams.every((stream) => !("bitrateMbps" in stream))).toBe(true);
+  });
+
+  it("hides nothing and keeps order when everything fits", () => {
+    const streams = presentStreams([{ ...direct, bitrateMbps: 4 }, lower], 9);
+    expect(streams.map((stream) => stream.url)).toEqual([
+      direct.url,
+      lower.url,
+    ]);
+    expect(streams[0].description).toBe(direct.description);
+  });
+
+  it("changes nothing when the bitrate or line speed is unknown", () => {
+    const unprobed = { ...direct, bitrateMbps: undefined };
+    expect(presentStreams([unprobed, lower], 9)[0].url).toBe(direct.url);
+    expect(presentStreams([direct, lower], undefined)[0].description).toBe(
+      direct.description,
+    );
+  });
+});
+
+describe("compatibleStreams bitrate", () => {
+  const file = { id: 3, path: "Movie.mkv", length: 2_000_000_000 };
+  const addonUrl = "http://192.168.1.50:7000";
+  const token = "a-long-private-token-value";
+
+  it("keeps the source bitrate for remux and audio repairs", () => {
+    const [stream] = compatibleStreams(
+      { videoBitrateMbps: 8, remoteClient: false },
+      addonUrl,
+      token,
+      { id: "hoshi:x", directPlay: { audioCodec: "dts", bitrateMbps: 14 } },
+      file,
+    );
+    expect(stream.bitrateMbps).toBe(14);
+  });
+
+  it("uses the encode target for re-encodes and capped renditions", () => {
+    const streams = compatibleStreams(
+      {
+        videoBitrateMbps: 8,
+        remoteClient: true,
+        videoEncoder: "h264_videotoolbox",
+      },
+      addonUrl,
+      token,
+      {
+        id: "hoshi:x",
+        directPlay: { videoCodec: "vp9", bitrateMbps: 20 },
+      },
+      file,
+    );
+    expect(streams.map((stream) => stream.bitrateMbps)).toEqual([8, 8]);
   });
 });

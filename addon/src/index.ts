@@ -6,6 +6,7 @@ import { ImportService } from "./imports/service.ts";
 import { Library } from "./library.ts";
 import { NativePicker } from "./native-picker.ts";
 import { Playback } from "./playback.ts";
+import { PlaybackTelemetry } from "./playback-telemetry.ts";
 import { createHandler } from "./routes.ts";
 import { TorrServerClient } from "./torrserver-client.ts";
 import { TranscodeManager, detectVideoEncoder } from "./transcode.ts";
@@ -91,6 +92,7 @@ export async function startHoshiStream(settings = config) {
     settings.ACCESS_TOKEN,
   );
   const playback = new Playback(library, torrServer, settings.PLAYER);
+  const telemetry = new PlaybackTelemetry(torrServer);
   const analysis = new LibraryAnalysis(library, defaultAnalyzer(sourceChecks));
   const pointer = new PointerClient({
     pointerUrl: settings.POINTER_URL,
@@ -115,6 +117,7 @@ export async function startHoshiStream(settings = config) {
       },
       lanRedirect: settings.LAN_REDIRECT,
       playback,
+      telemetry,
       transcode,
       resourceDirs: {
         torrentCache: settings.TORRSERVER_CACHE_DIR,
@@ -141,6 +144,7 @@ export async function startHoshiStream(settings = config) {
       closing = true;
       mdns?.close();
       playback.stop();
+      telemetry.stop();
       const analysisStopped = analysis.cancel();
       server.closeIdleConnections();
       const forceClose = setTimeout(() => {
@@ -193,6 +197,7 @@ export async function startHoshiStream(settings = config) {
       mdns.start();
     }
     await archiver.start();
+    telemetry.start();
     void runSpeedTest().catch((error: unknown) => {
       if (!closing)
         console.error(

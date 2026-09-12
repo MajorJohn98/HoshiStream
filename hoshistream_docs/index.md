@@ -35,6 +35,7 @@
 - [decisions/0021-native-magnet-link-handler.md](decisions/0021-native-magnet-link-handler.md) — Opt-in macOS magnet handling with private, expiring handoff tickets and explicit Add Media review.
 - [decisions/0022-windows-native-desktop-release.md](decisions/0022-windows-native-desktop-release.md) — Windows 11 tray, self-contained installer, native integration parity and preserved private/manual behavior.
 - [decisions/0023-file-scoped-readiness-evidence.md](decisions/0023-file-scoped-readiness-evidence.md) — Separate metadata, sampled media, and player support; file-scoped facts, shared checks and explicit longer retries.
+- [decisions/0024-immutable-pointer-blob-versions.md](decisions/0024-immutable-pointer-blob-versions.md) — Pointer Blob records become immutable versions located via `list`, because the public Blob CDN served in-place overwrites stale for days.
 
 ## Guides
 
@@ -66,6 +67,8 @@
 
 ## Plans
 
+- [plans/2026-09-12-playback-pointer-library-expansion-plan.md](plans/2026-09-12-playback-pointer-library-expansion-plan.md) — Eleven-phase expansion: playback telemetry and buffer-ahead gate, bitrate-aware streams, pointer drift detection, watched state, subtitles, mapping repair, disk-copy policies, diagnostics, TorrServer settings UI, signing and CI smoke.
+- [plans/2026-09-12-stale-pointer-reads-and-slow-link-tuning.md](plans/2026-09-12-stale-pointer-reads-and-slow-link-tuning.md) — Root causes and fixes for stale pointer redirects (Blob CDN) and TV buffering on a ~9 Mbps line (TorrServer upload/connection tuning).
 - [plans/2026-09-07-public-setup-guide.md](plans/2026-09-07-public-setup-guide.md) — Approved static setup guide and documentation-only GitHub Pages publication plan.
 - [plans/2026-09-07-closed-beta-readiness-plan.md](plans/2026-09-07-closed-beta-readiness-plan.md) — macOS-first closed beta phases, deferred blocker register, installed pointer provisioning, quick starts, release acceptance, recovery and support.
 - [plans/2026-08-10-project-assessment.md](plans/2026-08-10-project-assessment.md) — Project health assessment: verified checks, risks, next steps.
@@ -94,6 +97,8 @@
 
 ## Changelog
 
+- [changelog/playback-telemetry-and-line-fit.md](changelog/playback-telemetry-and-line-fit.md) — TorrServer `/cache` runway sampling with an Activity runway line, and bitrate-aware stream ordering with a single line-fit rule (Phases 1–2 of the expansion plan).
+- [changelog/pointer-freshness-and-slow-link-tuning.md](changelog/pointer-freshness-and-slow-link-tuning.md) — Immutable pointer Blob versions (fresh reads after every push) and TorrServer `UploadRateLimit`/`ConnectionsLimit` defaults for slow asymmetric lines.
 - [changelog/closed-beta-identity-and-pointer.md](changelog/closed-beta-identity-and-pointer.md) — Phase 1-7 repository implementation: identity, pointer, distribution, quick starts, recovery, privacy and gated cohort operations.
 
 - [changelog/windows-desktop.md](changelog/windows-desktop.md) — Windows tray, native integrations, playback, storage, lifecycle and packaging implementation.

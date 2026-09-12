@@ -76,10 +76,29 @@ do not disable system-wide protections.
 ## Playback stalls
 
 - Choose a healthier authorized torrent; compare peer download speed with the media bitrate (`?probe=true` inspection gives bitrate and a speed verdict).
+- Check the line, not the app: there is no application-side buffer. The
+  startup speed test is logged as `speedtest_completed` with `mbps`; a
+  ~9 Mbps line cannot sustain a 10 Mbps file no matter how the player buffers.
+- Confirm `UploadRateLimit` is capped in `<state dir>/torrserver/config/settings.json`.
+  `0` means unlimited, and an unthrottled uplink on an asymmetric line starves
+  the download. Installs that predate the `128` KB/s default keep `0` until the
+  file is edited or re-seeded — see
+  [TorrServer tuning](setup-native-macos.md#torrserver-tuning).
 - Keep the Mac awake (`caffeinate -dimsu`); closing the lid may suspend networking.
 - Use the candidate's H.264/AAC MP4 baseline. Existing optional stream repair
   is off by default and outside initial beta acceptance; it is not a universal
   fix or a reason to promise additional codecs.
+
+## Pointer redirects to an old LAN address
+
+If the pointer URL's manifest loads but streams and catalogs fail, check where
+an add-on path redirects (any `/addon/<token>/catalog/...` URL answers `307`
+with a `Location` on the Mac's LAN). A target that does not match the Mac's
+current LAN address means the remote record is stale even though the app shows
+the last push as successful. Push again from Pointer → Update Remote Pointer.
+A pointer server deployed before
+[ADR 0024](../decisions/0024-immutable-pointer-blob-versions.md) could keep
+serving an overwritten record for days; redeploy it, then push once.
 
 ## Corrupt library JSON
 

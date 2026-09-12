@@ -1,7 +1,7 @@
 {
   "BitTorr": {
     "CacheSize": 4294967296,
-    "ConnectionsLimit": 200,
+    "ConnectionsLimit": 100,
     "DisableDHT": false,
     "DisablePEX": false,
     "DisableTCP": false,
@@ -39,7 +39,7 @@
     "TorrentDisconnectTimeout": 600,
     "TorrentsSavePath": "",
     "TorznabUrls": null,
-    "UploadRateLimit": 0,
+    "UploadRateLimit": 128,
     "UseDisk": true
   }
 }

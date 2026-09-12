@@ -14,8 +14,13 @@ export interface SpeedResult {
   measuredAt: string;
 }
 
+// The last few measurements; the effective speed is their median so a single
+// bad run (startup contention, a flaky moment) does not demote every heavy
+// file for the rest of the day.
+export const SPEED_HISTORY = 3;
+
 let configured = 10;
-let measured: SpeedResult | undefined;
+let history: SpeedResult[] = [];
 let running: Promise<SpeedResult> | undefined;
 let measurement: AbortController | undefined;
 
@@ -23,16 +28,30 @@ export function setConfiguredSpeed(mbps: number): void {
   configured = mbps;
 }
 
+export function medianMbps(results: readonly SpeedResult[]): number {
+  const sorted = results.map((result) => result.mbps).sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : Number(((sorted[middle - 1] + sorted[middle]) / 2).toFixed(1));
+}
+
+export function recentSpeeds(): readonly SpeedResult[] {
+  return history;
+}
+
 export function currentSpeed(): {
   mbps: number;
   source: "measured" | "configured";
   measuredAt?: string;
+  samples?: number;
 } {
-  return measured
+  return history.length
     ? {
-        mbps: measured.mbps,
+        mbps: medianMbps(history),
         source: "measured",
-        measuredAt: measured.measuredAt,
+        measuredAt: history[history.length - 1].measuredAt,
+        samples: history.length,
       }
     : { mbps: configured, source: "configured" };
 }
@@ -45,7 +64,7 @@ export function homeSpeedMbps(): number {
 export function resetSpeed(): void {
   measurement?.abort();
   measurement = undefined;
-  measured = undefined;
+  history = [];
   running = undefined;
 }
 
@@ -111,11 +130,18 @@ export async function runSpeedTest(
         await measureDownloadMbps(fetchImpl, MEASURE_MS, controller.signal)
       ).toFixed(1),
     );
-    measured = { mbps, measuredAt: new Date().toISOString() };
+    const result = { mbps, measuredAt: new Date().toISOString() };
+    history = [...history, result].slice(-SPEED_HISTORY);
     console.log(
-      JSON.stringify({ level: "info", event: "speedtest_completed", mbps }),
+      JSON.stringify({
+        level: "info",
+        event: "speedtest_completed",
+        mbps,
+        effectiveMbps: medianMbps(history),
+        samples: history.length,
+      }),
     );
-    return measured;
+    return result;
   })();
   running = pending;
   try {

@@ -3,6 +3,8 @@ import {
   currentSpeed,
   homeSpeedMbps,
   measureDownloadMbps,
+  medianMbps,
+  recentSpeeds,
   resetSpeed,
   runSpeedTest,
   setConfiguredSpeed,
@@ -45,6 +47,32 @@ describe("currentSpeed", () => {
     expect(speed.mbps).toBeGreaterThan(0);
     expect(speed.measuredAt).toBeTruthy();
     expect(homeSpeedMbps()).toBe(speed.mbps);
+  });
+});
+
+describe("speed history", () => {
+  it("takes the median of the last three runs so one bad run does not stick", async () => {
+    await runSpeedTest(fakeFetch(1_000_000, 20));
+    await runSpeedTest(fakeFetch(1_000_000, 20));
+    await runSpeedTest(fakeFetch(100_000, 2));
+    const [first, second, bad] = recentSpeeds().map((result) => result.mbps);
+    expect(recentSpeeds()).toHaveLength(3);
+    expect(currentSpeed().samples).toBe(3);
+    expect(currentSpeed().mbps).toBe(Math.min(first, second));
+    expect(currentSpeed().mbps).toBeGreaterThan(bad);
+    expect(currentSpeed().measuredAt).toBe(recentSpeeds()[2].measuredAt);
+  });
+
+  it("keeps only the last three measurements", async () => {
+    for (let i = 0; i < 4; i++) await runSpeedTest(fakeFetch(1_000_000, 10));
+    expect(recentSpeeds()).toHaveLength(3);
+  });
+
+  it("computes the median for odd and even sample counts", () => {
+    const at = (mbps: number) => ({ mbps, measuredAt: "t" });
+    expect(medianMbps([at(50), at(9), at(48)])).toBe(48);
+    expect(medianMbps([at(10), at(20)])).toBe(15);
+    expect(medianMbps([at(7)])).toBe(7);
   });
 });
 
