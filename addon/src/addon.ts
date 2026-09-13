@@ -17,8 +17,8 @@ export function createAddon(
   subtitles: SubtitleService = new SubtitleService(library, torrServer),
 ): AddonInterface {
   const builder = new sdk.addonBuilder(manifest);
-  builder.defineCatalogHandler(({ type, extra }) =>
-    getCatalog(library, type, extra),
+  builder.defineCatalogHandler(({ type, id, extra }) =>
+    getCatalog(library, type, extra, id),
   );
   builder.defineMetaHandler(({ type, id }) =>
     getMetadata(library, torrServer, type, id),

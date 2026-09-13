@@ -69,6 +69,7 @@ const cacheStateSchema = z.object({
       upload_speed: z.number().optional(),
       active_peers: z.number().optional(),
       connected_seeders: z.number().optional(),
+      file_stats: z.array(torrentFileSchema).nullable().optional(),
     })
     .nullable()
     .optional(),
@@ -92,6 +93,8 @@ export interface CacheState {
   downloadSpeedBps: number;
   activePeers: number;
   connectedSeeders: number;
+  /** Torrent files in torrent order (the embedded status), for byte offsets. */
+  files: TorrentStatus["file_stats"];
 }
 
 export class TorrServerError extends Error {
@@ -257,7 +260,36 @@ export class TorrServerClient {
       downloadSpeedBps: raw.Torrent?.download_speed ?? 0,
       activePeers: raw.Torrent?.active_peers ?? 0,
       connectedSeeders: raw.Torrent?.connected_seeders ?? 0,
+      files: raw.Torrent?.file_stats ?? [],
     };
+  }
+
+  // TorrServer's own viewed marks (`POST /viewed`, verified at the pinned
+  // commit: settings/viewed.go). `fileIndex` is the raw one-based index of
+  // the file inside `hash`. Both answer 200 with no body.
+  async setViewed(hash: string, fileIndex: number): Promise<void> {
+    await this.viewedAction("set", hash, fileIndex);
+  }
+
+  async removeViewed(hash: string, fileIndex: number): Promise<void> {
+    await this.viewedAction("rem", hash, fileIndex);
+  }
+
+  private async viewedAction(
+    action: "set" | "rem",
+    hash: string,
+    fileIndex: number,
+  ): Promise<void> {
+    const response = await this.request(
+      "/viewed",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, hash, file_index: fileIndex }),
+      },
+      1,
+    );
+    await response.body?.cancel().catch(() => undefined);
   }
 
   // Composite ids (multi-torrent series) carry the owning source's hash on

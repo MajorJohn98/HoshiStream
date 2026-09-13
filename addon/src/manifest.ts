@@ -33,6 +33,20 @@ export const manifest = {
         { name: "skip", isRequired: false },
       ],
     },
+    // Continue Watching rows (plans/2026-09-13-watched-state-plan.md). No
+    // search or genre: the row is short and ordered by recent activity.
+    {
+      type: "movie",
+      id: "continue-watching",
+      name: "Continue Watching",
+      extra: [{ name: "skip", isRequired: false }],
+    },
+    {
+      type: "series",
+      id: "continue-watching",
+      name: "Continue Watching",
+      extra: [{ name: "skip", isRequired: false }],
+    },
   ],
 };
 

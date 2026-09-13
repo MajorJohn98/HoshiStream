@@ -36,6 +36,7 @@
 - [decisions/0022-windows-native-desktop-release.md](decisions/0022-windows-native-desktop-release.md) — Windows 11 tray, self-contained installer, native integration parity and preserved private/manual behavior.
 - [decisions/0023-file-scoped-readiness-evidence.md](decisions/0023-file-scoped-readiness-evidence.md) — Separate metadata, sampled media, and player support; file-scoped facts, shared checks and explicit longer retries.
 - [decisions/0024-immutable-pointer-blob-versions.md](decisions/0024-immutable-pointer-blob-versions.md) — Pointer Blob records become immutable versions located via `list`, because the public Blob CDN served in-place overwrites stale for days.
+- [decisions/0025-watched-state-from-observed-reads.md](decisions/0025-watched-state-from-observed-reads.md) — Per-file watched state derived from observed reads (`/cache` reader position, `Range` starts, browser player) stored in `library.json`; TorrServer `/viewed` mirrored best-effort.
 
 ## Guides
 
@@ -68,6 +69,7 @@
 ## Plans
 
 - [plans/2026-09-13-first-play-episode-probe-plan.md](plans/2026-09-13-first-play-episode-probe-plan.md) — Probe each episode's bitrate the first time it plays and keep it as a per-file media fact, so the runway line covers every episode (implemented).
+- [plans/2026-09-13-watched-state-plan.md](plans/2026-09-13-watched-state-plan.md) — Phase 5: per-file started/watched state from observed reads, Continue Watching catalogs, `defaultVideoId` resume, UI toggle, TorrServer `/viewed` mirror (implemented).
 - [plans/2026-09-12-playback-pointer-library-expansion-plan.md](plans/2026-09-12-playback-pointer-library-expansion-plan.md) — Fifteen-phase expansion (1, 2, 4, 6, 7, 12, 14 done): playback telemetry and buffer-ahead gate, bitrate-aware streams, pointer drift detection, watched state, subtitles, mapping repair, disk-copy policies, diagnostics, TorrServer settings UI, signing and CI smoke, plus Stremio protocol coverage (rich title and episode metadata, thumbnails, stream descriptions, Board rows).
 - [plans/2026-09-12-stale-pointer-reads-and-slow-link-tuning.md](plans/2026-09-12-stale-pointer-reads-and-slow-link-tuning.md) — Root causes and fixes for stale pointer redirects (Blob CDN) and TV buffering on a ~9 Mbps line (TorrServer upload/connection tuning).
 - [plans/2026-09-07-public-setup-guide.md](plans/2026-09-07-public-setup-guide.md) — Approved static setup guide and documentation-only GitHub Pages publication plan.
@@ -99,6 +101,7 @@
 ## Changelog
 
 - [changelog/rich-title-metadata.md](changelog/rich-title-metadata.md) — Optional presentation fields on entries (year, runtime, rating, people, trailers, poster shape), emitted in catalog/meta with search `links[]` and `defaultVideoId`; Metadata tab in the entry sheet (Phase 12 of the expansion plan).
+- [changelog/watched-state.md](changelog/watched-state.md) — Per-file watched state, Continue Watching catalogs, series resume via `defaultVideoId`, Watched column in the Files table, TorrServer `/viewed` mirror (Phase 5 of the expansion plan).
 - [changelog/stream-descriptions.md](changelog/stream-descriptions.md) — Stream picker text now names resolution, codecs, size, bitrate and the line-fit verdict; `notWebReady` for browser-hostile formats; OpenSubtitles `videoHash` for disk-resident files (Phase 14 of the expansion plan).
 - [changelog/episode-mapping-repair.md](changelog/episode-mapping-repair.md) — `episodeOverrides` on library entries, applied after automatic mapping and source merging; Files-tab editor with shift-by-N, duplicate blocking and gap hints (Phase 7 of the expansion plan).
 - [changelog/pointer-drift-detection.md](changelog/pointer-drift-detection.md) — Automatic start-up / LAN-change read of the remote pointer record, a Pointer-card row with **Update now**, and one-off macOS/Windows notifications; pushes stay manual (Phase 4 of the expansion plan).

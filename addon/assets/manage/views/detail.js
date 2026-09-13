@@ -599,8 +599,65 @@ function baseName(path) {
   return path.split("/").pop();
 }
 
+// Watched marks come from observed playback (server side) or this toggle.
+// Clearing a mark also forgets a "started" (in-progress) mark.
+function useWatchToggle(state) {
+  const [pending, setPending] = useState(null);
+  const toggle = async (fileId, watched) => {
+    setPending(fileId);
+    const id = encodeURIComponent(state.selected.id);
+    try {
+      if (watched) {
+        await api("library/" + id + "/watch/" + fileId, { method: "DELETE" });
+      } else {
+        await api("library/" + id + "/watch", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ fileId, state: "watched" }),
+        });
+      }
+      const entry = await api("library/" + id);
+      syncSelectedEntry(entry);
+    } catch (e) {
+      notify(e.message, "error");
+    } finally {
+      setPending(null);
+    }
+  };
+  return [pending, toggle];
+}
+
+function watchStateOf(entry, fileId) {
+  return entry.watchStates?.find((w) => w.fileId === fileId)?.state;
+}
+
+function WatchCell({ state, fileId, pending, toggle }) {
+  const current = watchStateOf(state.selected, fileId);
+  const watched = current === "watched";
+  const label = watched
+    ? "Watched"
+    : current === "started"
+      ? "In progress"
+      : "Unwatched";
+  return html`
+    <td class="watch">
+      <button
+        class=${"watch-toggle " + (current ?? "unwatched")}
+        title=${watched ? "Mark unwatched" : "Mark watched"}
+        aria-label=${label + " — " + (watched ? "mark unwatched" : "mark watched")}
+        disabled=${pending === fileId}
+        onClick=${() => toggle(fileId, watched)}
+      >
+        <span class="watch-dot" aria-hidden="true"></span>
+        ${label}
+      </button>
+    </td>
+  `;
+}
+
 function CachedFilesTable({ state, cache }) {
   const [busy, run] = useInspect(state);
+  const [pending, toggle] = useWatchToggle(state);
   const n = cache.selectedFiles.length;
   const tabs = useSeasonTabs(cache.selectedFiles, (f) => f.season);
   const shown = cache.selectedFiles.filter(tabs.visible);
@@ -644,6 +701,7 @@ function CachedFilesTable({ state, cache }) {
               <th>Size</th>
               ${tabs.seasons.length < 2 ? html`<th>Season</th>` : null}
               <th>Episode</th>
+              <th>Watched</th>
               <th></th>
             </tr>
           </thead>
@@ -659,6 +717,12 @@ function CachedFilesTable({ state, cache }) {
                       : null
                   }
                   <td class="num">${f.episode ?? "—"}</td>
+                  <${WatchCell}
+                    state=${state}
+                    fileId=${f.id}
+                    pending=${pending}
+                    toggle=${toggle}
+                  />
                   <td>
                     <button
                       class="secondary"

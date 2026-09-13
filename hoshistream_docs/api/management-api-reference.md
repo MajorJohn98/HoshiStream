@@ -34,6 +34,8 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `DELETE /api/library/{id}` | Remove entry (also deletes managed-upload media) → `204` |
 | `PUT /api/library/{id}/playback` | Record the resume point from the in-browser player: `{positionSeconds, fileId?}` → `200` playback state, stamped `source: "browser"`. Host mpv playback writes the same field with `source: "host"`; external Stremio clients never write it (they only touch `lastStreamedAt`) |
 | `DELETE /api/library/{id}/playback` | Clear the resume point (a finished movie) → `204` |
+| `PUT /api/library/{id}/watch` | Set per-file watch state: `{fileId, state: "started" \| "watched"}` → `200` the entry's `watchStates`. `watched` is sticky; used by the Watched toggle and the browser player. Most marks arrive without this call, from observed reads (see [ADR 0025](../decisions/0025-watched-state-from-observed-reads.md)) |
+| `DELETE /api/library/{id}/watch/{fileId}` | Clear one file's watch state (and TorrServer's viewed mark) → `204` |
 | `POST /api/library/{id}/inspect` | Register with TorrServer, poll metadata, return files and selection |
 | `POST /api/library/{id}/relink` | Native Finder re-pick for a local entry (native app only) |
 | `POST /api/player/play` | Start host playback of an entry → `{mode, title, resumedAt?}` |

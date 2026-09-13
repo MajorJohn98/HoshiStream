@@ -21,6 +21,7 @@ import type { TranscodeManager } from "../transcode.ts";
 import type { VolumeRegistry } from "../volumes.ts";
 import type { SourceChecks } from "../source-checks.ts";
 import type { Onboarding } from "../onboarding.ts";
+import type { WatchProgress, WatchStates } from "../watch-state.ts";
 
 // Everything a route module may need. Optional members are features the
 // supervisor can leave unconfigured; routes answer 409 when they are missing.
@@ -34,6 +35,8 @@ export interface HandlerContext {
   lanRedirect: "auto" | "off";
   playback: Playback;
   subtitles: SubtitleService;
+  watch: WatchStates;
+  watchProgress: WatchProgress;
   telemetry?: PlaybackTelemetry;
   transcode?: TranscodeManager;
   resourceDirs?: ResourceDirs;

@@ -228,6 +228,10 @@ describe("TorrServerClient", () => {
         upload_speed: 1000,
         active_peers: 9,
         connected_seeders: 4,
+        file_stats: [
+          { id: 1, path: "Show/S01E01.mkv", length: 8388608 },
+          { id: 2, path: "Show/S01E02.mkv", length: 8388608 },
+        ],
       },
       Pieces: {
         "10": {
@@ -278,6 +282,10 @@ describe("TorrServerClient", () => {
         downloadSpeedBps: 1234567.8,
         activePeers: 9,
         connectedSeeders: 4,
+        files: [
+          { id: 1, path: "Show/S01E01.mkv", length: 8388608 },
+          { id: 2, path: "Show/S01E02.mkv", length: 8388608 },
+        ],
       });
       expect([...state!.completed]).toEqual([
         [10, true],
@@ -314,6 +322,7 @@ describe("TorrServerClient", () => {
       const client = new TorrServerClient("http://torrserver:8090", 1_000, 1);
       const state = await client.cacheState("abc");
       expect(state?.readers).toEqual([]);
+      expect(state?.files).toEqual([]);
       expect(state?.completed.size).toBe(0);
       expect(state?.downloadSpeedBps).toBe(0);
       await expect(client.cacheState("abc")).rejects.toMatchObject({
@@ -323,6 +332,38 @@ describe("TorrServerClient", () => {
         code: "not_found",
       });
       // Cache lookups are polled; they never retry on their own.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe("viewed", () => {
+    // POST /viewed at the pinned commit: {action, hash, file_index}; set
+    // and rem reply 200 with an empty body.
+    it("sets and removes TorrServer's viewed mark without retrying", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(new Response(null, { status: 200 }))
+        .mockResolvedValueOnce(new Response(null, { status: 200 }))
+        .mockResolvedValueOnce(new Response("down", { status: 502 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const client = new TorrServerClient("http://torrserver:8090", 1_000, 3);
+      await client.setViewed("a".repeat(40), 3);
+      await client.removeViewed("a".repeat(40), 3);
+      expect(fetchMock.mock.calls[0][0]).toBe("http://torrserver:8090/viewed");
+      expect(fetchMock.mock.calls[0][1].method).toBe("POST");
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        action: "set",
+        hash: "a".repeat(40),
+        file_index: 3,
+      });
+      expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+        action: "rem",
+        hash: "a".repeat(40),
+        file_index: 3,
+      });
+      await expect(client.setViewed("a".repeat(40), 3)).rejects.toMatchObject({
+        code: "unavailable",
+      });
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
   });

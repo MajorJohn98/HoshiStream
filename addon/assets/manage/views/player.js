@@ -187,6 +187,18 @@ function savePosition(entryId, body) {
   }).catch(() => undefined);
 }
 
+// Watched marks for the Continue Watching row. The browser player is the
+// one client that knows the playhead, so it reports "started" and
+// "watched" directly instead of relying on server-side read observation.
+function saveWatchState(entryId, fileId, state) {
+  if (fileId === undefined) return Promise.resolve();
+  return api("library/" + encodeURIComponent(entryId) + "/watch", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ fileId, state }),
+  }).catch(() => undefined);
+}
+
 export function PlayerView() {
   const { entries } = useStore();
   const videoRef = useRef(null);
@@ -377,6 +389,12 @@ export function PlayerView() {
     let cleanup;
     let alive = true;
     let playbackObserved = false;
+    let watchReported = "";
+    const watchSignal = (state) => {
+      if (watchReported === "watched" || watchReported === state) return;
+      watchReported = state;
+      void saveWatchState(entry.id, file?.id, state);
+    };
     const own = ++playbackGeneration.current;
     const controller = new AbortController();
     setError(null);
@@ -407,6 +425,7 @@ export function PlayerView() {
         if (["awaiting-play", "ready", "paused"].includes(status))
           setPaused(true);
         if (status === "playing") {
+          if (!playbackObserved) watchSignal("started");
           playbackObserved = true;
           setPaused(false);
           setNotice("");
@@ -479,6 +498,7 @@ export function PlayerView() {
         video.ended ||
         (total > 0 && total - video.currentTime < FINISHED_TAIL_SECONDS);
       if (finished) {
+        watchSignal("watched");
         localStorage.removeItem(key);
         // A finished episode points the resume at the next one; a finished
         // movie clears the resume point so the hero stops offering it.

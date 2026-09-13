@@ -40,6 +40,7 @@ import {
   handleMediaFiles,
   handleRelink,
   handleStremioRefresh,
+  handleWatchState,
 } from "./routes/library-api.ts";
 import { handleImports } from "./routes/imports-api.ts";
 import {
@@ -67,6 +68,7 @@ import { handleSourceCheck } from "./routes/source-check-api.ts";
 import type { SourceChecks } from "./source-checks.ts";
 import type { Onboarding } from "./onboarding.ts";
 import { handleOnboarding } from "./routes/onboarding-api.ts";
+import { WatchProgress, WatchStates } from "./watch-state.ts";
 
 export { manageAssetPath, noStoreProtocolResource } from "./routes/protocol.ts";
 export { technicalProbeRequested } from "./routes/library-api.ts";
@@ -82,6 +84,8 @@ export interface HandlerOptions {
   lanRedirect?: "auto" | "off";
   playback?: Playback;
   subtitles?: SubtitleService;
+  watch?: WatchStates;
+  watchProgress?: WatchProgress;
   telemetry?: PlaybackTelemetry;
   transcode?: TranscodeManager;
   resourceDirs?: ResourceDirs;
@@ -122,6 +126,7 @@ const API_ROUTES: RouteHandler[] = [
   handleDiskSchedule,
   handleLibraryCollection,
   handlePlaybackPosition,
+  handleWatchState,
   handleTags,
   handleStremioRefresh,
   handlePlayer,
@@ -152,6 +157,8 @@ async function dispatch(
 
 export function createHandler(options: HandlerOptions) {
   setConfiguredSpeed(options.homeSpeedMbps);
+  const watch =
+    options.watch ?? new WatchStates(options.library, options.torrServer);
   const context: HandlerContext = {
     ...options,
     lanRedirect: options.lanRedirect ?? "auto",
@@ -160,6 +167,8 @@ export function createHandler(options: HandlerOptions) {
     subtitles:
       options.subtitles ??
       new SubtitleService(options.library, options.torrServer),
+    watch,
+    watchProgress: options.watchProgress ?? new WatchProgress(watch),
   };
   return async (request: IncomingMessage, response: ServerResponse) => {
     try {

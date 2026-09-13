@@ -18,6 +18,7 @@ new calls against the pinned source or running Swagger at
 | `POST /torrent/upload` (multipart) | Register one `.torrent` file; returns one `state.TorrentStatus` object, not an array (confirmed against the running pinned Swagger) |
 | `GET /play/{hash}/{id}` | Direct playback URL handed to Nuvio (rewritten to the public URL); also read by the disk-copy archiver with standard `Range` headers to copy authorized files onto registered storage volumes, and read whole-file (≤ 10 MiB, 20 s timeout) by `subtitle-service.ts` for subtitle sidecars |
 | `POST /cache` `{action:"get", hash}` | Cache window for one torrent (`storage/state.CacheState`): `Capacity`, `Filled`, `PiecesLength`, `Pieces{index → {Completed,…}}`, `Readers[{Start,End,Reader}]` (piece indexes) and the embedded `Torrent` status. Polled every 2 s per actively streamed entry by `playback-telemetry.ts`; never retried. Answers `{}` before the cache exists, 404 for an unknown hash |
+| `POST /viewed` `{action:"set"\|"rem", hash, file_index}` | Mirror the add-on's watched marks into TorrServer's own viewed list (`web/api/viewed.go` → `settings/viewed.go`) so its web UI agrees with HoshiStream. `file_index` is the raw one-based file id. Both actions reply 200 with an empty body; never retried; failures are logged (`viewed_sync_failed`) and ignored — `library.json` is the source of truth. `list` and `rem` with `file_index:-1` exist but are not used |
 
 ## Client behavior
 
@@ -29,8 +30,11 @@ new calls against the pinned source or running Swagger at
   `torrstor.Reader.getPiecesRange()`/`getReaderPiece()`; `End` is the
   read-ahead window (`CacheSize × ReaderReadAHead %`), capped at the file end.
   `Pieces` lists only pieces the cache currently holds. `Torrent` is
-  `t.Status()`, so `download_speed` (bytes/s) and `active_peers` come with it —
-  one call per sample. `bit_rate` is only set by TorrServer's own `/ffp`
+  `t.Status()`, so `download_speed` (bytes/s), `active_peers` and the full
+  `file_stats` list come with it — one call per sample. `watch-state.ts` uses
+  `file_stats` order to turn the absolute `Reader` piece into a position
+  within the streamed file; `bytes_read_useful_data` is per torrent, not per
+  file, so it is not used for watched state. `bit_rate` is only set by TorrServer's own `/ffp`
   path and is not relied on.
 - File IDs are TorrServer's **one-based** IDs.
 - `save_to_db: false` does not add a persistent database record. Inactive torrent

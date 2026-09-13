@@ -1,5 +1,6 @@
 import { markStreamActivity } from "../activity.ts";
 import { resolveStreamSource } from "../inspection.ts";
+import { sourceKey } from "../disk-copy.ts";
 import { inspectLocalEntry, serveLocalMedia } from "../local-media.ts";
 import { serveMediaSource } from "../media-source.ts";
 import { directPlayForFile } from "../media-facts.ts";
@@ -7,12 +8,30 @@ import type { DirectPlay } from "../direct-play.ts";
 import { validToken } from "../security.ts";
 import type { SubtitlePayload } from "../subtitle-service.ts";
 import { repairTier, TranscodeBusyError } from "../transcode.ts";
+import { rangeFraction, type WatchProgress } from "../watch-state.ts";
+import type { LibraryEntry } from "../types.ts";
 import {
   isReadMethod,
   observeClient,
   reply,
   type RouteHandler,
 } from "./context.ts";
+
+// The add-on serves local and disk-copy files itself, so the Range start is
+// the only playhead signal it gets for them. HEAD and whole-file requests
+// carry no position.
+function observeRange(
+  progress: WatchProgress,
+  entry: LibraryEntry,
+  fileId: number | undefined,
+  length: number | undefined,
+  method: string,
+  range: string | undefined,
+): void {
+  if (method === "HEAD" || fileId === undefined || !length) return;
+  const fraction = rangeFraction(range, length);
+  if (fraction !== undefined) progress.observe(entry.id, fileId, fraction);
+}
 
 // Repaired-stream HLS sessions (ADR 0010). The session starts lazily on the
 // first playlist request and is reaped when segment requests stop.
@@ -105,7 +124,7 @@ export const handleHls: RouteHandler = async (
 
 // Direct playback of local-file and local-folder entries.
 export const handleLocalMedia: RouteHandler = async (
-  { library, accessToken },
+  { library, accessToken, watchProgress },
   { request, response, url, method },
 ) => {
   const localMatch = /^\/local\/([^/]+)\/([^/]+)(?:\/(\d+))?$/.exec(
@@ -122,12 +141,20 @@ export const handleLocalMedia: RouteHandler = async (
   markStreamActivity(Date.now(), entry.id);
   void library.markStreamed(entry.id).catch(() => undefined);
   observeClient(request, "playback");
-  await serveLocalMedia(
-    request,
-    response,
+  const requestedId =
+    localMatch[3] === undefined ? undefined : Number(localMatch[3]);
+  // inspectLocalEntry caches per entry, so this costs no second scan.
+  const selected = (await inspectLocalEntry(entry))?.selectedFiles;
+  const file = selected?.find((f) => f.id === (requestedId ?? selected[0]?.id));
+  observeRange(
+    watchProgress,
     entry,
-    localMatch[3] === undefined ? undefined : Number(localMatch[3]),
+    file?.id,
+    file?.length,
+    method,
+    request.headers.range,
   );
+  await serveLocalMedia(request, response, entry, requestedId);
   return true;
 };
 
@@ -135,7 +162,7 @@ export const handleLocalMedia: RouteHandler = async (
 // independently resolves disk vs torrent, so plugging or unplugging a drive
 // changes the source on the client's next request.
 export const handleDiskMedia: RouteHandler = async (
-  { library, torrServer, accessToken, volumes },
+  { library, torrServer, accessToken, volumes, watchProgress },
   { request, response, url, method },
 ) => {
   const mediaMatch = /^\/media\/([^/]+)\/([^/]+)\/([0-9a-fA-F]+:\d+)$/.exec(
@@ -153,6 +180,18 @@ export const handleDiskMedia: RouteHandler = async (
   markStreamActivity(Date.now(), entry.id);
   void library.markStreamed(entry.id).catch(() => undefined);
   observeClient(request, "playback");
+  const cache = entry.inspectionCache;
+  const file = cache?.selectedFiles.find(
+    (candidate) => sourceKey(cache.hash, candidate) === mediaMatch[3],
+  );
+  observeRange(
+    watchProgress,
+    entry,
+    file?.id,
+    file?.length,
+    method,
+    request.headers.range,
+  );
   await serveMediaSource(
     request,
     response,

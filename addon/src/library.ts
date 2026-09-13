@@ -31,6 +31,7 @@ import {
   type PatchEntry,
   type SearchImport,
   type SearchReceipt,
+  type WatchState,
   searchReceiptSchema,
 } from "./types.ts";
 
@@ -312,6 +313,8 @@ export class Library {
         ) {
           delete candidate.searchImport;
           delete candidate.sourceHash;
+          // File ids belong to the old source.
+          delete candidate.watchStates;
           if (input.managedMedia === undefined) delete candidate.managedMedia;
         }
         const updated = libraryEntrySchema.parse(candidate);
@@ -407,6 +410,62 @@ export class Library {
       const candidate: Record<string, unknown> = { ...entries[index] };
       delete candidate.playback;
       entries[index] = libraryEntrySchema.parse(candidate);
+    });
+  }
+
+  // Records one file's watch state. "watched" is sticky: a later "started"
+  // (a rewatch) keeps it, and only clearWatchState removes it. Resolves to
+  // whether the stored state changed, so callers can skip side effects on a
+  // no-op.
+  setWatchState(
+    id: string,
+    fileId: number,
+    state: WatchState["state"],
+  ): Promise<boolean> {
+    return this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return false;
+      const current = entries[index];
+      const existing = current.watchStates?.find(
+        (item) => item.fileId === fileId,
+      );
+      if (existing?.state === "watched" || existing?.state === state)
+        return false;
+      const record: WatchState = {
+        fileId,
+        state,
+        at: new Date().toISOString(),
+      };
+      entries[index] = libraryEntrySchema.parse({
+        ...current,
+        watchStates: [
+          ...(current.watchStates ?? []).filter(
+            (item) => item.fileId !== fileId,
+          ),
+          record,
+        ],
+      });
+      return true;
+    });
+  }
+
+  clearWatchState(id: string, fileId: number): Promise<boolean> {
+    return this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return false;
+      const current = entries[index];
+      if (!current.watchStates?.some((item) => item.fileId === fileId))
+        return false;
+      const remaining = current.watchStates.filter(
+        (item) => item.fileId !== fileId,
+      );
+      const candidate: Record<string, unknown> = {
+        ...current,
+        watchStates: remaining,
+      };
+      if (!remaining.length) delete candidate.watchStates;
+      entries[index] = libraryEntrySchema.parse(candidate);
+      return true;
     });
   }
 

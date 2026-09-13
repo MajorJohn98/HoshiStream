@@ -47,10 +47,11 @@ function rejectServerOwnedFields(input: Record<string, unknown>): void {
     "searchImport" in input ||
     "searchReceipts" in input ||
     "sourceCheck" in input ||
-    "mediaFacts" in input
+    "mediaFacts" in input ||
+    "watchStates" in input
   )
     throw new SyntaxError(
-      "Source identity, search metadata, and source checks are server-owned",
+      "Source identity, search metadata, source checks, and watch state are server-owned",
     );
 }
 
@@ -213,6 +214,37 @@ export const handlePlaybackPosition: RouteHandler = async (
   }
   if (method === "DELETE") {
     await library.clearPlayback(id);
+    return reply(response, 204, null);
+  }
+  return false;
+};
+
+const watchBodySchema = z.object({
+  fileId: z.number().int().nonnegative(),
+  state: z.enum(["started", "watched"]),
+});
+
+// Manual watched marks from the management UI, and the browser player's
+// started/finished signals. PUT sets a state; DELETE /:fileId clears it.
+export const handleWatchState: RouteHandler = async (
+  { library, watch },
+  { request, response, url, method },
+) => {
+  const match = /^\/api\/library\/([^/]+)\/watch(?:\/(\d+))?$/.exec(
+    url.pathname,
+  );
+  if (!match) return false;
+  const id = decodeURIComponent(match[1]);
+  const entry = await library.get(id);
+  if (!entry) return reply(response, 404, { error: "Not found" });
+  if (method === "PUT" && match[2] === undefined) {
+    const input = watchBodySchema.parse(await body(request));
+    if (input.state === "watched") await watch.watched(id, input.fileId);
+    else await watch.started(id, input.fileId);
+    return reply(response, 200, (await library.get(id))?.watchStates ?? []);
+  }
+  if (method === "DELETE" && match[2] !== undefined) {
+    await watch.clear(id, Number(match[2]));
     return reply(response, 204, null);
   }
   return false;

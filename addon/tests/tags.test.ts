@@ -101,9 +101,13 @@ describe("Library.retag", () => {
 });
 
 describe("manifestWithGenres", () => {
-  it("fills the genre extra options on every catalog", () => {
+  it("fills the genre extra options on every browsing catalog", () => {
     const withGenres = manifestWithGenres(manifest, ["Action", "Drama"]);
-    for (const catalog of withGenres.catalogs) {
+    const browsing = withGenres.catalogs.filter(
+      (catalog) => catalog.id !== "continue-watching",
+    );
+    expect(browsing).toHaveLength(2);
+    for (const catalog of browsing) {
       const genre = catalog.extra.find((extra) => extra.name === "genre");
       expect(genre).toMatchObject({
         isRequired: false,

@@ -28,6 +28,7 @@ import { ArchiveSchedule } from "./archive-schedule.ts";
 import { defaultAnalyzer, LibraryAnalysis } from "./library-analysis.ts";
 import { SourceChecks } from "./source-checks.ts";
 import { Onboarding } from "./onboarding.ts";
+import { WatchProgress, WatchStates } from "./watch-state.ts";
 
 // How long an in-flight response — a stream in progress — may keep the server
 // open during shutdown before its socket is destroyed.
@@ -100,8 +101,11 @@ export async function startHoshiStream(settings = config) {
     subtitles,
   );
   const playback = new Playback(library, torrServer, settings.PLAYER);
+  const watch = new WatchStates(library, torrServer);
+  const watchProgress = new WatchProgress(watch);
   const telemetry = new PlaybackTelemetry(torrServer, {
     entries: () => library.list(),
+    progress: watchProgress,
     // First play of a file measures its bitrate; the fact is kept per file.
     probes: new PlaybackProbes(library, sourceChecks, {
       onBitrate: setStreamTargetBitrate,
@@ -133,6 +137,8 @@ export async function startHoshiStream(settings = config) {
       lanRedirect: settings.LAN_REDIRECT,
       playback,
       subtitles,
+      watch,
+      watchProgress,
       telemetry,
       transcode,
       resourceDirs: {

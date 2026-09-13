@@ -346,6 +346,70 @@ describe("management assets", () => {
   });
 });
 
+describe("watch state", () => {
+  it("marks, lists, and clears per-file watch state", async () => {
+    const created = await api("/api/library", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "series",
+        name: "Show",
+        magnetUri: "magnet:?xt=urn:btih:show",
+      }),
+    });
+    const { id } = await created.json();
+    const path = `/api/library/${encodeURIComponent(id)}/watch`;
+    const started = await api(path, {
+      method: "PUT",
+      body: JSON.stringify({ fileId: 1, state: "started" }),
+    });
+    expect(started.status).toBe(200);
+    expect(await started.json()).toMatchObject([
+      { fileId: 1, state: "started" },
+    ]);
+    const watched = await api(path, {
+      method: "PUT",
+      body: JSON.stringify({ fileId: 1, state: "watched" }),
+    });
+    expect(await watched.json()).toMatchObject([
+      { fileId: 1, state: "watched" },
+    ]);
+    const entry = await (
+      await api(`/api/library/${encodeURIComponent(id)}`)
+    ).json();
+    expect(entry.watchStates).toMatchObject([{ fileId: 1, state: "watched" }]);
+    expect((await api(`${path}/1`, { method: "DELETE" })).status).toBe(204);
+    const after = await (
+      await api(`/api/library/${encodeURIComponent(id)}`)
+    ).json();
+    expect(after.watchStates).toBeUndefined();
+    expect(
+      (
+        await api(path, {
+          method: "PUT",
+          body: JSON.stringify({ fileId: 1, state: "seen" }),
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await api(`/api/library/hoshi%3Anope/watch`, {
+          method: "PUT",
+          body: JSON.stringify({ fileId: 1, state: "watched" }),
+        })
+      ).status,
+    ).toBe(404);
+    // Clients cannot write the field directly.
+    expect(
+      (
+        await api(`/api/library/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ watchStates: [] }),
+        })
+      ).status,
+    ).toBe(400);
+  });
+});
+
 describe("playback position", () => {
   it("stores, returns, and clears the resume point", async () => {
     const created = await api("/api/library", {

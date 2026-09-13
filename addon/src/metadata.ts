@@ -1,7 +1,8 @@
-import { toMetaPreview } from "./catalog.ts";
+import { toMetaPreview, videoIdFor } from "./catalog.ts";
 import { resolveStreamSource, warmStreamSource } from "./inspection.ts";
 import type { Library } from "./library.ts";
 import type { TorrServerClient } from "./torrserver-client.ts";
+import { resumeFile } from "./watch-state.ts";
 
 export async function getMetadata(
   library: Library,
@@ -18,9 +19,14 @@ export async function getMetadata(
   }
 
   const inspection = await resolveStreamSource(entry, torrServer, library);
+  // A series with history opens on the episode to pick up at.
+  const resume = resumeFile(entry, inspection.selectedFiles);
   return {
     meta: {
       ...meta,
+      ...(resume
+        ? { behaviorHints: { defaultVideoId: videoIdFor(entry, resume) } }
+        : {}),
       videos: inspection.selectedFiles.map((file) => ({
         id: `${entry.id}:${file.season}:${file.episode}`,
         title: file.path,

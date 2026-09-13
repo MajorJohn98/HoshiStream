@@ -75,4 +75,87 @@ describe("catalog", () => {
       (await getCatalog(library, "movie", { genre: "Horror" })).metas,
     ).toEqual([]);
   });
+
+  it("lists Continue Watching by recent activity, opening on the resume file", async () => {
+    const at = "2026-09-13T10:00:00.000Z";
+    const later = "2026-09-13T12:00:00.000Z";
+    const base = {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const episodes = [
+      { id: 1, path: "S01E01.mkv", length: 10, season: 1, episode: 1 },
+      { id: 2, path: "S01E02.mkv", length: 10, season: 1, episode: 2 },
+    ];
+    const entries = [
+      {
+        ...base,
+        id: "hoshi:show",
+        type: "series" as const,
+        name: "Show",
+        magnetUri: "magnet:?xt=urn:btih:show",
+        inspectionCache: {
+          hash: "a",
+          inspectedAt: at,
+          selectedFiles: episodes,
+        },
+        watchStates: [{ fileId: 1, state: "watched" as const, at }],
+      },
+      {
+        ...base,
+        id: "hoshi:film",
+        type: "movie" as const,
+        name: "Film",
+        magnetUri: "magnet:?xt=urn:btih:film",
+        inspectionCache: {
+          hash: "b",
+          inspectedAt: at,
+          selectedFiles: [{ id: 1, path: "film.mkv", length: 10 }],
+        },
+        watchStates: [{ fileId: 1, state: "started" as const, at: later }],
+      },
+      {
+        // Finished: drops out of the row.
+        ...base,
+        id: "hoshi:done",
+        type: "movie" as const,
+        name: "Done",
+        magnetUri: "magnet:?xt=urn:btih:done",
+        inspectionCache: {
+          hash: "c",
+          inspectedAt: at,
+          selectedFiles: [{ id: 1, path: "done.mkv", length: 10 }],
+        },
+        watchStates: [{ fileId: 1, state: "watched" as const, at: later }],
+      },
+      {
+        // Never inspected: nothing to resume yet.
+        ...base,
+        id: "hoshi:fresh",
+        type: "movie" as const,
+        name: "Fresh",
+        magnetUri: "magnet:?xt=urn:btih:fresh",
+        watchStates: [{ fileId: 1, state: "started" as const, at: later }],
+      },
+    ];
+    const library = { list: async () => entries } as never;
+    const movies = await getCatalog(library, "movie", {}, "continue-watching");
+    expect(movies.metas.map((meta) => meta.id)).toEqual(["hoshi:film"]);
+    expect(movies.metas[0].behaviorHints).toEqual({
+      defaultVideoId: "hoshi:film",
+    });
+    const series = await getCatalog(library, "series", {}, "continue-watching");
+    expect(series.metas.map((meta) => meta.id)).toEqual(["hoshi:show"]);
+    expect(series.metas[0].behaviorHints).toEqual({
+      defaultVideoId: "hoshi:show:1:2",
+    });
+    // Skip pages the row; the browsing catalogs are unaffected.
+    expect(
+      (await getCatalog(library, "movie", { skip: "1" }, "continue-watching"))
+        .metas,
+    ).toEqual([]);
+    expect(
+      (await getCatalog(library, "movie", {}, "private-movies")).metas,
+    ).toHaveLength(3);
+  });
 });

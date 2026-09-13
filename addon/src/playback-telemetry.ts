@@ -60,6 +60,39 @@ export interface StreamProber {
   pending(target: Pick<StreamTarget, "entryId" | "fileId">): boolean;
 }
 
+// Receives the playhead position of each sampled stream (watch-state.ts).
+export interface WatchObserver {
+  observe(entryId: string, fileId: number, fraction: number, now: number): void;
+}
+
+// Playhead position inside one torrent file as a fraction of its length,
+// from the reader whose current piece overlaps that file (the furthest one
+// when several do). Undefined when no reader is inside the file.
+export function readerFraction(
+  cache: CacheState,
+  rawId: number,
+): number | undefined {
+  let offset = 0;
+  let file: TorrentStatus["file_stats"][number] | undefined;
+  for (const candidate of cache.files) {
+    if (candidate.id === rawId) {
+      file = candidate;
+      break;
+    }
+    offset += candidate.length;
+  }
+  if (!file || file.length <= 0) return undefined;
+  let furthest: number | undefined;
+  for (const reader of cache.readers) {
+    const byte = reader.readerPiece * cache.pieceLength;
+    if (byte + cache.pieceLength <= offset || byte >= offset + file.length)
+      continue;
+    const fraction = Math.min(1, Math.max(0, (byte - offset) / file.length));
+    furthest = furthest === undefined ? fraction : Math.max(furthest, fraction);
+  }
+  return furthest;
+}
+
 // Contiguous completed bytes from the reader's current piece to the end of
 // its read-ahead window — the runway. The first incomplete piece ends it: a
 // completed piece beyond a gap does not help a player that stalls on the gap.
@@ -204,6 +237,7 @@ export interface PlaybackTelemetryOptions {
   // client that cached the stream URL plays straight from TorrServer.
   entries?: () => Promise<LibraryEntry[]>;
   probes?: StreamProber;
+  progress?: WatchObserver;
   intervalMs?: number;
   ringSize?: number;
   lowRunwaySeconds?: number;
@@ -216,6 +250,7 @@ export class PlaybackTelemetry {
   readonly #torrServer: TorrServerClient;
   readonly #entries: (() => Promise<LibraryEntry[]>) | undefined;
   readonly #probes: StreamProber | undefined;
+  readonly #progress: WatchObserver | undefined;
   readonly #intervalMs: number;
   readonly #ringSize: number;
   readonly #lowRunwaySeconds: number;
@@ -236,6 +271,7 @@ export class PlaybackTelemetry {
     this.#torrServer = torrServer;
     this.#entries = options.entries;
     this.#probes = options.probes;
+    this.#progress = options.progress;
     this.#intervalMs = options.intervalMs ?? SAMPLE_INTERVAL_MS;
     this.#ringSize = options.ringSize ?? RING_SIZE;
     this.#lowRunwaySeconds = options.lowRunwaySeconds ?? LOW_RUNWAY_SECONDS;
@@ -403,6 +439,11 @@ export class PlaybackTelemetry {
     // open reader means a player is still pulling bytes: keep the entry
     // counted as streaming (and this target sampled) until readers drop.
     if (sample.readers > 0) markStreamActivity(now, target.entryId);
+    if (this.#progress && sample.readers > 0) {
+      const fraction = readerFraction(cache, rawFileId(target.fileId));
+      if (fraction !== undefined)
+        this.#progress.observe(target.entryId, target.fileId, fraction, now);
+    }
     const ring = this.#samples.get(target.entryId) ?? [];
     ring.push(sample);
     if (ring.length > this.#ringSize)

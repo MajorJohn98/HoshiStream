@@ -2,8 +2,15 @@ import { entrySourceDefinitionRevision } from "./imports/source-identity.ts";
 import type { Library } from "./library.ts";
 import { tagKey } from "./tags.ts";
 import type { LibraryEntry } from "./types.ts";
+import type { SelectedFile } from "./media-file-selection.ts";
+import {
+  lastWatchActivity,
+  resumeFile,
+  watchableFiles,
+} from "./watch-state.ts";
 
 const PAGE_SIZE = 100;
+export const CONTINUE_WATCHING_ID = "continue-watching";
 
 // Stremio renders `links` as tappable chips; a search deep link keeps them
 // useful without a metadata provider.
@@ -66,16 +73,47 @@ export function toMetaPreview(entry: LibraryEntry) {
   };
 }
 
+// Stremio's video id for a file: movies have one video (the entry itself);
+// series videos are keyed by season and episode (metadata.ts).
+export function videoIdFor(entry: LibraryEntry, file: SelectedFile): string {
+  return entry.type === "movie"
+    ? entry.id
+    : `${entry.id}:${file.season}:${file.episode}`;
+}
+
+// Entries with something to resume, newest activity first, each opening on
+// the file playback should pick up at. Entries whose every file is watched
+// drop out, so the row stays a to-do list rather than a history.
+export async function continueWatching(library: Library, type: string) {
+  const rows: { entry: LibraryEntry; file: SelectedFile; at: number }[] = [];
+  for (const entry of await library.list()) {
+    if (entry.type !== type || !entry.watchStates?.length) continue;
+    const file = resumeFile(entry, await watchableFiles(entry));
+    if (file) rows.push({ entry, file, at: lastWatchActivity(entry) });
+  }
+  return rows
+    .sort((a, b) => b.at - a.at)
+    .map(({ entry, file }) => ({
+      ...toMetaPreview(entry),
+      behaviorHints: { defaultVideoId: videoIdFor(entry, file) },
+    }));
+}
+
 export async function getCatalog(
   library: Library,
   type: string,
   extra: Record<string, string | string[] | undefined>,
+  id?: string,
 ) {
-  const search = String(extra.search ?? "").toLocaleLowerCase();
-  const genre = extra.genre ? tagKey(String(extra.genre)) : "";
   const parsedSkip = Number.parseInt(String(extra.skip ?? "0"), 10);
   const skip =
     Number.isSafeInteger(parsedSkip) && parsedSkip > 0 ? parsedSkip : 0;
+  if (id === CONTINUE_WATCHING_ID) {
+    const metas = await continueWatching(library, type);
+    return { metas: metas.slice(skip, skip + PAGE_SIZE) };
+  }
+  const search = String(extra.search ?? "").toLocaleLowerCase();
+  const genre = extra.genre ? tagKey(String(extra.genre)) : "";
   const entries = (await library.list())
     .filter((entry) => entry.type === type)
     .filter(

@@ -305,6 +305,30 @@ describe("stream prewarming", () => {
     });
   });
 
+  it("opens a series with history on the episode to resume", async () => {
+    const library = await temporaryLibrary();
+    const entry = await library.create({
+      type: "series",
+      name: "Show",
+      magnetUri: "magnet:?xt=urn:btih:show",
+    });
+    const torrServer = fakeTorrServer();
+    vi.mocked(torrServer.waitForFiles).mockResolvedValue({
+      ...status,
+      file_stats: [
+        { id: 1, path: "Show/S01E01.mkv", length: 100 },
+        { id: 2, path: "Show/S01E02.mkv", length: 100 },
+      ],
+    });
+    const fresh = await getMetadata(library, torrServer, "series", entry.id);
+    expect(fresh.meta).not.toHaveProperty("behaviorHints");
+    await library.setWatchState(entry.id, 1, "watched");
+    const resumed = await getMetadata(library, torrServer, "series", entry.id);
+    expect(resumed.meta).toMatchObject({
+      behaviorHints: { defaultVideoId: `${entry.id}:1:2` },
+    });
+  });
+
   it("does not touch TorrServer for local entries", async () => {
     const library = await temporaryLibrary();
     const entry = await library.create({

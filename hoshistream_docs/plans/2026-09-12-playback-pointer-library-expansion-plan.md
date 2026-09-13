@@ -1,8 +1,9 @@
 # Playback, pointer, library and operations expansion
 
 Date: 2026-09-12
-Status: **Phases 1, 2, 4, 6, 7, 12 and 14 done** — see
+Status: **Phases 1, 2, 4, 5, 6, 7, 12 and 14 done** — see
 [playback telemetry and line fit](../changelog/playback-telemetry-and-line-fit.md),
+[watched state](../changelog/watched-state.md),
 [subtitle sidecars](../changelog/subtitle-sidecars.md),
 [pointer drift detection](../changelog/pointer-drift-detection.md),
 [episode mapping repair](../changelog/episode-mapping-repair.md),
@@ -206,7 +207,15 @@ Goal: a stale remote record is never silent again. Pushes stay manual.
 Exit: with the remote record deliberately stale, the dashboard and menu bar
 flag it within one launch, and one click fixes it.
 
-## Phase 5 — Watched state and Continue Watching
+## Phase 5 — Watched state and Continue Watching ✅
+
+Implemented 2026-09-13 — see [watched state](../changelog/watched-state.md),
+[ADR 0025](../decisions/0025-watched-state-from-observed-reads.md) and the
+[detailed plan](2026-09-13-watched-state-plan.md). Deviations: "started" is
+recorded on the first observed read rather than `stream_generated`;
+`bytes_read_useful_data` is per torrent, so the reader position from `/cache`
+is used instead; the SDK has no `watched` video field, so Continue Watching
+and series `meta` use `behaviorHints.defaultVideoId`.
 
 Goal: resume where you left off across Nuvio and the browser player using
 TorrServer's `/viewed` plus add-on-side progress.
@@ -502,8 +511,9 @@ npm run format:check` in `addon/`, a changelog entry, and index updates.
   (Go struct has no JSON tags).
 - Phase 3: whether Nuvio issues its own head/tail probing requests that would
   make the tail warm redundant — observe in Phase 1 first.
-- Phase 5: which watched/`videos` fields the installed `stremio-addon-sdk`
-  version supports.
+- Phase 5 (settled): `stremio-addon-sdk` 1.6.10 has no `watched` video field;
+  `behaviorHints.defaultVideoId` is used. Whether Nuvio honours it on series
+  is still unverified on a device.
 - Phase 11: availability of a Developer ID; without it, Phase 11 reduces to
   CI smoke only.
 - Phase 12: whether Nuvio renders `trailers[]` and `links[]` (Stremio desktop

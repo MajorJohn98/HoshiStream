@@ -6,6 +6,7 @@ import {
   fileAtPiece,
   noteStreamTarget,
   PlaybackTelemetry,
+  readerFraction,
   resetStreamTargets,
   sampleFrom,
 } from "../src/playback-telemetry.ts";
@@ -35,11 +36,47 @@ function cache(
     downloadSpeedBps: 0,
     activePeers: 0,
     connectedSeeders: 0,
+    files: [],
     ...extra,
   };
 }
 
 afterEach(() => resetStreamTargets());
+
+describe("readerFraction", () => {
+  // Two 10-piece files; reader pieces are absolute in the torrent.
+  const files = [
+    { id: 1, path: "a.mkv", length: 10 * PIECE },
+    { id: 2, path: "b.mkv", length: 10 * PIECE },
+  ];
+
+  it("positions the reader within the target file from the torrent offset", () => {
+    const state = cache(
+      [],
+      [{ startPiece: 0, endPiece: 20, readerPiece: 15 }],
+      {
+        files,
+      },
+    );
+    expect(readerFraction(state, 2)).toBe(0.5);
+    // The same reader sits outside file 1.
+    expect(readerFraction(state, 1)).toBeUndefined();
+  });
+
+  it("takes the furthest of several readers and ignores unknown files", () => {
+    const state = cache(
+      [],
+      [
+        { startPiece: 0, endPiece: 20, readerPiece: 1 },
+        { startPiece: 0, endPiece: 20, readerPiece: 9 },
+      ],
+      { files },
+    );
+    expect(readerFraction(state, 1)).toBe(0.9);
+    expect(readerFraction(state, 3)).toBeUndefined();
+    expect(readerFraction(cache([], []), 1)).toBeUndefined();
+  });
+});
 
 describe("bytesAhead", () => {
   it("counts contiguous completed pieces from the reader piece to the window end", () => {
@@ -207,6 +244,38 @@ describe("PlaybackTelemetry", () => {
     expect(stream.samples.map((s) => s.aheadBytes / PIECE)).toEqual([2, 3, 4]);
     expect(stream.latest?.aheadBytes).toBe(4 * PIECE);
     expect(cacheState).toHaveBeenCalledWith("a".repeat(40));
+  });
+
+  it("forwards the reader's position in the streamed file to the watch observer", async () => {
+    const files = [
+      { id: 1, path: "a.mkv", length: 10 * PIECE },
+      { id: 2, path: "b.mkv", length: 10 * PIECE },
+    ];
+    const observe = vi.fn();
+    const cacheState = vi
+      .fn<TorrServerClient["cacheState"]>()
+      .mockResolvedValueOnce(
+        cache([19], [{ startPiece: 10, endPiece: 20, readerPiece: 19 }], {
+          files,
+        }),
+      )
+      .mockResolvedValueOnce(cache([19], [], { files }));
+    const telemetry = new PlaybackTelemetry(
+      { cacheState } as unknown as TorrServerClient,
+      { now: () => 10_000_000, log: vi.fn(), progress: { observe } },
+    );
+    noteStreamTarget({
+      entryId: "hoshi:a",
+      hash: "a".repeat(40),
+      fileId: 2,
+      title: "A",
+    });
+    markStreamActivity(10_000_000, "hoshi:a");
+    await telemetry.sample(10_000_000);
+    expect(observe).toHaveBeenCalledWith("hoshi:a", 2, 0.9, 10_000_000);
+    // No reader attached: nothing to report.
+    await telemetry.sample(10_000_000);
+    expect(observe).toHaveBeenCalledTimes(1);
   });
 
   it("warns once per 30 s while runway is low and a reader is attached", async () => {

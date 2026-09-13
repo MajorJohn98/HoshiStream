@@ -100,6 +100,16 @@ export const playbackStateSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+// Per-file watched state (plans/2026-09-13-watched-state-plan.md), keyed by
+// the entry-wide file id like playback.fileId and mediaFacts. "started" is
+// the first observed read; "watched" is the playhead reaching 90 %.
+export const watchStateSchema = z.object({
+  fileId: z.number().int().nonnegative(),
+  state: z.enum(["started", "watched"]),
+  at: z.string().datetime(),
+});
+export type WatchState = z.infer<typeof watchStateSchema>;
+
 // Disk library (see plans/2026-09-02-disk-library-plan.md). Files are keyed
 // by "<torrent-hash>:<raw-file-id>" — raw TorrServer ids can collide across a
 // series' sources, hashes cannot. Only durable state lives here; transfer
@@ -278,6 +288,7 @@ export const libraryEntrySchema = z
     // When a client last requested this entry's stream (any device, not just
     // host playback). Drives "Recently streamed" in the management UI.
     lastStreamedAt: z.string().datetime().optional(),
+    watchStates: z.array(watchStateSchema).optional(),
     searchImport: searchImportSchema.optional(),
     searchReceipts: z.array(searchReceiptSchema).optional(),
     sourceCheck: sourceCheckSchema.optional(),
@@ -311,6 +322,7 @@ export const createEntrySchema = libraryEntrySchema
     playback: true,
     diskCopy: true,
     lastStreamedAt: true,
+    watchStates: true,
     sourceHash: true,
     searchImport: true,
     searchReceipts: true,
