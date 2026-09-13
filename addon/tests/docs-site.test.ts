@@ -47,7 +47,7 @@ describe("public documentation", () => {
     const html = await readFile(join(output, "index.html"), "utf8");
     expect(html).toContain('href="./styles.css"');
     expect(html).toContain('src="./site.js"');
-    expect(html).toContain("Version 0.14.0");
+    expect(html).toContain("Version 0.15.0");
     expect(html).toContain('href="#configuration"');
     expect(html).toContain("LOCAL");
     expect(() => validateGuide(html)).not.toThrow();

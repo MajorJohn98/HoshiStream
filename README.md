@@ -8,7 +8,7 @@ accounts or containers.
 **[Setup & configuration guide](https://majorjohn98.github.io/HoshiStream/)** —
 installation, players, settings, storage, optional integrations and recovery.
 
-The **0.14.0 closed-beta candidate** targets Apple Silicon, macOS 13.5+, and
+The **0.15.0 closed-beta candidate** targets Apple Silicon, macOS 13.5+, and
 one direct-play stream. Browser baseline: **MP4 with H.264 video and AAC audio**.
 Exact browser/Nuvio/Stremio versions and recipient playback are still awaiting
 acceptance. Existing opt-in stream repair and remote access are outside this beta.
@@ -21,7 +21,7 @@ TorrServer, FFmpeg and ffprobe; playback in the management page uses your browse
 
 1. Open [release downloads](https://github.com/MajorJohn98/HoshiStream/releases).
    **The latest published artifact is still 0.8.2, not this candidate.**
-   Wait for an approved 0.14.0 image, checksum and release notes; do not treat the
+   Wait for an approved 0.15.0 image, checksum and release notes; do not treat the
    older download or a `LOCAL-ONLY` image as the closed beta.
 2. Download the approved DMG and matching `.sha256`, verify it using the
    [installation guide](hoshistream_docs/guides/distributing-macos-app.md#install-an-approved-image),

@@ -4,7 +4,7 @@ The browser-first candidate targets **Apple Silicon, macOS 13.5+, a trusted
 home LAN and one direct-play stream**. Browser baseline media is H.264/AAC MP4.
 It bundles Node, TorrServer, FFmpeg and ffprobe, **not mpv**. Installed users
 need a browser but no developer tools. The current release download remains
-the older 0.8.2 artifact; no 0.14.0 release is approved by this guide.
+the older 0.8.2 artifact; no 0.15.0 release is approved by this guide.
 
 ## Build for local validation
 
@@ -79,7 +79,7 @@ pointer behavior, updates/recovery and support readiness in the
 gates. Neither packaging command deploys, publishes or invites testers.
 
 Retain the previous approved DMG, checksum, notes and its compatible stopped-state
-backup. The existing 0.8.2 download is not a proven downgrade target for 0.14.0
+backup. The existing 0.8.2 download is not a proven downgrade target for 0.15.0
 state. Do not replace the only approved artifact or claim data compatibility
 without the phase 5 decision and recovery exercise.
 

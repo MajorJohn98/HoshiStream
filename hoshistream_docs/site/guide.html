@@ -13,10 +13,10 @@
   </p>
   <aside class="callout warning">
     <strong
-      >0.14.0 is a local-validation candidate, not an approved download</strong
+      >0.15.0 is a local-validation candidate, not an approved download</strong
     >
     <p>
-      This guide reflects the repository on September 7, 2026. Binary sharing
+      This guide reflects the repository on September 13, 2026. Binary sharing
       and beta invitations remain blocked pending exact third-party notices and
       corresponding-source materials, recipient/player acceptance, recovery and
       service checks, and a working private support channel. A
@@ -501,6 +501,15 @@ shasum -a 256 -c 'HoshiStream-BUILD-ID-darwin-arm64.dmg.sha256'</code></pre>
       episodes, so review before replacing coverage.
     </li>
     <li>
+      A series entry's <strong>Episodes</strong> tab shows each episode with a
+      title cleaned from its filename; you can type your own title, a short
+      overview and an air date, and mark the show <strong>Ongoing</strong> so
+      Stremio keeps it on the Board. <strong>Generate thumbnails</strong> grabs
+      one frame per episode whose file is already on disk (a linked folder or a
+      completed disk copy) with the bundled FFmpeg; nothing is ever fetched from
+      a live torrent for a thumbnail.
+    </li>
+    <li>
       Tags can be selected or created when adding/editing a title. Library tag
       filters require every selected tag. The <strong>Tags</strong> page
       renames/deletes labels across affected titles; Stremio exposes them as
@@ -570,6 +579,13 @@ shasum -a 256 -c 'HoshiStream-BUILD-ID-darwin-arm64.dmg.sha256'</code></pre>
       and try your authorized title. Then confirm the connection in Get started.
     </li>
   </ol>
+  <p>
+    Stremio's Board shows a HoshiStream row per type for your whole library,
+    Continue Watching, <strong>Recently added</strong>,
+    <strong>Unwatched</strong>, and any tag you pin from the
+    <strong>Tags</strong> page (up to eight). The add-on tile carries the
+    HoshiStream logo; a contact address is optional and set on the same page.
+  </p>
   <p>
     If copying is unavailable, expand <strong>Show private URL</strong> and copy
     locally. Do not send it to someone else to test. The following are URL
@@ -1332,8 +1348,12 @@ TRANSCODE_ENABLED=false</code></pre>
             <th scope="row">
               <code>DownloadRateLimit / UploadRateLimit</code>
             </th>
-            <td><code>0 / 0</code></td>
-            <td>No configured rate cap in the supplied engine settings.</td>
+            <td><code>0 / 128</code></td>
+            <td>
+              Download uncapped; upload capped at 128 KiB/s so an asymmetric
+              line is not starved. Installs seeded before this default keep
+              <code>0</code> until you apply a cap.
+            </td>
           </tr>
           <tr>
             <th scope="row"><code>DisableDHT / DisablePEX</code></th>
@@ -1353,6 +1373,25 @@ TRANSCODE_ENABLED=false</code></pre>
         </tbody>
       </table>
     </div>
+    <p>
+      You no longer need to edit the file by hand:
+      <strong>System &gt; Status &gt; TorrServer tuning</strong> shows the live
+      values of the six knobs that matter (upload/download caps, peer
+      connections, memory cache, read-ahead, idle-torrent timeout), applies
+      edits through TorrServer's own settings API and offers
+      <strong>Reset to shipped defaults</strong>. Applying reconnects the
+      BitTorrent client, so the form refuses while someone is streaming. After a
+      speed test the page suggests an upload cap of about a tenth of your
+      measured download speed; it is offered, never applied silently.
+    </p>
+    <p>
+      When asking for help, press <strong>Copy diagnostics</strong> at the
+      bottom of the Checks section on the same page. It copies one redacted JSON
+      document — versions, OS, TorrServer settings, speed tests, playback
+      telemetry, storage and archive state, library <em>counts</em> and the last
+      300 log lines — with the access token, secrets, magnet links and your home
+      directory removed. Read it once before sending.
+    </p>
     <p>
       Do not expose TorrServer's administrative interface to tune it remotely,
       substitute an unpinned engine, or enable the retired search integrations.
@@ -1399,6 +1438,14 @@ TRANSCODE_ENABLED=false</code></pre>
       Follow <strong>Storage &gt; Downloads</strong>. One title copies at a
       time. Use <strong>Pause</strong> or <strong>Resume</strong> explicitly; a
       manually paused job stays paused across restarts.
+    </li>
+    <li>
+      Optionally give a series a rolling window in its
+      <strong>Keep on disk</strong> tab: <strong>Keep N ahead</strong> archives
+      the next unwatched episodes after the one you last played, and
+      <strong>Remove watched copies</strong> deletes copies you have finished
+      once that window is on disk. Both are off by default; nothing that is
+      playing or still copying is ever removed.
     </li>
   </ol>
   <h3>Disconnecting, reconnecting, and moving drives</h3>
@@ -2012,7 +2059,7 @@ node packaging/build-windows-app.mjs --stage-only</code></pre>
   <ol>
     <li>
       Record <strong>About HoshiStream</strong>'s exact build ID, not just
-      <code>0.14.0</code>. Retain its app/image, checksum, and compatibility
+      <code>0.15.0</code>. Retain its app/image, checksum, and compatibility
       notes.
     </li>
     <li>
