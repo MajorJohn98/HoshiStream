@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   inspectEntry,
   resolveStreamSource,
+  sharedInspection,
   warmStreamSource,
 } from "../src/inspection.ts";
 import { Library } from "../src/library.ts";
@@ -305,7 +306,7 @@ describe("stream prewarming", () => {
     });
   });
 
-  it("opens a series with history on the episode to resume", async () => {
+  it("keeps the episode list for a series with history", async () => {
     const library = await temporaryLibrary();
     const entry = await library.create({
       type: "series",
@@ -323,10 +324,77 @@ describe("stream prewarming", () => {
     const fresh = await getMetadata(library, torrServer, "series", entry.id);
     expect(fresh.meta).not.toHaveProperty("behaviorHints");
     await library.setWatchState(entry.id, 1, "watched");
+    // defaultVideoId on a meta makes Stremio hide the episode list, so the
+    // resume hint belongs to the Continue Watching rows only.
     const resumed = await getMetadata(library, torrServer, "series", entry.id);
-    expect(resumed.meta).toMatchObject({
-      behaviorHints: { defaultVideoId: `${entry.id}:1:2` },
+    expect(resumed.meta).not.toHaveProperty("behaviorHints");
+    expect(resumed.meta?.videos).toHaveLength(2);
+  });
+
+  it("answers a cached series meta without waiting on TorrServer", async () => {
+    const library = await temporaryLibrary();
+    const entry = await library.create({
+      type: "series",
+      name: "Show",
+      magnetUri: "magnet:?xt=urn:btih:show",
+      extraSources: [{ magnetUri: "magnet:?xt=urn:btih:season2" }],
     });
+    await library.setInspectionCache(entry.id, {
+      hash: "abc123",
+      selectedFiles: [
+        { id: 1, path: "S01E01.mkv", length: 100, season: 1, episode: 1 },
+        {
+          id: 100_001,
+          hash: "def456",
+          path: "S02E01.mkv",
+          length: 100,
+          season: 2,
+          episode: 1,
+        },
+      ],
+      inspectedAt: new Date().toISOString(),
+    });
+    // TorrServer lost both torrents and is slow to answer.
+    const torrServer = fakeTorrServer(false);
+    vi.mocked(torrServer.get).mockReturnValue(new Promise(() => undefined));
+
+    const result = await getMetadata(library, torrServer, "series", entry.id);
+    expect(result.meta?.videos.map((video) => video.id)).toEqual([
+      `${entry.id}:1:1`,
+      `${entry.id}:2:1`,
+    ]);
+    // Re-registration still happens, in the background.
+    await vi.waitFor(() => expect(torrServer.get).toHaveBeenCalled());
+    expect(torrServer.waitForFiles).not.toHaveBeenCalled();
+  });
+
+  it("shares one inspection between concurrent uncached callers", async () => {
+    const library = await temporaryLibrary();
+    const entry = await library.create({
+      type: "series",
+      name: "Show",
+      magnetUri: "magnet:?xt=urn:btih:show",
+    });
+    const torrServer = fakeTorrServer();
+    let finish!: (value: TorrentStatus) => void;
+    vi.mocked(torrServer.waitForFiles).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const fresh = (await library.get(entry.id)) as LibraryEntry;
+    warmStreamSource(fresh, torrServer, library);
+    const meta = getMetadata(library, torrServer, "series", entry.id);
+    const shared = sharedInspection(fresh, torrServer, library);
+    await vi.waitFor(() => expect(torrServer.waitForFiles).toHaveBeenCalled());
+    finish({
+      ...status,
+      file_stats: [{ id: 1, path: "Show/S01E01.mkv", length: 100 }],
+    });
+    await Promise.all([meta, shared]);
+    expect(torrServer.addMagnet).toHaveBeenCalledOnce();
+    expect(torrServer.waitForFiles).toHaveBeenCalledOnce();
+    expect((await library.get(entry.id))?.inspectionCache).toBeDefined();
   });
 
   it("does not touch TorrServer for local entries", async () => {

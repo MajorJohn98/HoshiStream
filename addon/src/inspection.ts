@@ -1,5 +1,8 @@
 import { markInspectActivity } from "./activity.ts";
-import { entrySourceRevision } from "./imports/source-identity.ts";
+import {
+  entrySourceDefinitionRevision,
+  entrySourceRevision,
+} from "./imports/source-identity.ts";
 import type { LibraryEntry, SearchImport, SeriesSource } from "./types.ts";
 import type { Library } from "./library.ts";
 import { inspectLocalEntry } from "./local-media.ts";
@@ -275,6 +278,29 @@ export async function inspectEntry(
   };
 }
 
+// One full inspection per entry and source definition at a time: Stremio
+// fires meta and stream requests together, and the management UI may click
+// Inspect while a post-edit warm-up is still polling for metadata. Keyed by
+// revision so an edit made mid-inspection starts its own run rather than
+// joining one whose result the cache guard will reject.
+const inflight = new Map<string, ReturnType<typeof inspectEntry>>();
+
+export function sharedInspection(
+  entry: LibraryEntry,
+  torrServer: TorrServerClient,
+  library: Library,
+): ReturnType<typeof inspectEntry> {
+  const key = `${entry.id}\u0000${entrySourceDefinitionRevision(entry)}`;
+  let pending = inflight.get(key);
+  if (!pending) {
+    pending = inspectEntry(entry, torrServer, library).finally(() =>
+      inflight.delete(key),
+    );
+    inflight.set(key, pending);
+  }
+  return pending;
+}
+
 export async function resolveStreamSource(
   entry: LibraryEntry,
   torrServer: TorrServerClient,
@@ -311,12 +337,14 @@ export async function resolveStreamSource(
     }
     return { hash, selectedFiles };
   }
-  return inspectEntry(entry, torrServer, library);
+  return sharedInspection(entry, torrServer, library);
 }
 
 // Registers the torrent ahead of the play click so the swarm is already
-// connected when the stream request arrives. Failures are non-fatal because
-// the stream request resolves the source again anyway.
+// connected when the stream request arrives, and — after a source edit
+// dropped the cache — inspects in the background so Stremio's next meta
+// request answers from the cache instead of polling every source. Failures
+// are non-fatal because the stream request resolves the source again anyway.
 const warming = new Set<string>();
 
 export function warmStreamSource(
@@ -325,8 +353,9 @@ export function warmStreamSource(
   library: Library,
 ): void {
   if (entry.localFilePath || entry.localFolderPath) return;
-  if (warming.has(entry.id)) return;
-  warming.add(entry.id);
+  const key = `${entry.id}\u0000${entrySourceDefinitionRevision(entry)}`;
+  if (warming.has(key)) return;
+  warming.add(key);
   void resolveStreamSource(entry, torrServer, library)
     .catch((error: unknown) =>
       console.error(
@@ -341,5 +370,5 @@ export function warmStreamSource(
         }),
       ),
     )
-    .finally(() => warming.delete(entry.id));
+    .finally(() => warming.delete(key));
 }

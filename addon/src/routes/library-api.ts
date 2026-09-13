@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { assessDirectPlay } from "../direct-play.ts";
 import { removeDiskCopyDirectory } from "../disk-copy.ts";
-import { inspectEntry } from "../inspection.ts";
+import { sharedInspection, warmStreamSource } from "../inspection.ts";
 import {
   isManagedMediaPath,
   listLocalMedia,
@@ -251,7 +251,16 @@ export const handleWatchState: RouteHandler = async (
 };
 
 export const handleLibraryItem: RouteHandler = async (
-  { library, volumes, diskCleanup, archiver, tags, sourceChecks, thumbnails },
+  {
+    library,
+    torrServer,
+    volumes,
+    diskCleanup,
+    archiver,
+    tags,
+    sourceChecks,
+    thumbnails,
+  },
   { request, response, url, method },
 ) => {
   const itemMatch = /^\/api\/library\/([^/]+)$/.exec(url.pathname);
@@ -288,8 +297,14 @@ export const handleLibraryItem: RouteHandler = async (
       entry &&
       previousRevision &&
       entrySourceDefinitionRevision(entry) !== previousRevision
-    )
+    ) {
       await sourceChecks?.cancel(id, previousRevision);
+      // The edit dropped the inspection cache; refill it now so Stremio's
+      // next meta request answers from the cache instead of polling every
+      // source (multi-season series would otherwise time out).
+      if (entry.magnetUri || entry.torrentFilePath)
+        warmStreamSource(entry, torrServer, library);
+    }
     if (entry) logInfo("library_updated", { entryId: entry.id });
     return reply(response, entry ? 200 : 404, entry ?? { error: "Not found" });
   }
@@ -382,7 +397,7 @@ export const handleInspect: RouteHandler = async (
       homeSpeedMbps: homeSpeedMbps(),
     });
   }
-  const inspection = await inspectEntry(entry, torrServer, library);
+  const inspection = await sharedInspection(entry, torrServer, library);
   return reply(response, 200, {
     ...inspection,
     homeSpeedMbps: homeSpeedMbps(),

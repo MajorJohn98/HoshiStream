@@ -50,6 +50,9 @@ piece, and the add-on itself serves local and disk-copy files, so it sees every
   buffered it in the first minute) may be missed; the UI toggle covers that.
 - Whether Nuvio honours `defaultVideoId` on series is unverified. If it does
   not, the row still opens the right show.
+- Follow-up (2026-09-13): `defaultVideoId` must stay off the series `meta`
+  itself. Stremio desktop and TV read it there as "single video" and hide the
+  episode list, so the hint is emitted only on Continue Watching rows.
 
 ## Alternatives considered
 

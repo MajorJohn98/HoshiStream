@@ -232,7 +232,7 @@ coordinator as source checks; the legacy response keeps `technical` and its erro
 shape. Plain metadata inspection allows up to 30 seconds per source. File IDs
 are TorrServer's returned one-based IDs.
 
-Multi-torrent series: every source is inspected and the episode lists merge. File IDs become composite — `sourceIndex × 100000 + torrServerFileId` (the primary source keeps raw IDs) — and files from extra sources carry their own `hash`. A file's name parsing wins over the source's `seasonHint`; on duplicate (season, episode) claims the later source wins. Changing `extraSources` clears the inspection cache.
+Multi-torrent series: every source is inspected and the episode lists merge. File IDs become composite — `sourceIndex × 100000 + torrServerFileId` (the primary source keeps raw IDs) — and files from extra sources carry their own `hash`. A file's name parsing wins over the source's `seasonHint`; on duplicate (season, episode) claims the later source wins. Changing `extraSources` (or any other source-definition field) clears the inspection cache, and the `PATCH` reply returns before the server refills it in the background; `POST …/inspect` and Stremio requests that arrive meanwhile join that run rather than starting another.
 
 A successful sampled probe also returns representative `directPlay` advice.
 File-specific stream consumers use matching `mediaFacts`, not an unscoped verdict

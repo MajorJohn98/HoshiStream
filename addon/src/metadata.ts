@@ -1,7 +1,8 @@
-import { toMetaPreview, videoIdFor } from "./catalog.ts";
+import { toMetaPreview } from "./catalog.ts";
 import { episodeOverrideFor, episodeTitle } from "./episode-titles.ts";
 import { resolveStreamSource, warmStreamSource } from "./inspection.ts";
 import type { Library } from "./library.ts";
+import type { SelectedFile } from "./media-file-selection.ts";
 import {
   torrentStreamsForFile,
   type Stream,
@@ -9,7 +10,6 @@ import {
 } from "./streams.ts";
 import type { ThumbnailService } from "./thumbnail-service.ts";
 import type { TorrServerClient } from "./torrserver-client.ts";
-import { resumeFile } from "./watch-state.ts";
 
 export function thumbnailUrl(
   addonUrl: string,
@@ -41,13 +41,20 @@ export async function getMetadata(
   // this request: an uncached series would otherwise pay for a full
   // inspection inside the meta call. Local entries keep the stream resource
   // (their per-file subtitle hash means a disk read each).
-  const cachedHash =
-    embed && !entry.localFilePath && !entry.localFolderPath
-      ? entry.inspectionCache?.hash
-      : undefined;
-  const inspection = await resolveStreamSource(entry, torrServer, library);
-  // A series with history opens on the episode to pick up at.
-  const resume = resumeFile(entry, inspection.selectedFiles);
+  const local = Boolean(entry.localFilePath || entry.localFolderPath);
+  const cachedHash = embed && !local ? entry.inspectionCache?.hash : undefined;
+  // A cached torrent series answers from the cache alone: re-registering
+  // with TorrServer (in case it dropped the torrents) happens in the
+  // background, as for movies, so the episode list never waits on the swarm.
+  // Without a cache the inspection is shared with any warm-up already
+  // running, so a source edit followed by a Stremio visit inspects once.
+  let inspection: { selectedFiles: SelectedFile[] };
+  if (!local && entry.inspectionCache) {
+    inspection = entry.inspectionCache;
+    warmStreamSource(entry, torrServer, library);
+  } else {
+    inspection = await resolveStreamSource(entry, torrServer, library);
+  }
   const embedded = new Map<number, Stream[]>();
   if (embed && cachedHash) {
     await Promise.all(
@@ -71,8 +78,10 @@ export async function getMetadata(
     for (const slot of await thumbnails.available(entry.id))
       frames.add(`${slot.season}:${slot.episode}`);
   }
+  // No defaultVideoId here: Stremio reads it on a meta as "this title has one
+  // video" and replaces the episode list with that video's stream picker.
+  // Resume deep links live on the Continue Watching catalog rows instead.
   const behaviorHints = {
-    ...(resume ? { defaultVideoId: videoIdFor(entry, resume) } : {}),
     ...(entry.ongoing ? { hasScheduledVideos: true } : {}),
   };
   return {

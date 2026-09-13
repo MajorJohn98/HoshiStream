@@ -355,7 +355,8 @@ function shortMagnet(magnetUri) {
 }
 
 // Extra torrents merged into a series entry. Any change clears the inspection
-// cache server-side, so prompt for a fresh inspection afterwards.
+// cache server-side; the server refills it in the background, and Inspect
+// joins that run rather than starting another.
 function ExtraSourcesPanel({ state }) {
   const entry = state.selected;
   const [magnet, setMagnet] = useState("");
@@ -371,7 +372,7 @@ function ExtraSourcesPanel({ state }) {
       setState({ selected, inspection: null });
       setMagnet("");
       setSeason("");
-      notify("Sources updated — inspect again to refresh episodes");
+      notify("Sources updated — episodes are refreshing in the background");
     } catch (error) {
       notify(error.message);
     } finally {

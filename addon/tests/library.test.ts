@@ -18,6 +18,7 @@ import {
   handleLibraryItem,
 } from "../src/routes/library-api.ts";
 import type { HandlerContext } from "../src/routes/context.ts";
+import type { TorrServerClient } from "../src/torrserver-client.ts";
 import {
   createEntrySchema,
   libraryEntrySchema,
@@ -366,6 +367,52 @@ describe("library HTTP source ownership boundary", () => {
       } as unknown as ServerResponse,
     };
   }
+
+  it("refills the inspection cache in the background after a source edit", async () => {
+    const { library } = await temporaryLibrary();
+    const entry = await library.create({
+      type: "series",
+      name: "Show",
+      magnetUri: "magnet:?xt=urn:btih:primary",
+    });
+    await library.setInspectionCache(entry.id, {
+      hash: "abc123",
+      selectedFiles: [
+        { id: 1, path: "S01E01.mkv", length: 100, season: 1, episode: 1 },
+      ],
+      inspectedAt: new Date().toISOString(),
+    });
+    const status = (hash: string, path: string) => ({
+      title: "Show",
+      hash,
+      stat: 1,
+      stat_string: "Torrent working",
+      file_stats: [{ id: 1, path, length: 100 }],
+    });
+    const torrServer = {
+      addMagnet: vi
+        .fn()
+        .mockResolvedValueOnce(status("abc123", "S01E01.mkv"))
+        .mockResolvedValueOnce(status("def456", "S02E01.mkv")),
+      waitForFiles: vi
+        .fn()
+        .mockResolvedValueOnce(status("abc123", "S01E01.mkv"))
+        .mockResolvedValueOnce(status("def456", "S02E01.mkv")),
+      get: vi.fn(),
+    } as unknown as TorrServerClient;
+    const context = { library, torrServer } as HandlerContext;
+    await handleLibraryItem(
+      context,
+      route("PATCH", `/api/library/${entry.id}`, {
+        extraSources: [{ magnetUri: "magnet:?xt=urn:btih:season2" }],
+      }),
+    );
+    await vi.waitFor(async () => {
+      const cache = (await library.get(entry.id))?.inspectionCache;
+      expect(cache?.selectedFiles.map((file) => file.id)).toEqual([1, 100_001]);
+    });
+    expect(torrServer.addMagnet).toHaveBeenCalledTimes(2);
+  });
 
   it.each(["managedMedia", "sourceHash", "searchImport", "searchReceipts"])(
     "rejects forged nested %s at create and patch boundaries",

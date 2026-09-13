@@ -40,9 +40,11 @@ Date: 2026-09-13 · Phase 5 of the
   series `entry:season:episode`, matching the ids in `meta.videos`. The resume
   file is the most recently started file, else the first unwatched episode
   after the last watched one, else the earliest unwatched gap. Fully watched
-  entries drop out of the row. Series `meta` also sets `defaultVideoId` when
-  there is history, so opening the show from any catalog lands on the right
-  episode.
+  entries drop out of the row. Series `meta` does **not** set
+  `defaultVideoId`: Stremio reads that hint on a meta as "one video" and
+  replaces the episode list with a single stream picker (seen on desktop and
+  TV once any episode had been started), so the hint is confined to the
+  Continue Watching rows, where it acts as a deep link.
 - **Management UI.** The Files table on the entry page gains a **Watched**
   column: a dot plus label (Unwatched / In progress / Watched) that toggles the
   mark through `PUT /api/library/:id/watch` and
@@ -60,9 +62,8 @@ Date: 2026-09-13 · Phase 5 of the
   observed read.
 - The plan mentioned a `watched` flag on `meta.videos`. The `stremio-addon-sdk`
   1.6.10 protocol has no such field; `behaviorHints.defaultVideoId` is used
-  instead. Whether Nuvio honours `defaultVideoId` on series (as it does for
-  movies today) has not been verified on a device — if it does not, the row
-  still opens the right show and the episode list still works.
+  instead, on catalog rows only. An earlier build also set it on series
+  `meta`; Stremio then hid the episode list entirely, so that was removed.
 
 ## Open questions
 
