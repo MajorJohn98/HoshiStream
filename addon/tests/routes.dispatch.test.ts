@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { markStreamActivity } from "../src/activity.ts";
+import {
+  noteStreamTarget,
+  resetStreamTargets,
+} from "../src/playback-telemetry.ts";
 import { Library } from "../src/library.ts";
 import { NativePicker } from "../src/native-picker.ts";
 import { createHandler } from "../src/routes.ts";
@@ -63,6 +67,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  resetStreamTargets();
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
@@ -246,6 +251,55 @@ describe("createHandler dispatch", () => {
       { entryId: "hoshi:uninspected", activity: "streaming" },
       { entryId: "hoshi:uninspected", activity: "streaming" },
     ]);
+  });
+
+  it("marks only the torrent being read as streaming and labels extra sources", async () => {
+    const main = "1".repeat(40);
+    const season2 = "2".repeat(40);
+    const stamp = new Date().toISOString();
+    await writeFile(
+      libraryPath,
+      JSON.stringify([
+        {
+          id: "hoshi:multi",
+          type: "series",
+          name: "Multi",
+          magnetUri: `magnet:?xt=urn:btih:${main}`,
+          extraSources: [
+            { magnetUri: `magnet:?xt=urn:btih:${season2}`, seasonHint: 2 },
+          ],
+          createdAt: stamp,
+          updatedAt: stamp,
+        },
+      ]),
+    );
+    torrents = [
+      { title: "Multi", hash: main, stat: 3, stat_string: "Torrent working" },
+      {
+        title: "Multi",
+        hash: season2,
+        stat: 3,
+        stat_string: "Torrent working",
+      },
+    ];
+    markStreamActivity(Date.now(), "hoshi:multi");
+    noteStreamTarget({
+      entryId: "hoshi:multi",
+      hash: season2,
+      fileId: 100_003,
+      title: "Multi",
+    });
+    const { sessions } = await (await api("/api/playback")).json();
+    expect(sessions).toMatchObject([
+      { hash: main, entryId: "hoshi:multi", activity: "idle" },
+      {
+        hash: season2,
+        entryId: "hoshi:multi",
+        activity: "streaming",
+        sourceLabel: "Season 2",
+      },
+    ]);
+    expect(sessions[0].sourceLabel).toBeUndefined();
   });
 
   it("reports status and falls through to 404 for unknown paths", async () => {

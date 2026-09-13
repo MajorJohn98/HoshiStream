@@ -86,6 +86,14 @@ the viewer plainly which stream their line can carry.
   magnet links' infohashes as well as the inspection cache — and the
   first-play probe runs through a missing cache so the check re-inspects
   and measures in one pass.
+- **Entries with several torrents (2026-09-13 fix).** A series with extra
+  season sources holds one TorrServer torrent per source, and every one of
+  them was labelled `Streaming` with the entry's name while only one was
+  being read. `/api/playback` now marks as streaming only the torrent the
+  sampler's stream target points at (the rest are `Idle`: loaded, nobody
+  reading) and adds `sourceLabel` — "Season N" from the extra source's
+  season hint, else "Extra source N" — which the Activity row shows after
+  the title.
 - Tests: `tests/playback-telemetry.test.ts`, `tests/playback-probes.test.ts`,
   `tests/runway-ui.test.ts`, new
   `cacheState` cases in `tests/torrserver-client.test.ts`, the route in

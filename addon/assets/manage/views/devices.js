@@ -252,7 +252,16 @@ function Playback() {
                       ></i>
                     </span>
                     <span class="main">
-                      <strong>${session.title}</strong>
+                      <strong>
+                        ${session.title}
+                        ${
+                          session.sourceLabel
+                            ? html`<span class="muted">
+                                · ${session.sourceLabel}</span
+                              >`
+                            : null
+                        }
+                      </strong>
                       <span class="meta">
                         ${
                           session.active

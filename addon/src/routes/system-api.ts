@@ -1,6 +1,8 @@
 import { z, ZodError } from "zod";
 import { recentEntryActivity, recentStreamActivity } from "../activity.ts";
-import { entryHashes } from "../imports/source-identity.ts";
+import { entryHashes, magnetHash } from "../imports/source-identity.ts";
+import { fileSourceIndex } from "../media-file-selection.ts";
+import { activeStreamTargets } from "../playback-telemetry.ts";
 import { listClients } from "../clients.ts";
 import { manifestWithGenres } from "../manifest.ts";
 import { lookupHostname } from "../hostname.ts";
@@ -122,18 +124,41 @@ export const handlePlaybackSessions: RouteHandler = async (
   // session reports whichever owner is actually busy rather than the last
   // one indexed.
   const owners = new Map<string, string[]>();
+  // Which of an entry's torrents this is, when it has more than one (extra
+  // season sources), so same-named rows can be told apart.
+  const sourceLabels = new Map<string, string>();
   for (const entry of await library.list()) {
     for (const hash of entryHashes(entry)) {
       const list = owners.get(hash) ?? [];
       list.push(entry.id);
       owners.set(hash, list);
     }
+    entry.extraSources?.forEach((source, index) => {
+      const label =
+        source.seasonHint !== undefined
+          ? `Season ${source.seasonHint}`
+          : `Extra source ${index + 1}`;
+      for (const hash of [source.sourceHash, magnetHash(source.magnetUri)])
+        if (hash) sourceLabels.set(`${entry.id}:${hash.toLowerCase()}`, label);
+      for (const file of entry.inspectionCache?.selectedFiles ?? [])
+        if (file.hash && fileSourceIndex(file.id) === index + 1)
+          sourceLabels.set(`${entry.id}:${file.hash.toLowerCase()}`, label);
+    });
   }
   const copying = archiver?.activeEntryId();
+  // An entry with several torrents streams from one of them at a time; the
+  // sampler knows which. The others are merely loaded.
+  const streamingHashes = new Map(
+    activeStreamTargets().map((target) => [
+      target.entryId,
+      target.hash.toLowerCase(),
+    ]),
+  );
   const classify = (
     hash: string,
   ): { entryId?: string; activity: SessionActivity } => {
-    const candidates = owners.get(hash.toLowerCase()) ?? [];
+    hash = hash.toLowerCase();
+    const candidates = owners.get(hash) ?? [];
     let chosen: { entryId?: string; activity: SessionActivity } = {
       entryId: candidates[0],
       activity: "idle",
@@ -141,7 +166,13 @@ export const handlePlaybackSessions: RouteHandler = async (
     for (const entryId of candidates) {
       if (copying === entryId) return { entryId, activity: "downloading" };
       const activity = recentEntryActivity(entryId);
-      if (activity === "streaming") return { entryId, activity };
+      if (activity === "streaming") {
+        const streamed = streamingHashes.get(entryId);
+        if (streamed === undefined || streamed === hash)
+          return { entryId, activity };
+        chosen = { entryId, activity: "idle" };
+        continue;
+      }
       if (activity && chosen.activity === "idle")
         chosen = { entryId, activity };
     }
@@ -149,19 +180,25 @@ export const handlePlaybackSessions: RouteHandler = async (
   };
   return reply(response, 200, {
     // stat 3 = TorrentWorking (MatriX state.go): actively serving.
-    sessions: torrents.map((torrent) => ({
-      hash: torrent.hash,
-      ...classify(torrent.hash),
-      title: torrent.title || torrent.name || "Unknown torrent",
-      statString: torrent.stat_string,
-      active: torrent.stat === 3,
-      downloadSpeedBps: torrent.download_speed ?? 0,
-      uploadSpeedBps: torrent.upload_speed ?? 0,
-      activePeers: torrent.active_peers ?? 0,
-      connectedSeeders: torrent.connected_seeders ?? 0,
-      loadedSize: torrent.loaded_size ?? 0,
-      torrentSize: torrent.torrent_size ?? 0,
-    })),
+    sessions: torrents.map((torrent) => {
+      const session = classify(torrent.hash);
+      return {
+        hash: torrent.hash,
+        ...session,
+        sourceLabel: session.entryId
+          ? sourceLabels.get(`${session.entryId}:${torrent.hash.toLowerCase()}`)
+          : undefined,
+        title: torrent.title || torrent.name || "Unknown torrent",
+        statString: torrent.stat_string,
+        active: torrent.stat === 3,
+        downloadSpeedBps: torrent.download_speed ?? 0,
+        uploadSpeedBps: torrent.upload_speed ?? 0,
+        activePeers: torrent.active_peers ?? 0,
+        connectedSeeders: torrent.connected_seeders ?? 0,
+        loadedSize: torrent.loaded_size ?? 0,
+        torrentSize: torrent.torrent_size ?? 0,
+      };
+    }),
   });
 };
 
