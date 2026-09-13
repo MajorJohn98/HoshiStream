@@ -49,6 +49,14 @@ export interface PlaybackSample {
 export interface StreamTelemetry extends StreamTarget {
   samples: PlaybackSample[];
   latest: PlaybackSample | null;
+  // A first-play probe is measuring this file's bitrate right now.
+  probing: boolean;
+}
+
+// Probes files whose bitrate is unknown while they stream (playback-probes.ts).
+export interface StreamProber {
+  ensure(target: StreamTarget): void;
+  pending(target: Pick<StreamTarget, "entryId" | "fileId">): boolean;
 }
 
 // Contiguous completed bytes from the reader's current piece to the end of
@@ -102,6 +110,16 @@ const targets = new Map<string, StreamTarget>();
 
 export function noteStreamTarget(target: StreamTarget): void {
   targets.set(target.entryId, target);
+}
+
+// A probe finished after the target was noted; later samples use the figure.
+export function setStreamTargetBitrate(
+  target: Pick<StreamTarget, "entryId" | "fileId">,
+  bitrateMbps: number,
+): void {
+  const current = targets.get(target.entryId);
+  if (current && current.fileId === target.fileId)
+    current.bitrateMbps = bitrateMbps;
 }
 
 export function activeStreamTargets(now = Date.now()): StreamTarget[] {
@@ -184,6 +202,7 @@ export interface PlaybackTelemetryOptions {
   // Library lookup for discovering streams the add-on never handed out: a
   // client that cached the stream URL plays straight from TorrServer.
   entries?: () => Promise<LibraryEntry[]>;
+  probes?: StreamProber;
   intervalMs?: number;
   ringSize?: number;
   lowRunwaySeconds?: number;
@@ -195,6 +214,7 @@ export interface PlaybackTelemetryOptions {
 export class PlaybackTelemetry {
   readonly #torrServer: TorrServerClient;
   readonly #entries: (() => Promise<LibraryEntry[]>) | undefined;
+  readonly #probes: StreamProber | undefined;
   readonly #intervalMs: number;
   readonly #ringSize: number;
   readonly #lowRunwaySeconds: number;
@@ -214,6 +234,7 @@ export class PlaybackTelemetry {
   ) {
     this.#torrServer = torrServer;
     this.#entries = options.entries;
+    this.#probes = options.probes;
     this.#intervalMs = options.intervalMs ?? SAMPLE_INTERVAL_MS;
     this.#ringSize = options.ringSize ?? RING_SIZE;
     this.#lowRunwaySeconds = options.lowRunwaySeconds ?? LOW_RUNWAY_SECONDS;
@@ -246,6 +267,9 @@ export class PlaybackTelemetry {
           this.#samples.delete(entryId);
           this.#lastWarned.delete(entryId);
         }
+      if (this.#probes)
+        for (const target of active)
+          if (target.bitrateMbps === undefined) this.#probes.ensure(target);
       await Promise.all(
         active.map((target) => this.#sampleTarget(target, now)),
       );
@@ -257,7 +281,12 @@ export class PlaybackTelemetry {
   report(now = this.#now()): StreamTelemetry[] {
     return activeStreamTargets(now).map((target) => {
       const samples = this.#samples.get(target.entryId) ?? [];
-      return { ...target, samples, latest: samples.at(-1) ?? null };
+      return {
+        ...target,
+        samples,
+        latest: samples.at(-1) ?? null,
+        probing: this.#probes?.pending(target) ?? false,
+      };
     });
   }
 

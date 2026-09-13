@@ -62,7 +62,23 @@ the viewer plainly which stream their line can carry.
   reports the owner that is streaming (or downloading), and discovery
   credits the owner already seen streaming, else one holding a bitrate for
   the file being read, else the most recently streamed.
-- Tests: `tests/playback-telemetry.test.ts`, `tests/runway-ui.test.ts`, new
+- **First-play episode probe (2026-09-13).** "Analyze playback" measures one
+  file per entry, so every other episode of a series showed
+  "bitrate not analyzed" and never got a runway or a low-runway warning.
+  `PlaybackProbes` (`src/playback-probes.ts`) now probes a file the first
+  time it streams: each telemetry tick hands active targets without a
+  bitrate to it, and it runs the existing extended-mode source check for
+  that file (`sourceChecks.check(entryId, { probe: true, fileId, mode:
+  "extended" })`). The result is kept as the file's media fact, so a replay
+  skips the probe; the live target picks the bitrate up as soon as the probe
+  finishes. A check the user started is never interrupted (the probe waits
+  for the next tick), one probe runs per file at a time, and a failed,
+  inconclusive, or bitrate-less probe is not retried for ten minutes.
+  Outcomes are logged as `playback_probe_finished`. The Activity runway line
+  reads "measuring bitrate…" while the probe runs. Plan:
+  [first-play episode probe](../plans/2026-09-13-first-play-episode-probe-plan.md).
+- Tests: `tests/playback-telemetry.test.ts`, `tests/playback-probes.test.ts`,
+  `tests/runway-ui.test.ts`, new
   `cacheState` cases in `tests/torrserver-client.test.ts`, the route in
   `tests/routes.dispatch.test.ts`.
 

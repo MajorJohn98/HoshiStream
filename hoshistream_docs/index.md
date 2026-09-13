@@ -67,7 +67,8 @@
 
 ## Plans
 
-- [plans/2026-09-12-playback-pointer-library-expansion-plan.md](plans/2026-09-12-playback-pointer-library-expansion-plan.md) — Fifteen-phase expansion (1, 2, 6 done): playback telemetry and buffer-ahead gate, bitrate-aware streams, pointer drift detection, watched state, subtitles, mapping repair, disk-copy policies, diagnostics, TorrServer settings UI, signing and CI smoke, plus Stremio protocol coverage (rich title and episode metadata, thumbnails, stream descriptions, Board rows).
+- [plans/2026-09-13-first-play-episode-probe-plan.md](plans/2026-09-13-first-play-episode-probe-plan.md) — Probe each episode's bitrate the first time it plays and keep it as a per-file media fact, so the runway line covers every episode (implemented).
+- [plans/2026-09-12-playback-pointer-library-expansion-plan.md](plans/2026-09-12-playback-pointer-library-expansion-plan.md) — Fifteen-phase expansion (1, 2, 4, 6, 7, 12, 14 done): playback telemetry and buffer-ahead gate, bitrate-aware streams, pointer drift detection, watched state, subtitles, mapping repair, disk-copy policies, diagnostics, TorrServer settings UI, signing and CI smoke, plus Stremio protocol coverage (rich title and episode metadata, thumbnails, stream descriptions, Board rows).
 - [plans/2026-09-12-stale-pointer-reads-and-slow-link-tuning.md](plans/2026-09-12-stale-pointer-reads-and-slow-link-tuning.md) — Root causes and fixes for stale pointer redirects (Blob CDN) and TV buffering on a ~9 Mbps line (TorrServer upload/connection tuning).
 - [plans/2026-09-07-public-setup-guide.md](plans/2026-09-07-public-setup-guide.md) — Approved static setup guide and documentation-only GitHub Pages publication plan.
 - [plans/2026-09-07-closed-beta-readiness-plan.md](plans/2026-09-07-closed-beta-readiness-plan.md) — macOS-first closed beta phases, deferred blocker register, installed pointer provisioning, quick starts, release acceptance, recovery and support.

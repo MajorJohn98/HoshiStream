@@ -77,5 +77,18 @@ describe("runwaySummary", () => {
       label: "Runway unknown",
       detail: "7.5 Mbps swarm · bitrate not analyzed",
     });
+    expect(
+      runwaySummary(
+        {
+          readers: 1,
+          runwaySeconds: null,
+          downloadMbps: 7.5,
+          bitrateMbps: null,
+          sustainable: null,
+          activePeers: 3,
+        },
+        true,
+      ).detail,
+    ).toBe("7.5 Mbps swarm · measuring bitrate…");
   });
 });

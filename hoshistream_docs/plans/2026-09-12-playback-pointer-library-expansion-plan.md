@@ -8,7 +8,8 @@ Status: **Phases 1, 2, 4, 6, 7, 12 and 14 done** — see
 [episode mapping repair](../changelog/episode-mapping-repair.md),
 [rich title metadata](../changelog/rich-title-metadata.md) and
 [stream descriptions](../changelog/stream-descriptions.md). Phase 3 waits on
-the Phase 1 exit criterion. Phases 12–15 (Stremio protocol coverage) were
+the Phase 1 exit criterion. Phase 1's runway now covers every episode of a
+series through the [first-play episode probe](2026-09-13-first-play-episode-probe-plan.md). Phases 12–15 (Stremio protocol coverage) were
 added 2026-09-12 after a review of protocol features the add-on does not use.
 Implement one phase at a time and stop for review between phases; a phase
 heading carries ✅ once its changelog entry exists.

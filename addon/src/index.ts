@@ -6,7 +6,11 @@ import { ImportService } from "./imports/service.ts";
 import { Library } from "./library.ts";
 import { NativePicker } from "./native-picker.ts";
 import { Playback } from "./playback.ts";
-import { PlaybackTelemetry } from "./playback-telemetry.ts";
+import { PlaybackProbes } from "./playback-probes.ts";
+import {
+  PlaybackTelemetry,
+  setStreamTargetBitrate,
+} from "./playback-telemetry.ts";
 import { createHandler } from "./routes.ts";
 import { TorrServerClient } from "./torrserver-client.ts";
 import { TranscodeManager, detectVideoEncoder } from "./transcode.ts";
@@ -98,6 +102,10 @@ export async function startHoshiStream(settings = config) {
   const playback = new Playback(library, torrServer, settings.PLAYER);
   const telemetry = new PlaybackTelemetry(torrServer, {
     entries: () => library.list(),
+    // First play of a file measures its bitrate; the fact is kept per file.
+    probes: new PlaybackProbes(library, sourceChecks, {
+      onBitrate: setStreamTargetBitrate,
+    }),
   });
   const analysis = new LibraryAnalysis(library, defaultAnalyzer(sourceChecks));
   const pointer = new PointerClient({

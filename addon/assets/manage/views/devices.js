@@ -150,15 +150,17 @@ const ACTIVITY = {
 
 // Seconds of playback already cached ahead of the player, from the add-on's
 // own sampling of TorrServer's cache window. Null when the file's bitrate is
-// unknown (no media analysis yet) — then only swarm speed is shown.
-export function runwaySummary(latest) {
+// unknown — then only swarm speed is shown, and whether the first-play probe
+// is still measuring it.
+export function runwaySummary(latest, probing = false) {
   if (!latest) return null;
   const swarm = latest.downloadMbps.toFixed(1) + " Mbps swarm";
   if (latest.runwaySeconds === null || latest.bitrateMbps === null) {
     return {
       tone: "idle",
       label: "Runway unknown",
-      detail: swarm + " · bitrate not analyzed",
+      detail:
+        swarm + (probing ? " · measuring bitrate…" : " · bitrate not analyzed"),
     };
   }
   const tone =
@@ -185,7 +187,7 @@ export function runwaySummary(latest) {
 }
 
 function Runway({ stream }) {
-  const summary = runwaySummary(stream?.latest);
+  const summary = runwaySummary(stream?.latest, stream?.probing);
   if (!summary) return null;
   return html`
     <span class="meta runway">
