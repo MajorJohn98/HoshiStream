@@ -1522,6 +1522,31 @@ table.files input[type="number"] {
   padding: 5px 8px;
   border-radius: 8px;
 }
+/* Episodes tab: compact editable rows with a frame preview. */
+table.episodes input:not([type="checkbox"]),
+table.episodes textarea {
+  width: 100%;
+  min-width: 140px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+table.episodes textarea {
+  min-width: 200px;
+  min-height: 32px;
+  resize: vertical;
+}
+table.episodes input[type="date"] {
+  min-width: 130px;
+}
+.episode-thumb {
+  display: block;
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+}
 .mapping-tools {
   align-items: center;
   gap: 10px;

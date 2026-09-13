@@ -21,6 +21,7 @@ import type { TranscodeManager } from "./transcode.ts";
 import type { VolumeRegistry } from "./volumes.ts";
 import {
   reply,
+  type DiagnosticsOptions,
   type HandlerContext,
   type RouteHandler,
   type RouteRequest,
@@ -44,15 +45,23 @@ import {
 } from "./routes/library-api.ts";
 import { handleImports } from "./routes/imports-api.ts";
 import {
+  handleEpisodes,
+  handleThumbnailGeneration,
+} from "./routes/episodes-api.ts";
+import {
   handleDiskMedia,
   handleHls,
   handleLocalMedia,
   handleSubtitleFile,
+  handleThumbnail,
 } from "./routes/media.ts";
 import { handleProtocol, handlePublic } from "./routes/protocol.ts";
 import {
   handleAnalysis,
   handleClients,
+  handleDiagnostics,
+  handleTorrServerSettings,
+  handleIdentity,
   handlePlaybackSessions,
   handlePlaybackTelemetry,
   handlePlayer,
@@ -67,6 +76,8 @@ import type { Tags } from "./tags.ts";
 import { handleSourceCheck } from "./routes/source-check-api.ts";
 import type { SourceChecks } from "./source-checks.ts";
 import type { Onboarding } from "./onboarding.ts";
+import type { IdentityStore } from "./identity.ts";
+import type { ThumbnailService } from "./thumbnail-service.ts";
 import { handleOnboarding } from "./routes/onboarding-api.ts";
 import { WatchProgress, WatchStates } from "./watch-state.ts";
 
@@ -97,9 +108,13 @@ export interface HandlerOptions {
   archiveSchedule?: ArchiveSchedule;
   analysis?: LibraryAnalysis;
   tags?: Tags;
+  identity?: IdentityStore;
+  thumbnails?: ThumbnailService;
   imports?: ImportService;
   sourceChecks?: SourceChecks;
   onboarding?: Onboarding;
+  diagnostics?: DiagnosticsOptions;
+  shippedSettingsUrl?: URL;
 }
 
 // Unauthenticated or self-authenticating (token in the path) routes, tried in
@@ -111,6 +126,7 @@ const OPEN_ROUTES: RouteHandler[] = [
   handleLocalMedia,
   handleDiskMedia,
   handleSubtitleFile,
+  handleThumbnail,
 ];
 
 // Everything under /api/* requires a bearer token (checked once in the
@@ -127,6 +143,8 @@ const API_ROUTES: RouteHandler[] = [
   handleLibraryCollection,
   handlePlaybackPosition,
   handleWatchState,
+  handleEpisodes,
+  handleThumbnailGeneration,
   handleTags,
   handleStremioRefresh,
   handlePlayer,
@@ -135,6 +153,9 @@ const API_ROUTES: RouteHandler[] = [
   handlePlaybackSessions,
   handlePointer,
   handleStatus,
+  handleDiagnostics,
+  handleTorrServerSettings,
+  handleIdentity,
   handleResources,
   handleSpeedTest,
   handleTranscodeSessions,

@@ -25,6 +25,7 @@ export const state = {
   tagFilter: [],
   // Registry from GET /api/tags: [{ name, count }].
   tags: [],
+  pinnedLimit: 8,
   loaded: false,
   loadError: "",
   checkRequests: [],
@@ -158,8 +159,8 @@ export async function loadJobs() {
 }
 
 export async function loadTags() {
-  const { tags } = await api("tags");
-  setState({ tags });
+  const { tags, pinnedLimit } = await api("tags");
+  setState({ tags, pinnedLimit });
 }
 
 function poller(intervalMs, tick) {

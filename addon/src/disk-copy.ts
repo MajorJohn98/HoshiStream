@@ -135,6 +135,10 @@ export function buildManifest(
         length: file.length,
         included,
         state: carried ? prior.state : ("missing" as const),
+        // Re-including an evicted file is the reversal; the mark goes.
+        ...(carried && !included && prior.evictedAt
+          ? { evictedAt: prior.evictedAt }
+          : {}),
       };
     })
     .sort((a, b) => a.sourceKey.localeCompare(b.sourceKey));

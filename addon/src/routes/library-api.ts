@@ -251,7 +251,7 @@ export const handleWatchState: RouteHandler = async (
 };
 
 export const handleLibraryItem: RouteHandler = async (
-  { library, volumes, diskCleanup, archiver, tags, sourceChecks },
+  { library, volumes, diskCleanup, archiver, tags, sourceChecks, thumbnails },
   { request, response, url, method },
 ) => {
   const itemMatch = /^\/api\/library\/([^/]+)$/.exec(url.pathname);
@@ -321,6 +321,7 @@ export const handleLibraryItem: RouteHandler = async (
         await diskCleanup?.add({ volumeId, relativeDir });
       }
     }
+    if (removed) await thumbnails?.remove(id).catch(() => undefined);
     if (cleanupError) throw cleanupError;
     if (removed) logInfo("library_deleted", { entryId: id });
     return reply(response, removed ? 204 : 404, { error: "Not found" });

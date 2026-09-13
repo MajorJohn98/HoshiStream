@@ -264,7 +264,14 @@ describe("management assets", () => {
     );
     expect(statusJs).toContain("Keep the host computer awake");
     expect(statusJs).toContain('if (!available) return "Unavailable"');
-    expect(statusJs).not.toContain('"diagnostics"');
+    expect(statusJs).toContain('api("diagnostics")');
+    expect(statusJs).toContain("Copy diagnostics");
+    expect(statusJs).toContain("downloadDiagnostics(text)");
+    expect(statusJs).toContain('api("torrserver/settings")');
+    expect(statusJs).toContain("TorrServer tuning");
+    expect(statusJs).toContain("Reset to shipped defaults");
+    expect(statusJs).toContain("drops every active torrent");
+    expect(statusJs).toContain("Use suggestion");
     expect(statusJs).toContain("export function StatusView");
   });
 
@@ -291,12 +298,34 @@ describe("management assets", () => {
     expect(storeJs).toContain("tagFilter: []");
   });
 
+  it("episodes tab edits details and requests thumbnails for series only", async () => {
+    const detailJs = await asset("views/detail.js");
+    expect(detailJs).toContain("function EpisodesTab");
+    expect(detailJs).toContain(
+      '["episodes", "Episodes", EpisodesTab, "series"]',
+    );
+    expect(detailJs).toContain("function sectionsFor");
+    expect(detailJs).toContain("Generate thumbnails");
+    expect(detailJs).toContain("Ongoing series");
+    expect(detailJs).toContain('"/thumbnails"');
+    expect(detailJs).toContain('"/episodes"');
+    const episodesJs = await asset("views/episodes.js");
+    expect(episodesJs).toContain("export function episodesPatch");
+    expect(episodesJs).toContain("never from a live torrent");
+    expect(await asset("styles.css")).toContain(".episode-thumb");
+  });
+
   it("tags page manages the registry and entry forms use the picker", async () => {
     const tagsJs = await asset("views/tags.js");
     expect(tagsJs).toContain("export function TagsView");
     expect(tagsJs).toContain('method: "PATCH"');
     expect(tagsJs).toContain('method: "DELETE"');
     expect(tagsJs).toContain("which will lose it");
+    expect(tagsJs).toContain("Pin to Board");
+    expect(tagsJs).toContain("Unpin");
+    expect(tagsJs).toContain('api("identity")');
+    expect(tagsJs).toContain("function ContactEmail");
+    expect(await asset("store.js")).toContain("pinnedLimit");
     const pickerJs = await asset("components/tag-picker.js");
     expect(pickerJs).toContain("export function TagPicker");
     expect(pickerJs).toContain("Add tags…");

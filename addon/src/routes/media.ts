@@ -1,3 +1,5 @@
+import { createReadStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
 import { markStreamActivity } from "../activity.ts";
 import { resolveStreamSource } from "../inspection.ts";
 import { sourceKey } from "../disk-copy.ts";
@@ -243,5 +245,55 @@ export const handleSubtitleFile: RouteHandler = async (
     "x-content-type-options": "nosniff",
   });
   response.end(method === "HEAD" ? undefined : payload.body);
+  return true;
+};
+
+// Episode thumbnails (Phase 13). Season and episode are digits-only in the
+// path and the entry id is re-encoded by the service, so nothing in the URL
+// can name a file outside the thumbnails directory. Frames change only when
+// regenerated, so clients may keep them a week; the ETag catches the rest.
+export const handleThumbnail: RouteHandler = async (
+  { accessToken, thumbnails },
+  { request, response, url, method },
+) => {
+  const match =
+    /^\/thumbnails\/([^/]+)\/([^/]+)\/(\d{1,4})\/(\d{1,5})\.jpg$/.exec(
+      url.pathname,
+    );
+  if (
+    !match ||
+    !isReadMethod(method) ||
+    !validToken(decodeURIComponent(match[1]), accessToken)
+  )
+    return false;
+  if (!thumbnails) return reply(response, 404, { error: "Unknown thumbnail" });
+  const frame = await thumbnails.statFrame(
+    decodeURIComponent(match[2]),
+    Number(match[3]),
+    Number(match[4]),
+  );
+  if (!frame) return reply(response, 404, { error: "Unknown thumbnail" });
+  const etag = `"${frame.size.toString(16)}-${Math.floor(frame.mtimeMs).toString(16)}"`;
+  const headers = {
+    etag,
+    "cache-control": "max-age=604800",
+    "access-control-allow-origin": "*",
+    "x-content-type-options": "nosniff",
+  };
+  if (request.headers["if-none-match"] === etag) {
+    response.writeHead(304, headers);
+    response.end();
+    return true;
+  }
+  response.writeHead(200, {
+    ...headers,
+    "content-type": "image/jpeg",
+    "content-length": frame.size,
+  });
+  if (method === "HEAD") {
+    response.end();
+    return true;
+  }
+  await pipeline(createReadStream(frame.path), response).catch(() => undefined);
   return true;
 };

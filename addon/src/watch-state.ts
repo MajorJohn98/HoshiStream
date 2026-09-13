@@ -155,6 +155,12 @@ export function rangeFraction(
   return Math.min(1, Number(match[1]) / length);
 }
 
+export type WatchListener = (
+  entryId: string,
+  fileId: number,
+  state: WatchState["state"] | "cleared",
+) => void;
+
 // Persists watch state and keeps TorrServer's own viewed marks in step, so
 // its web UI agrees with the add-on. TorrServer failures are logged, never
 // surfaced: the library is the source of truth.
@@ -162,6 +168,7 @@ export class WatchStates implements WatchSink {
   readonly #library: Library;
   readonly #torrServer: TorrServerClient;
   readonly #log: (line: string) => void;
+  readonly #listeners = new Set<WatchListener>();
 
   constructor(
     library: Library,
@@ -173,8 +180,34 @@ export class WatchStates implements WatchSink {
     this.#log = log;
   }
 
-  started(entryId: string, fileId: number): Promise<boolean> {
-    return this.#library.setWatchState(entryId, fileId, "started");
+  /** Called after every stored change (the disk-copy policy hangs off it). */
+  subscribe(listener: WatchListener): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  #notify(
+    entryId: string,
+    fileId: number,
+    state: WatchState["state"] | "cleared",
+  ): void {
+    for (const listener of this.#listeners) {
+      try {
+        listener(entryId, fileId, state);
+      } catch {
+        // Listeners are best-effort side effects.
+      }
+    }
+  }
+
+  async started(entryId: string, fileId: number): Promise<boolean> {
+    const changed = await this.#library.setWatchState(
+      entryId,
+      fileId,
+      "started",
+    );
+    if (changed) this.#notify(entryId, fileId, "started");
+    return changed;
   }
 
   async watched(entryId: string, fileId: number): Promise<boolean> {
@@ -183,13 +216,19 @@ export class WatchStates implements WatchSink {
       fileId,
       "watched",
     );
-    if (changed) await this.#syncViewed(entryId, fileId, "set");
+    if (changed) {
+      await this.#syncViewed(entryId, fileId, "set");
+      this.#notify(entryId, fileId, "watched");
+    }
     return changed;
   }
 
   async clear(entryId: string, fileId: number): Promise<boolean> {
     const changed = await this.#library.clearWatchState(entryId, fileId);
-    if (changed) await this.#syncViewed(entryId, fileId, "rem");
+    if (changed) {
+      await this.#syncViewed(entryId, fileId, "rem");
+      this.#notify(entryId, fileId, "cleared");
+    }
     return changed;
   }
 

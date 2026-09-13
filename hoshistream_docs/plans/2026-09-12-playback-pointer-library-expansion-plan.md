@@ -1,14 +1,19 @@
 # Playback, pointer, library and operations expansion
 
 Date: 2026-09-12
-Status: **Phases 1, 2, 4, 5, 6, 7, 12 and 14 done** — see
+Status: **Phases 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14 and 15 done** — see
 [playback telemetry and line fit](../changelog/playback-telemetry-and-line-fit.md),
 [watched state](../changelog/watched-state.md),
 [subtitle sidecars](../changelog/subtitle-sidecars.md),
 [pointer drift detection](../changelog/pointer-drift-detection.md),
 [episode mapping repair](../changelog/episode-mapping-repair.md),
-[rich title metadata](../changelog/rich-title-metadata.md) and
-[stream descriptions](../changelog/stream-descriptions.md). Phase 3 waits on
+[disk-copy policies](../changelog/disk-copy-policies.md),
+[diagnostics bundle](../changelog/diagnostics-bundle.md),
+[TorrServer settings UI](../changelog/torrserver-settings-ui.md),
+[rich title metadata](../changelog/rich-title-metadata.md),
+[stream descriptions](../changelog/stream-descriptions.md),
+[Board rows and identity](../changelog/board-rows-and-identity.md) and
+[episode metadata and thumbnails](../changelog/episode-metadata-and-thumbnails.md). Phase 3 waits on
 the Phase 1 exit criterion. Phase 1's runway now covers every episode of a
 series through the [first-play episode probe](2026-09-13-first-play-episode-probe-plan.md). Phases 12–15 (Stremio protocol coverage) were
 added 2026-09-12 after a review of protocol features the add-on does not use.
@@ -278,7 +283,9 @@ Goal: fix mis-numbered or mis-ordered episodes without re-importing.
 Exit: a series imported with off-by-one numbering is corrected in place and
 Stremio shows the corrected order without re-adding.
 
-## Phase 8 — Disk-copy policies
+## Phase 8 — Disk-copy policies ✅
+
+Shipped 2026-09-13 — see [disk-copy policies](../changelog/disk-copy-policies.md).
 
 Goal: let the archiver work ahead and clean up behind the viewer.
 
@@ -295,7 +302,10 @@ Goal: let the archiver work ahead and clean up behind the viewer.
 Exit: after watching S01E03 with `keepAhead: 2`, E04–E05 archive and E01–E02
 are evicted (if enabled) without touching E03.
 
-## Phase 9 — Diagnostics bundle
+## Phase 9 — Diagnostics bundle ✅
+
+Shipped 2026-09-13 as `GET /api/diagnostics` — see
+[diagnostics bundle](../changelog/diagnostics-bundle.md).
 
 Goal: support without leaking secrets.
 
@@ -313,7 +323,14 @@ Goal: support without leaking secrets.
 Exit: the bundle from a running install contains no `ACCESS_TOKEN`,
 `POINTER_PUSH_SECRET`, `Authorization` value, or `magnet:` string.
 
-## Phase 10 — TorrServer settings UI
+## Phase 10 — TorrServer settings UI ✅
+
+Shipped 2026-09-13 as `GET`/`PUT /api/torrserver/settings` and
+`POST /api/torrserver/settings/reset` — see
+[TorrServer settings UI](../changelog/torrserver-settings-ui.md). One
+deviation from step 2: the add-on does **not** write `settings.json` itself.
+At the pinned commit `set` persists the struct through TorrServer's JSON store
+(the same file), so a second writer would only race it.
 
 Goal: adjust the six settings that matter without editing JSON, and make the
 seed-once behaviour explicit.
@@ -386,9 +403,17 @@ Today `toMetaPreview` emits `name`, `description`, `poster`, `background` and
 Exit: a movie with year, runtime, three cast names and a trailer set in the
 sheet shows all of them — and a playable trailer — on the Nuvio detail page.
 
-## Phase 13 — Episode metadata and thumbnails
+## Phase 13 — Episode metadata and thumbnails ✅
 
 Goal: series episodes read as episodes, not file paths.
+
+Done 2026-09-13 — see the [changelog](../changelog/episode-metadata-and-thumbnails.md)
+and the [detailed plan](2026-09-13-episode-metadata-and-thumbnails-plan.md).
+Deviations: local-folder series are also eligible for thumbnails (their files
+are on disk by definition); duration comes from the vendored `ffprobe` with a
+60 s fallback seek; the automatic grab fires from the archiver once a pass
+lands a complete copy, and `/api/library/{id}/episodes` backs the tab so
+torrent and local series look the same there.
 
 `meta.videos[]` currently carries `title: file.path` and
 `released: entry.createdAt`. The protocol renders `title`, `overview`,
@@ -441,7 +466,12 @@ probe summary carries no audio language or channel layout, so the line reads
 `Torrent · 2160p · HEVC · TrueHD · 18.2 GB` with the verdict on its own line;
 channel/language labels wait on a richer probe.
 
-## Phase 15 — Board rows and add-on identity
+## Phase 15 — Board rows and add-on identity ✅
+
+Shipped — see [Board rows and identity](../changelog/board-rows-and-identity.md).
+Deviations: no manifest `background` (only the logo artwork exists);
+"Unwatched" means no watch state on any file; pins live in `tags.json`, the
+contact address in `identity.json`.
 
 Goal: surface the library on Stremio's Board, not only behind a picker.
 

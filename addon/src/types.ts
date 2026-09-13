@@ -110,6 +110,31 @@ export const watchStateSchema = z.object({
 });
 export type WatchState = z.infer<typeof watchStateSchema>;
 
+// Viewer-entered episode presentation (plans/2026-09-13-episode-metadata-
+// and-thumbnails-plan.md), keyed by "season:episode" so it survives file
+// remaps and re-inspection. Blank fields fall back to the cleaned filename.
+export const EPISODE_KEY = /^\d+:\d+$/;
+export const episodeMetadataSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    overview: z.string().trim().min(1).max(2000).optional(),
+    released: z.string().datetime().optional(),
+  })
+  .strict();
+export const episodesSchema = z
+  .record(
+    z.string().regex(EPISODE_KEY, "Expected season:episode"),
+    episodeMetadataSchema,
+  )
+  .refine((episodes) => Object.keys(episodes).length <= 500, {
+    message: "At most 500 episode overrides",
+  });
+export type EpisodeMetadata = z.infer<typeof episodeMetadataSchema>;
+export type Episodes = z.infer<typeof episodesSchema>;
+export function episodeKey(season: number, episode: number): string {
+  return `${season}:${episode}`;
+}
+
 // Disk library (see plans/2026-09-02-disk-library-plan.md). Files are keyed
 // by "<torrent-hash>:<raw-file-id>" — raw TorrServer ids can collide across a
 // series' sources, hashes cannot. Only durable state lives here; transfer
@@ -124,7 +149,19 @@ export const diskCopyFileSchema = z.object({
   // Per-episode intent: only included files are archived.
   included: z.boolean(),
   state: z.enum(["missing", "partial", "complete", "invalid"]),
+  // Set when the disk-copy policy removed this copy (Phase 8). The file
+  // stays listed, excluded, so the eviction is visible and reversible by
+  // re-including it.
+  evictedAt: z.string().datetime().optional(),
 });
+// Per-series rolling window (plans/2026-09-13-disk-copy-policies-and-
+// diagnostics-plan.md): archive the next N unwatched episodes after the one
+// just played; optionally drop watched copies once those are on disk.
+export const diskCopyPolicySchema = z.object({
+  keepAhead: z.number().int().min(0).max(50).optional(),
+  evictWatched: z.boolean().optional(),
+});
+export type DiskCopyPolicy = z.infer<typeof diskCopyPolicySchema>;
 export const diskCopySchema = z.object({
   // "remove" persists only while deferred cleanup is outstanding; a settled
   // disable removes diskCopy from the entry entirely.
@@ -141,6 +178,7 @@ export const diskCopySchema = z.object({
   // User-paused: the archiver skips this entry until resumed, even after a
   // restart or a drive reconnect.
   paused: z.boolean().optional(),
+  policy: diskCopyPolicySchema.optional(),
   updatedAt: z.string().datetime(),
 });
 
@@ -278,6 +316,11 @@ export const libraryEntrySchema = z
     extraSources: z.array(seriesSourceSchema).optional(),
     // Manual season/episode repairs; see episodeOverrideSchema.
     episodeOverrides: episodeOverridesSchema.optional(),
+    // Per-episode titles, overviews and air dates; see episodesSchema.
+    episodes: episodesSchema.optional(),
+    // Still airing: Stremio keeps the series on the Board
+    // (behaviorHints.hasScheduledVideos).
+    ongoing: z.boolean().optional(),
     // Always offer the repaired "Compatible" stream, even when the probe
     // verdict predicts direct play would work (ADR 0010).
     forceTranscode: z.boolean().optional(),
@@ -375,6 +418,8 @@ export const patchEntrySchema = createEntrySchema.partial().extend({
   tags: entryTagsSchema.nullable().optional(),
   poster: z.string().url().nullable().optional(),
   background: z.string().url().nullable().optional(),
+  // null clears every episode override.
+  episodes: episodesSchema.nullable().optional(),
   ...nullableMetadata,
 });
 

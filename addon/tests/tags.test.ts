@@ -29,6 +29,7 @@ describe("Tags registry", () => {
     expect((await stat(path)).mode & 0o777).toBe(0o600);
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual({
       tags: DEFAULT_TAGS,
+      pinned: [],
     });
     expect(DEFAULT_TAGS).toContain("Sci-Fi");
     expect(DEFAULT_TAGS).toContain("Anime");
@@ -193,9 +194,9 @@ describe("tags API", () => {
     expect(entry.tags).toEqual(["Action", "Crime"]);
     const listed = await (await api("/api/tags")).json();
     expect(listed.tags).toEqual([
-      { name: "Action", count: 1 },
-      { name: "Crime", count: 1 },
-      { name: "Drama", count: 0 },
+      { name: "Action", count: 1, pinned: false },
+      { name: "Crime", count: 1, pinned: false },
+      { name: "Drama", count: 0, pinned: false },
     ]);
     const cleared = await api(`/api/library/${encodeURIComponent(entry.id)}`, {
       method: "PATCH",

@@ -1,7 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { managementHtml } from "../management.ts";
-import { manifestWithGenres } from "../manifest.ts";
+import { manifestForLibrary } from "../manifest.ts";
+import { getMetadata } from "../metadata.ts";
 import { ownPublicIp } from "../public-ip.ts";
 import { validToken } from "../security.ts";
 import {
@@ -132,8 +133,10 @@ export const handleProtocol: RouteHandler = async (
     lanRedirect,
     transcode,
     tags,
+    identity,
     subtitles,
     volumes,
+    thumbnails,
   },
   { request, response, url, method },
 ) => {
@@ -144,7 +147,16 @@ export const handleProtocol: RouteHandler = async (
     return noStoreReply(
       response,
       200,
-      manifestWithGenres(addon.manifest, (await tags?.list()) ?? []),
+      manifestForLibrary(
+        addon.manifest,
+        (await tags?.list()) ?? [],
+        (await tags?.pinned()) ?? [],
+        {
+          addonUrl: resolvePublicUrls(request.headers.host, publicUrls)
+            .addonUrl,
+          contactEmail: (await identity?.read())?.contactEmail,
+        },
+      ),
     );
   }
   const protocolMatch =
@@ -169,7 +181,9 @@ export const handleProtocol: RouteHandler = async (
     );
     return noStoreReply(response, 200, result);
   }
-  if (resource === "stream") {
+  // Stream URLs (and the streams embedded in series meta) need the origin the
+  // client actually reached us on, plus the LAN redirect decision.
+  const streamTarget = async () => {
     const clientIp = request.headers["cf-connecting-ip"];
     const ownIp =
       lanRedirect === "auto" && typeof clientIp === "string"
@@ -178,6 +192,39 @@ export const handleProtocol: RouteHandler = async (
     const resolved = ownIp
       ? resolveClientAwareUrls(request.headers, publicUrls, ownIp)
       : resolvePublicUrls(request.headers.host, publicUrls);
+    const repair = transcode
+      ? {
+          videoEncoder: transcode.videoEncoder,
+          videoBitrateMbps: transcode.videoBitrateMbps,
+          // Tunnel requests carry cf-connecting-ip; a mismatch with
+          // this server's public IP means the client is remote.
+          remoteClient: Boolean(
+            typeof clientIp === "string" && ownIp && clientIp !== ownIp,
+          ),
+        }
+      : undefined;
+    return { resolved, repair };
+  };
+  if (resource === "meta" && type === "series") {
+    const { resolved, repair } = await streamTarget();
+    const result = await getMetadata(
+      library,
+      torrServer,
+      type,
+      decodeURIComponent(rawId),
+      {
+        torrServer,
+        publicTorrServerUrl: resolved.torrServerUrl,
+        publicAddonUrl: resolved.addonUrl,
+        accessToken,
+        repair,
+      },
+      thumbnails,
+    );
+    return noStoreReply(response, 200, result);
+  }
+  if (resource === "stream") {
+    const { resolved, repair } = await streamTarget();
     const result = await getStreams(
       library,
       torrServer,
@@ -186,17 +233,7 @@ export const handleProtocol: RouteHandler = async (
       accessToken,
       type,
       decodeURIComponent(rawId),
-      transcode
-        ? {
-            videoEncoder: transcode.videoEncoder,
-            videoBitrateMbps: transcode.videoBitrateMbps,
-            // Tunnel requests carry cf-connecting-ip; a mismatch with
-            // this server's public IP means the client is remote.
-            remoteClient: Boolean(
-              typeof clientIp === "string" && ownIp && clientIp !== ownIp,
-            ),
-          }
-        : undefined,
+      repair,
       undefined,
       volumes,
     );

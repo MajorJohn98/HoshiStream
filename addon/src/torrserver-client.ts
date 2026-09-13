@@ -97,6 +97,52 @@ export interface CacheState {
   files: TorrentStatus["file_stats"];
 }
 
+// `settings.BTSets` at the pinned commit (server/settings/btsets.go). Only the
+// operational tuning fields are kept: the struct also carries Torznab keys,
+// the TMDB API key and TLS key paths, which must never leave the process.
+const settingsSchema = z.object({
+  CacheSize: z.number().optional(),
+  ReaderReadAHead: z.number().optional(),
+  PreloadCache: z.number().optional(),
+  UseDisk: z.boolean().optional(),
+  RemoveCacheOnDrop: z.boolean().optional(),
+  ForceEncrypt: z.boolean().optional(),
+  RetrackersMode: z.number().optional(),
+  TorrentDisconnectTimeout: z.number().optional(),
+  EnableDebug: z.boolean().optional(),
+  EnableIPv6: z.boolean().optional(),
+  DisableTCP: z.boolean().optional(),
+  DisableUTP: z.boolean().optional(),
+  DisableUPNP: z.boolean().optional(),
+  DisableDHT: z.boolean().optional(),
+  DisablePEX: z.boolean().optional(),
+  DisableUpload: z.boolean().optional(),
+  DownloadRateLimit: z.number().optional(),
+  UploadRateLimit: z.number().optional(),
+  ConnectionsLimit: z.number().optional(),
+  PeersListenPort: z.number().optional(),
+  ResponsiveMode: z.boolean().optional(),
+});
+
+export type TorrServerSettings = z.infer<typeof settingsSchema>;
+
+// The tunable subset the management UI edits (Phase 10). Anything else in
+// the struct is carried through untouched on write.
+export const TUNABLE_SETTING_KEYS = [
+  "UploadRateLimit",
+  "DownloadRateLimit",
+  "ConnectionsLimit",
+  "CacheSize",
+  "ReaderReadAHead",
+  "TorrentDisconnectTimeout",
+] as const;
+export type TunableSettingKey = (typeof TUNABLE_SETTING_KEYS)[number];
+export type TunableSettings = Record<TunableSettingKey, number>;
+
+// Write path only: the full struct including secret-bearing fields, kept
+// inside `updateSettings` so it is never returned or logged.
+const rawSettingsSchema = z.object({}).passthrough();
+
 export class TorrServerError extends Error {
   readonly code: string;
   readonly status?: number;
@@ -264,6 +310,75 @@ export class TorrServerClient {
     };
   }
 
+  // Effective server settings (`POST /settings {action:"get"}`, verified at
+  // the pinned commit: web/api/settings.go → sets.BTSets). Read-only here;
+  // the schema drops every secret-bearing field.
+  async settings(signal?: AbortSignal): Promise<TorrServerSettings> {
+    const response = await this.request(
+      "/settings",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "get" }),
+        signal,
+      },
+      1,
+    );
+    const parsed = settingsSchema.safeParse(await this.json(response));
+    if (!parsed.success)
+      throw new TorrServerError(
+        "TorrServer returned invalid settings",
+        "invalid_response",
+      );
+    return parsed.data;
+  }
+
+  // Apply a subset of the tunable settings (`POST /settings {action:"set"}`,
+  // verified at the pinned commit: web/api/settings.go → sets.SetBTSets).
+  // `set` replaces the whole struct, so the current one is fetched first and
+  // the edits merged in. TorrServer persists the result itself (JsonDB writes
+  // settings.json when StoreSettingsInJson is on), then drops every torrent
+  // and reconnects its BitTorrent client — callers must guard on activity.
+  // Sent once: a retry could double the ~2 s reconnect.
+  async updateSettings(
+    patch: Partial<TunableSettings>,
+    signal?: AbortSignal,
+  ): Promise<TunableSettings> {
+    const current = await this.request(
+      "/settings",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "get" }),
+        signal,
+      },
+      1,
+    );
+    const raw = rawSettingsSchema.safeParse(await this.json(current));
+    if (!raw.success)
+      throw new TorrServerError(
+        "TorrServer returned invalid settings",
+        "invalid_response",
+      );
+    const sets: Record<string, unknown> = { ...raw.data };
+    for (const key of TUNABLE_SETTING_KEYS) {
+      const value = patch[key];
+      if (value !== undefined) sets[key] = value;
+    }
+    const response = await this.request(
+      "/settings",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "set", sets }),
+        signal,
+      },
+      1,
+    );
+    await response.body?.cancel().catch(() => undefined);
+    return pickTunable(sets);
+  }
+
   // TorrServer's own viewed marks (`POST /viewed`, verified at the pinned
   // commit: settings/viewed.go). `fileIndex` is the raw one-based index of
   // the file inside `hash`. Both answer 200 with no body.
@@ -409,4 +524,13 @@ export class TorrServerClient {
       delayMs *= 2;
     }
   }
+}
+
+function pickTunable(sets: Record<string, unknown>): TunableSettings {
+  const out = {} as TunableSettings;
+  for (const key of TUNABLE_SETTING_KEYS) {
+    const value = sets[key];
+    out[key] = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  }
+  return out;
 }

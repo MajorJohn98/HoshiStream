@@ -22,6 +22,15 @@ import type { VolumeRegistry } from "../volumes.ts";
 import type { SourceChecks } from "../source-checks.ts";
 import type { Onboarding } from "../onboarding.ts";
 import type { WatchProgress, WatchStates } from "../watch-state.ts";
+import type { LogRing } from "../diagnostics.ts";
+import type { IdentityStore } from "../identity.ts";
+import type { ThumbnailService } from "../thumbnail-service.ts";
+
+// Support-bundle inputs (Phase 9). The secret is only ever used to redact.
+export interface DiagnosticsOptions {
+  logs?: LogRing;
+  pushSecret?: string;
+}
 
 // Everything a route module may need. Optional members are features the
 // supervisor can leave unconfigured; routes answer 409 when they are missing.
@@ -48,9 +57,14 @@ export interface HandlerContext {
   archiveSchedule?: ArchiveSchedule;
   analysis?: LibraryAnalysis;
   tags?: Tags;
+  identity?: IdentityStore;
+  thumbnails?: ThumbnailService;
   imports?: ImportService;
   sourceChecks?: SourceChecks;
   onboarding?: Onboarding;
+  diagnostics?: DiagnosticsOptions;
+  /** Override for tests; defaults to packaging/torrserver-settings.json. */
+  shippedSettingsUrl?: URL;
 }
 
 export interface RouteRequest {

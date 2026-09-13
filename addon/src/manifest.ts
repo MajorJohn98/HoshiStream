@@ -51,11 +51,48 @@ export const manifest = {
 };
 
 type Manifest = typeof manifest;
+type ManifestCatalog = Manifest["catalogs"][number];
 
 interface CatalogExtra {
   name: string;
   isRequired: boolean;
   options?: string[];
+}
+
+export const RECENTLY_ADDED_ID = "recently-added";
+export const UNWATCHED_ID = "unwatched";
+export const TAG_CATALOG_PREFIX = "tag-";
+
+// Board rows (Phase 15). Built per manifest request like the genre options
+// because pinned tags change at runtime. Row order per type: the picker,
+// Continue Watching (from the base), Recently added, Unwatched, then one row
+// per pinned tag in pin order.
+export interface ManifestIdentity {
+  /** Absolute origin of this add-on as the client reached it. */
+  addonUrl?: string;
+  contactEmail?: string;
+}
+
+const skipOnly: CatalogExtra[] = [{ name: "skip", isRequired: false }];
+
+export function tagCatalogId(key: string): string {
+  return `${TAG_CATALOG_PREFIX}${key}`;
+}
+
+function boardCatalogs(
+  type: string,
+  pinnedTags: readonly string[],
+): ManifestCatalog[] {
+  return [
+    { type, id: RECENTLY_ADDED_ID, name: "Recently added", extra: skipOnly },
+    { type, id: UNWATCHED_ID, name: "Unwatched", extra: skipOnly },
+    ...pinnedTags.map((tag) => ({
+      type,
+      id: tagCatalogId(tag.trim().toLocaleLowerCase()),
+      name: tag,
+      extra: skipOnly,
+    })),
+  ];
 }
 
 export function manifestWithGenres<T extends Manifest>(
@@ -71,5 +108,31 @@ export function manifestWithGenres<T extends Manifest>(
         extra.name === "genre" ? { ...extra, options: [...genres] } : extra,
       ),
     })),
+  };
+}
+
+export function manifestForLibrary<T extends Manifest>(
+  base: T,
+  genres: readonly string[],
+  pinnedTags: readonly string[] = [],
+  identity: ManifestIdentity = {},
+): T & { logo?: string; contactEmail?: string } {
+  const withGenres = manifestWithGenres(base, genres);
+  // Fixtures and partial manifests may omit `types` or `catalogs`; fall back
+  // to whatever the catalogs already cover so Board rows only join known types.
+  const baseCatalogs = withGenres.catalogs ?? [];
+  const types = base.types ?? [...new Set(baseCatalogs.map((c) => c.type))];
+  const catalogs = types.flatMap((type) => [
+    ...baseCatalogs.filter((catalog) => catalog.type === type),
+    ...boardCatalogs(type, pinnedTags),
+  ]);
+  const contactEmail = identity.contactEmail?.trim();
+  return {
+    ...withGenres,
+    catalogs,
+    ...(identity.addonUrl
+      ? { logo: `${identity.addonUrl}/assets/hoshistream-logo.png` }
+      : {}),
+    ...(contactEmail ? { contactEmail } : {}),
   };
 }

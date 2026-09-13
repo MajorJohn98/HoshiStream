@@ -1,5 +1,10 @@
 import { entrySourceDefinitionRevision } from "./imports/source-identity.ts";
 import type { Library } from "./library.ts";
+import {
+  RECENTLY_ADDED_ID,
+  TAG_CATALOG_PREFIX,
+  UNWATCHED_ID,
+} from "./manifest.ts";
 import { tagKey } from "./tags.ts";
 import type { LibraryEntry } from "./types.ts";
 import type { SelectedFile } from "./media-file-selection.ts";
@@ -112,8 +117,28 @@ export async function getCatalog(
     const metas = await continueWatching(library, type);
     return { metas: metas.slice(skip, skip + PAGE_SIZE) };
   }
+  // Board rows (Phase 15). Recently added orders by when the title entered
+  // the library rather than by edits; Unwatched is every title nobody has
+  // started, so it stays disjoint from Continue Watching; a pinned tag row is
+  // the picker narrowed to that tag. None of them take search or genre.
+  if (id === RECENTLY_ADDED_ID || id === UNWATCHED_ID) {
+    const metas = (await library.list())
+      .filter((entry) => entry.type === type)
+      .filter((entry) => id !== UNWATCHED_ID || !entry.watchStates?.length)
+      .sort((a, b) =>
+        id === RECENTLY_ADDED_ID
+          ? b.createdAt.localeCompare(a.createdAt)
+          : b.updatedAt.localeCompare(a.updatedAt),
+      )
+      .slice(skip, skip + PAGE_SIZE)
+      .map(toMetaPreview);
+    return { metas };
+  }
   const search = String(extra.search ?? "").toLocaleLowerCase();
-  const genre = extra.genre ? tagKey(String(extra.genre)) : "";
+  const pinnedTag = id?.startsWith(TAG_CATALOG_PREFIX)
+    ? id.slice(TAG_CATALOG_PREFIX.length)
+    : "";
+  const genre = pinnedTag || (extra.genre ? tagKey(String(extra.genre)) : "");
   const entries = (await library.list())
     .filter((entry) => entry.type === type)
     .filter(

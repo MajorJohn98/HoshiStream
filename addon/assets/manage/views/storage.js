@@ -6,6 +6,7 @@ import { html, useEffect, useState } from "../vendor/preact-htm.js";
 import { api, fmt, notify } from "../api.js";
 import { setState, useStore, load, loadJobs } from "../store.js";
 import { Shell } from "../components/shell.js";
+import { policySummary } from "./disk-policy.js";
 
 function usePoll(path, intervalMs, refreshTick = 0) {
   const [value, setValue] = useState(null);
@@ -428,6 +429,7 @@ export function StorageSection() {
                   (file) => file.state === "complete",
                 ).length;
                 const done = complete === files.length;
+                const policy = policySummary(entry.diskCopy.policy);
                 const open = () =>
                   setState({ selected: entry, tab: "storage" });
                 return html`
@@ -456,6 +458,7 @@ export function StorageSection() {
                             ? "On disk"
                             : complete + " of " + files.length + " files"
                         }
+                        ${policy ? " · " + policy : ""}
                       </span>
                     </span>
                     <span class="trail">

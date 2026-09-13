@@ -19,7 +19,9 @@ import { PointerClient } from "./pointer.ts";
 import { PointerDriftMonitor } from "./pointer-drift.ts";
 import { DeviceNames } from "./device-names.ts";
 import { Tags } from "./tags.ts";
+import { IdentityStore } from "./identity.ts";
 import { SubtitleService } from "./subtitle-service.ts";
+import { ThumbnailService } from "./thumbnail-service.ts";
 import { runSpeedTest, stopSpeedTest } from "./speedtest.ts";
 import { VolumeRegistry } from "./volumes.ts";
 import { DiskCleanup } from "./disk-copy.ts";
@@ -29,12 +31,16 @@ import { defaultAnalyzer, LibraryAnalysis } from "./library-analysis.ts";
 import { SourceChecks } from "./source-checks.ts";
 import { Onboarding } from "./onboarding.ts";
 import { WatchProgress, WatchStates } from "./watch-state.ts";
+import { installConsoleTap, LogRing } from "./diagnostics.ts";
 
 // How long an in-flight response — a stream in progress — may keep the server
 // open during shutdown before its socket is destroyed.
 const SHUTDOWN_GRACE_MS = 3_000;
 
 export async function startHoshiStream(settings = config) {
+  // Keep the last console lines in memory for the diagnostics bundle.
+  const logs = new LogRing();
+  const restoreConsole = installConsoleTap(logs);
   const library = new Library(settings.LIBRARY_PATH);
   let onboarding: Onboarding | undefined;
   try {
@@ -68,8 +74,17 @@ export async function startHoshiStream(settings = config) {
   await imports.initialize();
   const volumes = new VolumeRegistry(settings.VOLUMES_PATH);
   const archiveSchedule = new ArchiveSchedule(settings.DISK_SCHEDULE_PATH);
+  const thumbnails = new ThumbnailService(library, torrServer, {
+    dir: settings.THUMBNAILS_DIR,
+    ffmpegPath: settings.FFMPEG_PATH,
+    volumes,
+  });
   const archiver = new Archiver(library, torrServer, volumes, {
     schedule: archiveSchedule,
+    // A copy just landed: grab its episode frame (Phase 13).
+    onEntryArchived: (entryId) => {
+      thumbnails.generate(entryId);
+    },
   });
   let transcode: TranscodeManager | undefined;
   if (settings.TRANSCODE_ENABLED) {
@@ -102,6 +117,13 @@ export async function startHoshiStream(settings = config) {
   );
   const playback = new Playback(library, torrServer, settings.PLAYER);
   const watch = new WatchStates(library, torrServer);
+  // A watch event moves the rolling disk-copy window (Phase 8). The just-
+  // played file anchors it; a cleared mark re-plans from the latest state.
+  watch.subscribe((entryId, fileId, state) => {
+    void archiver
+      .applyPolicy(entryId, state === "cleared" ? undefined : fileId)
+      .catch(() => undefined);
+  });
   const watchProgress = new WatchProgress(watch);
   const telemetry = new PlaybackTelemetry(torrServer, {
     entries: () => library.list(),
@@ -149,6 +171,8 @@ export async function startHoshiStream(settings = config) {
       pointer,
       deviceNames: new DeviceNames(settings.DEVICE_NAMES_PATH),
       tags,
+      identity: new IdentityStore(settings.IDENTITY_PATH),
+      thumbnails,
       imports,
       sourceChecks,
       volumes,
@@ -156,6 +180,7 @@ export async function startHoshiStream(settings = config) {
       archiver,
       archiveSchedule,
       analysis,
+      diagnostics: { logs, pushSecret: settings.POINTER_PUSH_SECRET },
     }),
   );
   let mdns: MdnsResponder | undefined;
@@ -196,6 +221,7 @@ export async function startHoshiStream(settings = config) {
           throw new AggregateError(errors, "Add-on cleanup failed");
       } finally {
         clearTimeout(forceClose);
+        restoreConsole();
       }
     })();
     return closePromise;

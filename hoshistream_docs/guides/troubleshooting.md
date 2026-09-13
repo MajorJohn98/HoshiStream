@@ -79,11 +79,11 @@ do not disable system-wide protections.
 - Check the line, not the app: there is no application-side buffer. The
   startup speed test is logged as `speedtest_completed` with `mbps`; a
   ~9 Mbps line cannot sustain a 10 Mbps file no matter how the player buffers.
-- Confirm `UploadRateLimit` is capped in `<state dir>/torrserver/config/settings.json`.
-  `0` means unlimited, and an unthrottled uplink on an asymmetric line starves
-  the download. Installs that predate the `128` KB/s default keep `0` until the
-  file is edited or re-seeded — see
-  [TorrServer tuning](setup-native-macos.md#torrserver-tuning).
+- Confirm `UploadRateLimit` is capped: System → Status → **TorrServer tuning**
+  shows the live value. `0` means unlimited, and an unthrottled uplink on an
+  asymmetric line starves the download. Installs that predate the `128` KiB/s
+  default keep `0` until you apply a cap there (or press **Reset to shipped
+  defaults**) — see [TorrServer tuning](setup-native-macos.md#torrserver-tuning).
 - Keep the Mac awake (`caffeinate -dimsu`); closing the lid may suspend networking.
 - Use the candidate's H.264/AAC MP4 baseline. Existing optional stream repair
   is off by default and outside initial beta acceptance; it is not a universal
@@ -132,6 +132,24 @@ Use the [private report template](closed-beta-support.md), never a raw log,
 `.env`, private URL, magnet or whole library. The chosen feedback repository
 is still pending, so do not use public issues as a substitute.
 See [privacy and network contacts](privacy-and-network.md) before joining.
+
+### Ask for help with a diagnostics bundle
+
+Open **System → Status** and press **Copy diagnostics** (bottom of the
+Checks section). The clipboard receives one JSON document — versions and
+build id, OS and Node, TorrServer version and its tuning settings, the last
+speed tests, playback telemetry, pointer state, storage volumes and archive
+jobs, library *counts*, and the last 300 server log lines. Paste it into the
+report.
+
+The bundle is redacted before it leaves the server: the access token,
+`POINTER_PUSH_SECRET`, `Authorization` values, `magnet:` URIs, `token=`
+query values and your home directory (shown as `~`) never appear, and
+library titles, sources and file names are not included. Still read it once
+before sending; if something looks private, remove it. When the browser
+cannot use the clipboard (plain-HTTP LAN origins), the same bundle is saved
+as a `.json` download instead. The menu bar's **Reveal logs** remains for a
+full local log.
 
 ## Local media path rejected
 

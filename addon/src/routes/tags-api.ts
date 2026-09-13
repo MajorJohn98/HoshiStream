@@ -1,8 +1,13 @@
 import { z } from "zod";
-import { tagKey, tagNameSchema } from "../tags.ts";
+import { PINNED_TAGS_MAX, tagKey, tagNameSchema } from "../tags.ts";
 import { body, logInfo, reply, type RouteHandler } from "./context.ts";
 
 const tagBodySchema = z.object({ name: tagNameSchema });
+// PATCH renames with `name` or toggles the Board row with `pinned`.
+const tagPatchSchema = z.union([
+  tagBodySchema,
+  z.object({ pinned: z.boolean() }),
+]);
 
 // Tag registry CRUD. Renames and deletions cascade to library entries so the
 // Tags page is the single place a tag's spelling lives.
@@ -21,11 +26,16 @@ export const handleTags: RouteHandler = async (
           counts.set(key, (counts.get(key) ?? 0) + 1);
         }
       }
+      const pinned = await tags.pinned();
+      const pinnedKeys = new Set(pinned.map(tagKey));
       return reply(response, 200, {
         tags: (await tags.list()).map((name) => ({
           name,
           count: counts.get(tagKey(name)) ?? 0,
+          pinned: pinnedKeys.has(tagKey(name)),
         })),
+        pinned,
+        pinnedLimit: PINNED_TAGS_MAX,
       });
     }
     if (method === "POST") {
@@ -40,7 +50,17 @@ export const handleTags: RouteHandler = async (
   if (!itemMatch) return false;
   const current = decodeURIComponent(itemMatch[1]);
   if (method === "PATCH") {
-    const { name } = tagBodySchema.parse(await body(request));
+    const patch = tagPatchSchema.parse(await body(request));
+    if ("pinned" in patch) {
+      const name = await tags.setPinned(current, patch.pinned);
+      logInfo(patch.pinned ? "tag_pinned" : "tag_unpinned", { tag: name });
+      return reply(response, 200, {
+        name,
+        pinned: patch.pinned,
+        pinnedTags: await tags.pinned(),
+      });
+    }
+    const { name } = patch;
     const previous = await tags.rename(current, name);
     const entries = await library.retag(previous, name);
     logInfo("tag_renamed", { from: previous, to: name, entries });

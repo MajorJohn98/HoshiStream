@@ -80,7 +80,10 @@ function fakeTorrServer(content: Buffer): Promise<{ url: string }> {
   });
 }
 
-async function setup(content: Buffer) {
+async function setup(
+  content: Buffer,
+  extra: { onEntryArchived?: (entryId: string) => void } = {},
+) {
   const base = await realpath(
     await mkdtemp(join(tmpdir(), "hoshistream-archiver-")),
   );
@@ -129,6 +132,7 @@ async function setup(content: Buffer) {
     playbackYieldMs: 5,
     playbackActive: () => false,
     schedule,
+    ...extra,
   });
   archivers.push(archiver);
   return {
@@ -161,6 +165,21 @@ describe("Archiver", () => {
     const diskCopy = await archivedEntry(library, entry.id);
     expect(diskCopy.files[0].state).toBe("complete");
     await expect(stat(`${destination}.partial`)).rejects.toThrow();
+  });
+
+  it("tells the thumbnail hook once per pass that landed a copy", async () => {
+    const content = Buffer.from("0123456789".repeat(100));
+    const landed: string[] = [];
+    const { archiver, entry } = await setup(content, {
+      onEntryArchived: (id) => landed.push(id),
+    });
+    archiver.enqueue(entry.id);
+    await archiver.settle();
+    expect(landed).toEqual([entry.id]);
+    // Nothing new to copy: the hook stays quiet.
+    archiver.enqueue(entry.id);
+    await archiver.settle();
+    expect(landed).toEqual([entry.id]);
   });
 
   it("resumes from an existing partial file with a Range request", async () => {

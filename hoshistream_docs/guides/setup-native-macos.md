@@ -126,9 +126,15 @@ outside the config file:
   more. `ConnectionsLimit` ships at `100`.
 
 The file is seeded from `packaging/torrserver-settings.json` only when it does not
-exist, so an existing install keeps its old values after an update. To adopt new
-defaults: quit HoshiStream, edit the two keys in `settings.json` (or delete the file
-to re-seed it), then start the app again.
+exist, so an existing install keeps its old values after an update. You no longer
+need to edit it by hand: **System → Status → TorrServer tuning** shows the live
+values of the six knobs that matter (upload/download caps, peer connections,
+memory cache, read-ahead, idle-torrent timeout), applies edits through
+TorrServer's own settings API — which rewrites `settings.json` for you — and has
+a **Reset to shipped defaults** button. Applying reconnects TorrServer's
+BitTorrent client and drops active torrents, so the form refuses while someone
+is streaming. After a speed test the page also suggests an upload cap of about a
+tenth of your measured download speed; it is offered, never applied silently.
 
 ## Security
 

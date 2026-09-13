@@ -32,6 +32,7 @@ describe("parseConfig", () => {
     expect(defaults.TRANSCODE_VIDEO_BITRATE_MBPS).toBe(8);
     expect(defaults.TRANSCODE_DIR).toBe(join(stateRoot(), "transcode"));
     expect(defaults.FFMPEG_PATH).toBe("ffmpeg");
+    expect(defaults.THUMBNAILS_DIR).toBe(join(stateRoot(), "thumbnails"));
     expect(
       parseConfig({ ...valid, TRANSCODE_ENABLED: "true" }).TRANSCODE_ENABLED,
     ).toBe(true);

@@ -4,13 +4,22 @@ import { entryHashes, magnetHash } from "../imports/source-identity.ts";
 import { fileSourceIndex } from "../media-file-selection.ts";
 import { activeStreamTargets } from "../playback-telemetry.ts";
 import { listClients } from "../clients.ts";
-import { manifestWithGenres } from "../manifest.ts";
+import { manifestForLibrary } from "../manifest.ts";
 import { lookupHostname } from "../hostname.ts";
 import { resourceReport } from "../resources.ts";
 import { currentSpeed, homeSpeedMbps, runSpeedTest } from "../speedtest.ts";
 import { lineFit } from "../line-fit.ts";
 import { PointerError, pointerSetupSchema } from "../pointer.ts";
 import { releaseInfo } from "../release.ts";
+import { buildDiagnostics } from "../diagnostics.ts";
+import { TorrServerError } from "../torrserver-client.ts";
+import { identitySchema } from "../identity.ts";
+import {
+  loadShippedSettings,
+  pickTunableSettings,
+  suggestUploadRateLimit,
+  tunablePatchSchema,
+} from "../torrserver-settings.ts";
 import {
   body,
   logInfo,
@@ -212,7 +221,7 @@ export const handlePlaybackTelemetry: RouteHandler = async (
 };
 
 export const handlePointer: RouteHandler = async (
-  { pointer, addon, tags },
+  { pointer, addon, tags, identity, publicUrls },
   { request, response, url, method },
 ) => {
   const action = /^\/api\/pointer\/(status|settings|push|remote|remove)$/.exec(
@@ -241,7 +250,15 @@ export const handlePointer: RouteHandler = async (
         response,
         200,
         await pointer.push(
-          manifestWithGenres(addon.manifest, (await tags?.list()) ?? []),
+          manifestForLibrary(
+            addon.manifest,
+            (await tags?.list()) ?? [],
+            (await tags?.pinned()) ?? [],
+            {
+              addonUrl: publicUrls.addonUrl,
+              contactEmail: (await identity?.read())?.contactEmail,
+            },
+          ),
         ),
       );
     }
@@ -330,6 +347,132 @@ export const handleStatus: RouteHandler = async (
     },
     pointer: pointerStatus,
   });
+};
+
+// Redacted support bundle (Phase 9). Never cached: it carries live logs.
+export const handleDiagnostics: RouteHandler = async (
+  context,
+  { response, url, method },
+) => {
+  if (url.pathname !== "/api/diagnostics" || method !== "GET") return false;
+  const bundle = await buildDiagnostics({
+    library: context.library,
+    torrServer: context.torrServer,
+    telemetry: context.telemetry,
+    pointer: context.pointer,
+    volumes: context.volumes,
+    archiver: context.archiver,
+    archiveSchedule: context.archiveSchedule,
+    logs: context.diagnostics?.logs,
+    secrets: {
+      accessToken: context.accessToken,
+      pushSecret: context.diagnostics?.pushSecret,
+    },
+  });
+  logInfo("diagnostics_exported", { logLines: bundle.logs.length });
+  return noStoreReply(response, 200, bundle);
+};
+
+// Add-on identity advertised in the manifest (Phase 15): the contact address
+// is viewer-set and empty by default.
+export const handleIdentity: RouteHandler = async (
+  { identity },
+  { request, response, url, method },
+) => {
+  if (url.pathname !== "/api/identity") return false;
+  if (method !== "GET" && method !== "PUT") return false;
+  if (!identity)
+    return noStoreReply(response, 409, { error: "Identity unavailable" });
+  if (method === "GET")
+    return noStoreReply(response, 200, await identity.read());
+  try {
+    const patch = identitySchema.partial().parse(await body(request));
+    const next = await identity.update(patch);
+    logInfo("identity_updated", {
+      contactEmailSet: Boolean(next.contactEmail),
+    });
+    return noStoreReply(response, 200, next);
+  } catch (error) {
+    if (error instanceof ZodError || error instanceof SyntaxError)
+      return noStoreReply(response, 400, {
+        error: "Enter a valid e-mail address or leave the field empty.",
+        code: "invalid_body",
+      });
+    throw error;
+  }
+};
+
+const SETTINGS_PATH = "/api/torrserver/settings";
+const SETTINGS_RESET_PATH = "/api/torrserver/settings/reset";
+
+// TorrServer tuning (Phase 10). Reads come from `/settings get`; writes go
+// through `TorrServerClient.updateSettings`, which TorrServer answers by
+// dropping every torrent and reconnecting — so writes are refused while a
+// stream is active. Shipped defaults are read from the bundle, never from
+// TorrServer's own `def` action.
+export const handleTorrServerSettings: RouteHandler = async (
+  context,
+  { request, response, url, method },
+) => {
+  const isReset = url.pathname === SETTINGS_RESET_PATH;
+  if (url.pathname !== SETTINGS_PATH && !isReset) return false;
+  if (isReset ? method !== "POST" : method !== "GET" && method !== "PUT")
+    return false;
+  let shipped;
+  try {
+    shipped = loadShippedSettings(context.shippedSettingsUrl);
+  } catch {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "torrserver_shipped_settings_unreadable",
+      }),
+    );
+    return noStoreReply(response, 500, {
+      error: "Shipped TorrServer defaults could not be read from the bundle.",
+      code: "shipped_settings_unreadable",
+    });
+  }
+  try {
+    if (method === "GET") {
+      const current = pickTunableSettings(await context.torrServer.settings());
+      return noStoreReply(response, 200, {
+        current,
+        shipped,
+        suggestion:
+          suggestUploadRateLimit(current, shipped, currentSpeed()) ?? null,
+      });
+    }
+    const patch = isReset
+      ? shipped
+      : tunablePatchSchema.parse(await body(request));
+    if (recentStreamActivity())
+      return noStoreReply(response, 409, {
+        error:
+          "Someone is streaming right now. Applying settings would drop their playback; try again when the library is idle.",
+        code: "streaming_active",
+      });
+    const current = await context.torrServer.updateSettings(patch);
+    logInfo("torrserver_settings_updated", {
+      keys: Object.keys(patch).sort(),
+      reset: isReset,
+    });
+    return noStoreReply(response, 200, { current, shipped });
+  } catch (error) {
+    if (error instanceof ZodError || error instanceof SyntaxError)
+      return noStoreReply(response, 400, {
+        error:
+          "Settings must be whole numbers: rate limits ≥ 0 KiB/s, connections ≥ 1, cache ≥ 32 MiB, read-ahead 5–100 %, disconnect timeout ≥ 1 s.",
+        code: "invalid_body",
+      });
+    if (error instanceof TorrServerError)
+      return noStoreReply(response, 503, {
+        error:
+          "TorrServer did not answer. Check System → Status and retry once it is healthy.",
+        code: "torrserver_unavailable",
+      });
+    throw error;
+  }
 };
 
 export const handleResources: RouteHandler = async (

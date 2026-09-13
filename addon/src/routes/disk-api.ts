@@ -15,7 +15,9 @@ import {
   reconcileFiles,
   removeDiskCopyDirectory,
 } from "../disk-copy.ts";
+import { policyActive, resetInclusionForPolicy } from "../disk-policy.ts";
 import { inspectEntry } from "../inspection.ts";
+import { diskCopyPolicySchema } from "../types.ts";
 import { body, logInfo, reply, type RouteHandler } from "./context.ts";
 
 const diskCopyRequestSchema = z.object({
@@ -89,13 +91,52 @@ export const handleDiskCopy: RouteHandler = async (
   );
   const pauseMatch =
     /^\/api\/library\/([^/]+)\/disk-copy\/(pause|resume)$/.exec(url.pathname);
+  const policyMatch = /^\/api\/library\/([^/]+)\/disk-copy\/policy$/.exec(
+    url.pathname,
+  );
   if (
     !(diskCopyMatch && method === "PUT") &&
     !(retryMatch && method === "POST") &&
-    !(pauseMatch && method === "POST")
+    !(pauseMatch && method === "POST") &&
+    !(policyMatch && method === "PUT")
   )
     return false;
   if (!volumes) return reply(response, 409, { error: "Volumes unavailable" });
+
+  if (policyMatch) {
+    const id = decodeURIComponent(policyMatch[1]);
+    const entry = await library.get(id);
+    if (!entry) return reply(response, 404, { error: "Not found" });
+    const current = entry.diskCopy;
+    if (!current || current.desired !== "keep")
+      return reply(response, 409, { error: "Disk copy is not enabled" });
+    if (entry.type !== "series")
+      return reply(response, 409, {
+        error: "Rolling windows apply to series",
+      });
+    const input = diskCopyPolicySchema.parse(await body(request));
+    const policy = policyActive(input) ? input : undefined;
+    const turningOn =
+      (policy?.keepAhead ?? 0) > 0 && (current.policy?.keepAhead ?? 0) === 0;
+    const next = { ...current, updatedAt: new Date().toISOString() };
+    if (policy) next.policy = policy;
+    else delete next.policy;
+    if (turningOn) {
+      // The window owns inclusion from here: keep what is already on the
+      // drive, drop intent for everything else, then let the plan add the
+      // next episodes.
+      next.scope = "selected";
+      next.files = resetInclusionForPolicy(current.files);
+    }
+    await library.setDiskCopy(id, next);
+    logInfo("disk_policy_updated", {
+      entryId: id,
+      keepAhead: policy?.keepAhead ?? 0,
+      evictWatched: Boolean(policy?.evictWatched),
+    });
+    if (policy) await archiver?.applyPolicy(id);
+    return reply(response, 200, await library.get(id));
+  }
 
   if (pauseMatch) {
     if (!archiver)
@@ -194,6 +235,9 @@ export const handleDiskCopy: RouteHandler = async (
   }
   const previous = current?.volumeId === volumeId ? current : undefined;
   const scope = input.scope ?? previous?.scope ?? "all";
+  // "All episodes" is the opposite of a rolling window; the policy goes.
+  const policy =
+    previous?.policy && scope === "selected" ? previous.policy : undefined;
   let files = buildManifest(entry, {
     scope,
     includedSourceKeys: input.includedSourceKeys,
@@ -213,6 +257,7 @@ export const handleDiskCopy: RouteHandler = async (
     sourceRevision: computeSourceRevision(files),
     scope,
     files,
+    ...(policy ? { policy } : {}),
     updatedAt: new Date().toISOString(),
   });
   logInfo("disk_copy_enabled", {

@@ -29,9 +29,12 @@ old guide.
 
 Copy the **entire resolved state directory**, not a selected JSON export. It
 includes `library.json` and its `.bak`/quarantines, `.env` when colocated,
-`onboarding.json`, `tags.json`, `device-names.json`, `pointer-settings.json`,
+`onboarding.json`, `tags.json` (with its `pinned` list), `identity.json`,
+`device-names.json`, `pointer-settings.json`,
 `pointer-state.json`, `volumes.json`, `disk-cleanup.json`, `disk-schedule.json`,
-TorrServer `config/` (including `config.db` and settings), and cache directories.
+TorrServer `config/` (including `config.db` and settings), `thumbnails/`
+(episode frames — regenerable from the Episodes tab, so optional), and cache
+directories.
 For checkout/custom layouts also copy the project `.env` and entire `data/`
 directory separately; record all original absolute paths. Never back up a
 whole checkout merely to capture these three locations.
@@ -173,7 +176,7 @@ the backup or `HOLD` merely because startup succeeded.
 | Roll back code after new state has been written                   | Quit; preserve the newer state; restore the older artifact **and its matching pre-update full snapshot**. Post-snapshot changes are not carried back automatically. |
 
 Do not launch an old version on a newer `library.json`: validation may discard
-unknown fields when that version writes. Matching `0.14.0` strings do not prove
+unknown fields when that version writes. Matching `0.15.0` strings do not prove
 compatibility. If no matching snapshot/artifact exists, hold rollback and ask
 the release owner; do not improvise a downgrade.
 

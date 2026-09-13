@@ -367,4 +367,106 @@ describe("TorrServerClient", () => {
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
   });
+
+  // `POST /settings {action:"get"}` returns sets.BTSets at the pinned commit
+  // (web/api/settings.go). Secret-bearing fields must not survive parsing.
+  describe("settings", () => {
+    it("reads tuning fields and drops Torznab, TMDB and TLS secrets", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            CacheSize: 268435456,
+            ReaderReadAHead: 95,
+            UploadRateLimit: 512,
+            ConnectionsLimit: 25,
+            PeersListenPort: 32000,
+            ResponsiveMode: true,
+            TorrentsSavePath: "/Users/someone/torrents",
+            TorznabUrls: [{ Host: "https://idx", Key: "torznab-secret" }],
+            TMDBSettings: { APIKey: "tmdb-secret" },
+            SslKey: "/etc/ssl/private/key.pem",
+          }),
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const client = new TorrServerClient("http://torrserver:8090", 1_000, 3);
+      const settings = await client.settings();
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        "http://torrserver:8090/settings",
+      );
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        action: "get",
+      });
+      expect(settings).toEqual({
+        CacheSize: 268435456,
+        ReaderReadAHead: 95,
+        UploadRateLimit: 512,
+        ConnectionsLimit: 25,
+        PeersListenPort: 32000,
+        ResponsiveMode: true,
+      });
+      expect(JSON.stringify(settings)).not.toMatch(/secret|SslKey|SavePath/);
+    });
+
+    it("rejects malformed settings", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValue(
+            new Response(JSON.stringify({ CacheSize: "big" })),
+          ),
+      );
+      const client = new TorrServerClient("http://torrserver:8090", 1_000, 3);
+      await expect(client.settings()).rejects.toMatchObject({
+        code: "invalid_response",
+      });
+    });
+
+    it("updateSettings merges edits into the full struct and posts set once", async () => {
+      const raw = {
+        CacheSize: 268435456,
+        ReaderReadAHead: 95,
+        UploadRateLimit: 128,
+        DownloadRateLimit: 0,
+        ConnectionsLimit: 25,
+        TorrentDisconnectTimeout: 30,
+        TorznabUrls: [{ Host: "https://idx", Key: "torznab-secret" }],
+        TorrentsSavePath: "/Users/someone/torrents",
+      };
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify(raw)))
+        .mockResolvedValueOnce(new Response(""));
+      vi.stubGlobal("fetch", fetchMock);
+      const client = new TorrServerClient("http://torrserver:8090", 1_000, 3);
+      const result = await client.updateSettings({ UploadRateLimit: 1024 });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const set = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(set.action).toBe("set");
+      expect(set.sets).toEqual({ ...raw, UploadRateLimit: 1024 });
+      expect(result).toEqual({
+        CacheSize: 268435456,
+        ReaderReadAHead: 95,
+        UploadRateLimit: 1024,
+        DownloadRateLimit: 0,
+        ConnectionsLimit: 25,
+        TorrentDisconnectTimeout: 30,
+      });
+      expect(JSON.stringify(result)).not.toMatch(/secret|SavePath/);
+    });
+
+    it("updateSettings does not retry a failed set", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ CacheSize: 1 })))
+        .mockResolvedValueOnce(new Response("boom", { status: 500 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const client = new TorrServerClient("http://torrserver:8090", 1_000, 3);
+      await expect(
+        client.updateSettings({ UploadRateLimit: 1 }),
+      ).rejects.toMatchObject({ code: "unavailable" });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
 });

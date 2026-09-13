@@ -99,6 +99,10 @@ export const configSchema = z.object({
   DEVICE_NAMES_PATH: z.string().min(1).default(join(root, "device-names.json")),
   // Tag registry behind the Tags page; seeded with genre defaults on first run.
   TAGS_PATH: z.string().min(1).default(join(root, "tags.json")),
+  // Add-on identity advertised in the manifest (contact address).
+  IDENTITY_PATH: z.string().min(1).default(join(root, "identity.json")),
+  // Episode thumbnails grabbed from on-disk files (Phase 13).
+  THUMBNAILS_DIR: z.string().min(1).default(join(root, "thumbnails")),
   // Registered storage volumes for the disk library (external drives are
   // identified by an on-disk marker, not by mount path).
   VOLUMES_PATH: z.string().min(1).default(join(root, "volumes.json")),

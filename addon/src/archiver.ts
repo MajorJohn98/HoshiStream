@@ -1,5 +1,5 @@
 import { createWriteStream } from "node:fs";
-import { mkdir, rename, stat, statfs } from "node:fs/promises";
+import { mkdir, rename, rm, stat, statfs } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -12,8 +12,10 @@ import {
   reconcileFiles,
   sourceKey,
 } from "./disk-copy.ts";
+import { planDiskPolicy, policyActive } from "./disk-policy.ts";
 import { resolveStreamSource } from "./inspection.ts";
 import type { Library } from "./library.ts";
+import { activeStreamTargets } from "./playback-telemetry.ts";
 import type { TorrServerClient } from "./torrserver-client.ts";
 import type { DiskCopyFile, LibraryEntry } from "./types.ts";
 import type { VolumeRegistry } from "./volumes.ts";
@@ -37,9 +39,15 @@ export interface ArchiverOptions {
   wakeIntervalMs?: number;
   // Injectable for tests; defaults to recent stream activity.
   playbackActive?: () => boolean;
+  // Files clients are streaming right now, which a policy must never evict.
+  // Defaults to the telemetry's stream targets.
+  streamingFiles?: () => { entryId: string; fileId: number }[];
   // Optional global download window: work outside it waits until the wake
   // cycle finds the window open.
   schedule?: ArchiveSchedule;
+  // Called once per pass that landed at least one complete copy, so
+  // follow-up work (episode thumbnails) can run against the new file.
+  onEntryArchived?: (entryId: string) => void;
 }
 
 // Waiting reasons the queue distinguishes: drive loss is woken by volume
@@ -91,6 +99,10 @@ export class Archiver {
   private readonly partialBytes = new Map<string, number>();
   private running = false;
   private closed = false;
+  // Entry whose copy pass is running, and entries enqueued during their own
+  // pass (a policy included more files) that must run once more after it.
+  private processing?: string;
+  private readonly requeued = new Set<string>();
   private wakeTimer?: NodeJS.Timeout;
   private settled: Promise<void> = Promise.resolve();
 
@@ -99,7 +111,9 @@ export class Archiver {
   private readonly playbackYieldMs: number;
   private readonly wakeIntervalMs: number;
   private readonly playbackActive: () => boolean;
+  private readonly streamingFiles: () => { entryId: string; fileId: number }[];
   private readonly schedule?: ArchiveSchedule;
+  private readonly onEntryArchived?: (entryId: string) => void;
   private readonly library: Library;
   private readonly torrServer: TorrServerClient;
   private readonly volumes: VolumeRegistry;
@@ -119,7 +133,10 @@ export class Archiver {
     this.wakeIntervalMs = options.wakeIntervalMs ?? WAKE_INTERVAL_MS;
     this.playbackActive =
       options.playbackActive ?? (() => recentStreamActivity());
+    this.streamingFiles =
+      options.streamingFiles ?? (() => activeStreamTargets());
     this.schedule = options.schedule;
+    this.onEntryArchived = options.onEntryArchived;
   }
 
   /**
@@ -137,14 +154,14 @@ export class Archiver {
     const entries = await this.library.list().catch(() => []);
     for (const entry of entries) {
       if (!entry.diskCopy || entry.diskCopy.desired !== "keep") continue;
-      if (
-        entry.diskCopy.files.some(
-          (file) =>
-            file.included &&
-            (file.state === "missing" || file.state === "partial"),
-        )
-      ) {
-        if (entry.diskCopy.paused) this.waiting.set(entry.id, PAUSED);
+      // A rolling window may have moved while the app was down (watch
+      // states are persisted; the plan is not).
+      if (policyActive(entry.diskCopy.policy))
+        await this.applyPolicy(entry.id).catch(() => undefined);
+      const current = (await this.library.get(entry.id))?.diskCopy;
+      if (!current) continue;
+      if (this.hasOutstandingWork(current.files)) {
+        if (current.paused) this.waiting.set(entry.id, PAUSED);
         else this.enqueue(entry.id);
       }
     }
@@ -155,8 +172,82 @@ export class Archiver {
   enqueue(entryId: string): void {
     if (this.closed) return;
     this.waiting.delete(entryId);
+    if (this.processing === entryId) {
+      this.requeued.add(entryId);
+      return;
+    }
     if (!this.pending.includes(entryId)) this.pending.push(entryId);
     void this.run();
+  }
+
+  /**
+   * Re-plan the entry's rolling window (Phase 8): include the next episodes
+   * after `anchorFileId` (or the latest watched one), evict watched copies
+   * once the window is on disk, persist, and queue any new work. Skips
+   * paused entries and offline drives — eviction only ever happens against
+   * a volume we can see. Never touches the anchor or a streaming file.
+   */
+  async applyPolicy(entryId: string, anchorFileId?: number): Promise<void> {
+    if (this.closed) return;
+    const entry = await this.library.get(entryId);
+    const diskCopy = entry?.diskCopy;
+    if (!entry || !diskCopy || diskCopy.desired !== "keep") return;
+    if (diskCopy.paused || !policyActive(diskCopy.policy)) return;
+    const cache = entry.inspectionCache;
+    if (!cache) return;
+    const protectedKeys = new Set<string>();
+    for (const target of this.streamingFiles()) {
+      if (target.entryId !== entryId) continue;
+      const file = cache.selectedFiles.find((f) => f.id === target.fileId);
+      if (file) protectedKeys.add(sourceKey(cache.hash, file));
+    }
+    if (this.active?.entryId === entryId)
+      protectedKeys.add(this.active.sourceKey);
+    const plan = planDiskPolicy(entry, { anchorFileId, protectedKeys });
+    if (!plan.changed) return;
+    let files = plan.files;
+    if (plan.evict.length) {
+      const resolution = await this.volumes.resolve(diskCopy.volumeId);
+      if (resolution.state !== "online") {
+        // Keep the copies included until the drive is back; the next
+        // application (a watch event or the wake cycle) retries.
+        const kept = new Set(plan.evict.map((file) => file.sourceKey));
+        const original = new Map(
+          diskCopy.files.map((file) => [file.sourceKey, file]),
+        );
+        files = files.map((file) =>
+          kept.has(file.sourceKey) ? original.get(file.sourceKey)! : file,
+        );
+      } else {
+        for (const file of plan.evict) {
+          const destination = destinationPath(
+            resolution.root,
+            diskCopy.relativeDir,
+            file.relativePath,
+          );
+          await rm(destination, { force: true });
+          await rm(`${destination}${PARTIAL_SUFFIX}`, { force: true });
+          this.partialBytes.delete(file.sourceKey);
+          log("info", "disk_policy_evicted", {
+            entryId,
+            sourceKey: file.sourceKey,
+          });
+        }
+      }
+    }
+    const current = (await this.library.get(entryId))?.diskCopy;
+    if (!current || current.sourceRevision !== diskCopy.sourceRevision) return;
+    await this.library.setDiskCopy(entryId, {
+      ...current,
+      files,
+      updatedAt: new Date().toISOString(),
+    });
+    log("info", "disk_policy_applied", {
+      entryId,
+      added: plan.added.length,
+      evicted: plan.evict.length,
+    });
+    if (plan.added.length) this.enqueue(entryId);
   }
 
   /** Stop this entry's transfer and keep it stopped until resume(). */
@@ -309,6 +400,7 @@ export class Archiver {
       try {
         while (this.pending.length && !this.closed) {
           const entryId = this.pending[0];
+          this.processing = entryId;
           try {
             await this.process(entryId);
           } catch (error) {
@@ -316,9 +408,13 @@ export class Archiver {
               entryId,
               error: error instanceof Error ? error.message : String(error),
             });
+          } finally {
+            this.processing = undefined;
           }
           const index = this.pending.indexOf(entryId);
           if (index !== -1) this.pending.splice(index, 1);
+          if (this.requeued.delete(entryId) && !this.closed)
+            this.pending.push(entryId);
         }
       } finally {
         this.running = false;
@@ -356,28 +452,46 @@ export class Archiver {
       diskCopy.relativeDir,
       diskCopy.files,
     );
-    let files = reconciled.files;
     if (reconciled.changed) {
-      await this.persistFiles(entryId, diskCopy.sourceRevision, files);
-    }
-    for (const file of files) {
-      if (this.cancelled(entryId, generation) || this.closed) return;
-      if (!file.included) continue;
-      if (file.state !== "missing" && file.state !== "partial") continue;
-      const outcome = await this.copyFile(entryId, generation, file);
-      if (outcome === "stop") return;
-      files = files.map((candidate) =>
-        candidate.sourceKey === file.sourceKey
-          ? { ...candidate, state: outcome }
-          : candidate,
+      await this.persistFiles(
+        entryId,
+        diskCopy.sourceRevision,
+        reconciled.files,
       );
-      await this.persistFiles(entryId, diskCopy.sourceRevision, files);
+    }
+    // Re-read the manifest before each file: a policy may include more
+    // episodes while this pass runs, and a selection change may drop some.
+    const attempted = new Set<string>();
+    let landed = 0;
+    for (;;) {
+      if (this.cancelled(entryId, generation) || this.closed) break;
+      const current = (await this.library.get(entryId))?.diskCopy;
+      if (!current || current.sourceRevision !== diskCopy.sourceRevision)
+        return;
+      const file = current.files.find(
+        (candidate) =>
+          candidate.included &&
+          (candidate.state === "missing" || candidate.state === "partial") &&
+          !attempted.has(candidate.sourceKey),
+      );
+      if (!file) break;
+      attempted.add(file.sourceKey);
+      const outcome = await this.copyFile(entryId, generation, file);
+      if (outcome === "stop") break;
+      if (outcome === "complete") landed += 1;
+      await this.persistFiles(entryId, diskCopy.sourceRevision, [
+        { ...file, state: outcome },
+      ]);
       log(outcome === "complete" ? "info" : "warn", "disk_archive_file", {
         entryId,
         sourceKey: file.sourceKey,
         state: outcome,
       });
     }
+    if (landed) this.onEntryArchived?.(entryId);
+    if (this.cancelled(entryId, generation) || this.closed) return;
+    // The window just landed on disk: watched copies behind it may go now.
+    if (policyActive(diskCopy.policy)) await this.applyPolicy(entryId);
   }
 
   private async copyFile(
@@ -548,15 +662,28 @@ export class Archiver {
     return this.generation(entryId) !== generation;
   }
 
+  /**
+   * Persist file-state transitions by source key into whatever manifest is
+   * current, leaving inclusion (a concurrent policy or selection write) as
+   * it is. A changed source revision means another writer owns the manifest.
+   */
   private async persistFiles(
     entryId: string,
     sourceRevision: string,
-    files: DiskCopyFile[],
+    updates: DiskCopyFile[],
   ): Promise<void> {
     const entry = await this.library.get(entryId);
     const diskCopy = entry?.diskCopy;
-    // A concurrent toggle or selection change owns the manifest now.
     if (!diskCopy || diskCopy.sourceRevision !== sourceRevision) return;
+    const states = new Map(
+      updates.map((file) => [file.sourceKey, file.state] as const),
+    );
+    const files = diskCopy.files.map((file) => {
+      const state = states.get(file.sourceKey);
+      return state === undefined || state === file.state
+        ? file
+        : { ...file, state };
+    });
     await this.library.setDiskCopy(entryId, {
       ...diskCopy,
       files,

@@ -1,4 +1,5 @@
 import type { Library } from "./library.ts";
+import type { LibraryEntry } from "./types.ts";
 import type { SelectedFile } from "./media-file-selection.ts";
 import { markStreamActivity } from "./activity.ts";
 import { directPlayLabel, type DirectPlay } from "./direct-play.ts";
@@ -235,10 +236,6 @@ export async function getStreams(
   const source = await resolveStreamSource(entry, torrServer, library);
   const file = requestedFile(source.selectedFiles, type, id).file;
   if (!file) return { streams: [] };
-  const assessed = {
-    ...entry,
-    directPlay: directPlayForFile(entry, file, source.hash),
-  };
   markStreamActivity(Date.now(), entry.id);
   void library.markStreamed(entry.id).catch(() => undefined);
   noteStreamTarget({
@@ -246,23 +243,83 @@ export async function getStreams(
     hash: file.hash ?? source.hash,
     fileId: file.id,
     title: entry.name,
-    bitrateMbps: assessed.directPlay?.bitrateMbps,
+    bitrateMbps: directPlayForFile(entry, file, source.hash)?.bitrateMbps,
   });
 
+  console.log(
+    JSON.stringify({
+      level: "info",
+      event: "stream_generated",
+      entryId: entry.id,
+      fileId: file.id,
+      filename: file.path,
+    }),
+  );
+  return {
+    streams: await torrentStreamsForFile(
+      {
+        torrServer,
+        publicTorrServerUrl,
+        publicAddonUrl,
+        accessToken,
+        repair,
+        lineMbps,
+        volumes,
+      },
+      entry,
+      source.hash,
+      file,
+    ),
+  };
+}
+
+export interface StreamTargetOptions {
+  torrServer: TorrServerClient;
+  publicTorrServerUrl: string;
+  publicAddonUrl: string;
+  accessToken: string;
+  repair?: RepairOptions;
+  lineMbps?: number;
+  /** Omit to skip the subtitle-matching hash (a disk read per file). */
+  volumes?: VolumeRegistry;
+}
+
+// The stream list for one torrent-backed file, free of side effects so meta
+// responses can embed it per episode (Phase 15) as well as the stream
+// resource returning it.
+export async function torrentStreamsForFile(
+  options: StreamTargetOptions,
+  entry: LibraryEntry,
+  sourceHash: string,
+  file: SelectedFile,
+): Promise<Stream[]> {
+  const {
+    torrServer,
+    publicTorrServerUrl,
+    publicAddonUrl,
+    accessToken,
+    repair,
+    lineMbps,
+    volumes,
+  } = options;
+  const assessed = {
+    ...entry,
+    directPlay: directPlayForFile(entry, file, sourceHash),
+  };
   // Disk-copy entries get the stable /media URL: the router picks disk or
   // torrent per range request, so the client never reselects a stream when
   // the drive comes and goes. Others keep the direct TorrServer URL (no
   // proxy hop).
   const diskCopy =
     entry.diskCopy?.desired === "keep" ? entry.diskCopy : undefined;
-  const key = diskCopy && sourceKey(source.hash, file);
+  const key = diskCopy && sourceKey(sourceHash, file);
   const manifestFile =
     diskCopy && diskCopy.files.find((candidate) => candidate.sourceKey === key);
   const url =
     diskCopy && manifestFile?.included
       ? `${publicAddonUrl}/media/${encodeURIComponent(accessToken)}/${encodeURIComponent(entry.id)}/${key}`
       : rewritePublicUrl(
-          torrServer.streamUrl(source.hash, file),
+          torrServer.streamUrl(sourceHash, file),
           publicTorrServerUrl,
         );
   const label =
@@ -277,39 +334,22 @@ export async function getStreams(
     diskCopy && manifestFile?.included && manifestFile.state === "complete"
       ? await diskCopyVideoHash(volumes, diskCopy, manifestFile.relativePath)
       : undefined;
-  console.log(
-    JSON.stringify({
-      level: "info",
-      event: "stream_generated",
-      entryId: entry.id,
-      fileId: file.id,
-      filename: file.path,
-    }),
+  return presentStreams(
+    [
+      {
+        name: "HoshiStream",
+        description: describe(label, file, assessed),
+        url,
+        behaviorHints: streamBehaviorHints(entry.id, file, {
+          directPlay: assessed.directPlay,
+          videoHash,
+        }),
+        bitrateMbps: assessed.directPlay?.bitrateMbps,
+      },
+      ...compatibleStreams(repair, publicAddonUrl, accessToken, assessed, file),
+    ],
+    lineMbps,
   );
-  return {
-    streams: presentStreams(
-      [
-        {
-          name: "HoshiStream",
-          description: describe(label, file, assessed),
-          url,
-          behaviorHints: streamBehaviorHints(entry.id, file, {
-            directPlay: assessed.directPlay,
-            videoHash,
-          }),
-          bitrateMbps: assessed.directPlay?.bitrateMbps,
-        },
-        ...compatibleStreams(
-          repair,
-          publicAddonUrl,
-          accessToken,
-          assessed,
-          file,
-        ),
-      ],
-      lineMbps,
-    ),
-  };
 }
 
 // Repaired renditions appear as extra streams in the Stremio picker, so

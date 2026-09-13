@@ -272,6 +272,12 @@ export class Library {
         if (input.poster === null) delete candidate.poster;
         if (input.background === null) delete candidate.background;
         if (input.tags === null) delete candidate.tags;
+        if (
+          input.episodes === null ||
+          (input.episodes && !Object.keys(input.episodes).length)
+        )
+          delete candidate.episodes;
+        if (input.ongoing === false) delete candidate.ongoing;
         for (const field of TITLE_METADATA_FIELDS)
           if (input[field] === null) delete candidate[field];
         if ("episodeOverrides" in input) {

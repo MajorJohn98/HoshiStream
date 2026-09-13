@@ -19,6 +19,13 @@ import {
   joinTrailers,
   metadataPatch,
 } from "./title-metadata.js";
+import { policySummary } from "./disk-policy.js";
+import {
+  dateFromReleased,
+  episodeKey,
+  episodesPatch,
+  thumbnailSummary,
+} from "./episodes.js";
 import {
   SourceCheckPanel,
   pickSourceCheckFileId,
@@ -977,6 +984,239 @@ async function openDirectStream(state) {
   window.open(s.url, "_blank");
 }
 
+// Episodes tab (Phase 13): readable titles, overviews and air dates per
+// episode, the Ongoing flag, and thumbnail generation for episodes whose
+// media is already on disk. Rows come from /episodes so torrent and local
+// series look the same here.
+function EpisodesTab({ state }) {
+  const entry = state.selected;
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const reload = async () => {
+    try {
+      setData(
+        await api("library/" + encodeURIComponent(entry.id) + "/episodes"),
+      );
+      setError("");
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  useEffect(() => {
+    setData(null);
+    reload();
+  }, [entry.id, entry.updatedAt]);
+  // Poll while a generation run is in flight so frames appear as they land.
+  useEffect(() => {
+    if (!data?.thumbnails?.running) return;
+    const timer = setInterval(reload, 3000);
+    return () => clearInterval(timer);
+  }, [data?.thumbnails?.running]);
+  const episodes = data?.episodes ?? [];
+  const tabs = useSeasonTabs(episodes, (e) => e.season);
+  const shown = episodes.filter(tabs.visible);
+  const generated = episodes.filter((e) => e.onDisk && e.thumbnail).length;
+
+  const onOngoing = async (e) => {
+    try {
+      syncSelectedEntry(await patch(state, { ongoing: e.target.checked }));
+      notify(
+        e.target.checked
+          ? "Marked ongoing — Stremio keeps it on the Board"
+          : "No longer marked ongoing",
+      );
+    } catch (err) {
+      notify(err.message);
+    }
+  };
+  const onGenerate = async (force) => {
+    try {
+      await api("library/" + encodeURIComponent(entry.id) + "/thumbnails", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(force ? { force: true } : {}),
+      });
+      notify("Generating thumbnails");
+      await reload();
+    } catch (err) {
+      notify(err.message);
+    }
+  };
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const fields = Object.fromEntries(new FormData(e.target));
+      syncSelectedEntry(
+        await patch(state, episodesPatch(fields, shown, entry.episodes)),
+      );
+      notify("Episode details saved");
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return html`
+    <${Section}
+      id="episodes"
+      title="Episodes"
+      note="How each episode reads in Stremio. Blank fields fall back to a title cleaned from the filename."
+      action=${html`<label class="check">
+        <input
+          type="checkbox"
+          checked=${Boolean(entry.ongoing)}
+          onChange=${onOngoing}
+        />
+        Ongoing series
+      </label>`}
+    >
+      <div class="section-head stacked-xs">
+        <p class="muted">
+          ${thumbnailSummary(data?.thumbnails, data?.eligible ?? 0, generated)}
+        </p>
+        <div class="row">
+          <button
+            type="button"
+            class="secondary"
+            disabled=${!data?.eligible || data?.thumbnails?.running}
+            onClick=${() => onGenerate(false)}
+          >
+            Generate thumbnails
+          </button>
+          ${
+            generated
+              ? html`<button
+                  type="button"
+                  class="secondary"
+                  disabled=${data?.thumbnails?.running}
+                  onClick=${() => onGenerate(true)}
+                >
+                  Regenerate all
+                </button>`
+              : null
+          }
+        </div>
+      </div>
+      ${error ? html`<p class="danger">${error}</p>` : null}
+      ${
+        data && !data.inspected
+          ? html`<${NotYet} state=${state}>
+              Not inspected yet — inspect the source to list its episodes.
+            <//>`
+          : null
+      }
+      ${
+        data?.inspected && !episodes.length
+          ? html`<p class="empty quiet">
+              No file is mapped to a season and episode yet. Repair the mapping
+              under Files first.
+            </p>`
+          : null
+      }
+      ${
+        episodes.length
+          ? html`
+              <form key=${entry.id + ":" + tabs.season} onSubmit=${onSubmit}>
+                <${SeasonTabs}
+                  seasons=${tabs.seasons}
+                  season=${tabs.season}
+                  onChange=${tabs.setSeason}
+                  counts=${(season) =>
+                    episodes.filter((e) => e.season === season).length}
+                />
+                <div class="tablewrap scroll-table">
+                  <table class="files episodes">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Frame</th>
+                        <th>Title</th>
+                        <th>Overview</th>
+                        <th>Air date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${shown.map((row) => {
+                        const key = episodeKey(row.season, row.episode);
+                        return html`
+                          <tr key=${key}>
+                            <td class="num" title=${row.path}>
+                              ${row.season}×${row.episode}
+                            </td>
+                            <td>
+                              ${
+                                row.thumbnail
+                                  ? html`<img
+                                      class="episode-thumb"
+                                      src=${row.thumbnail}
+                                      alt=""
+                                      loading="lazy"
+                                    />`
+                                  : html`<span
+                                      class="muted"
+                                      title=${
+                                        row.onDisk
+                                          ? "On disk — generate to grab a frame"
+                                          : "Not on disk"
+                                      }
+                                      >${row.onDisk ? "—" : "·"}</span
+                                    >`
+                              }
+                            </td>
+                            <td>
+                              <input
+                                name=${"title:" + key}
+                                placeholder=${row.defaultTitle}
+                                defaultValue=${row.title || ""}
+                                maxlength="200"
+                              />
+                            </td>
+                            <td>
+                              <textarea
+                                name=${"overview:" + key}
+                                rows="1"
+                                placeholder="Overview"
+                                defaultValue=${row.overview || ""}
+                                maxlength="2000"
+                              ></textarea>
+                            </td>
+                            <td>
+                              <input
+                                type="date"
+                                name=${"released:" + key}
+                                defaultValue=${dateFromReleased(row.released)}
+                              />
+                            </td>
+                          </tr>
+                        `;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="row stacked-xs">
+                  <button class="primary" disabled=${saving}>
+                    ${saving ? "Saving…" : "Save episode details"}
+                  </button>
+                  ${
+                    tabs.seasons.length > 1
+                      ? html`<span class="muted inline-note">
+                          Saves the season shown; other seasons keep their
+                          details.
+                        </span>`
+                      : null
+                  }
+                </div>
+              </form>
+            `
+          : null
+      }
+    <//>
+  `;
+}
+
 function PlaybackTab({ state }) {
   const f =
     state.selected.inspectionCache?.selectedFiles?.find(
@@ -1249,6 +1489,10 @@ function StorageTab({ state }) {
     missing: "Missing",
     invalid: "Invalid",
   };
+  const fileStatus = (file) =>
+    !file.included && file.evictedAt
+      ? "Evicted " + agoLabel(file.evictedAt)
+      : fileLabel[file.state];
   const FileRow = ({ file, pick }) => html`
     <li class="rowitem" key=${file.sourceKey}>
       <span class="lead">
@@ -1264,7 +1508,7 @@ function StorageTab({ state }) {
       </span>
       <span class="main">
         <strong>${episodeLabel(entry.inspectionCache, file)}</strong>
-        <span class="meta">${fileLabel[file.state]}</span>
+        <span class="meta">${fileStatus(file)}</span>
       </span>
       <span class="trail"><span class="value">${fmt(file.length)}</span></span>
     </li>
@@ -1417,7 +1661,96 @@ function StorageTab({ state }) {
         Stop and delete files
       </button>
     </div>
+    ${
+      entry.type === "series" && files.length > 1
+        ? html`<${PolicyBlock} entry=${entry} diskCopy=${diskCopy} />`
+        : null
+    }
   <//>`;
+}
+
+// Rolling window (Phase 8): how many episodes to keep ahead of the last one
+// played, and whether watched copies are removed once those are on disk.
+function PolicyBlock({ entry, diskCopy }) {
+  const policy = diskCopy.policy ?? {};
+  const [keepAhead, setKeepAhead] = useState(policy.keepAhead ?? 0);
+  const [evictWatched, setEvictWatched] = useState(
+    Boolean(policy.evictWatched),
+  );
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setKeepAhead(policy.keepAhead ?? 0);
+    setEvictWatched(Boolean(policy.evictWatched));
+  }, [policy.keepAhead, policy.evictWatched]);
+  const active = (policy.keepAhead ?? 0) > 0 || policy.evictWatched;
+  const dirty =
+    keepAhead !== (policy.keepAhead ?? 0) ||
+    evictWatched !== Boolean(policy.evictWatched);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const updated = await api(
+        "library/" + encodeURIComponent(entry.id) + "/disk-copy/policy",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ keepAhead, evictWatched }),
+        },
+      );
+      setState({ selected: updated });
+      void load();
+      notify(
+        keepAhead || evictWatched
+          ? "Rolling window saved"
+          : "Rolling window off",
+      );
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return html`<div class="stacked" id="storage-policy">
+    <span class="field-label">
+      Rolling window
+      ${active ? html` <span class="muted">· ${policySummary(policy)}</span>` : null}
+    </span>
+    <p class="muted">
+      Keep the next episodes after the one you last played on the drive and, if
+      you like, remove copies you have finished once those are on disk. Turning
+      the window on switches to selected episodes; the episode playing right now
+      is never removed.
+    </p>
+    <div class="row tight stacked-xs">
+      <label class="check">
+        Keep
+        <input
+          class="input-narrow"
+          type="number"
+          min="0"
+          max="50"
+          step="1"
+          value=${keepAhead}
+          onInput=${(event) =>
+            setKeepAhead(
+              Math.max(0, Math.min(50, Number(event.target.value) || 0)),
+            )}
+        />
+        ahead
+      </label>
+      <label class="check">
+        <input
+          type="checkbox"
+          checked=${evictWatched}
+          onChange=${(event) => setEvictWatched(event.target.checked)}
+        />
+        Remove watched copies
+      </label>
+      <button class="primary" disabled=${busy || !dirty} onClick=${save}>
+        ${active || keepAhead || evictWatched ? "Save window" : "Save"}
+      </button>
+    </div>
+  </div>`;
 }
 
 // The entry sheet: a full-screen overlay media page. The hero keeps Play as
@@ -1428,9 +1761,15 @@ const SECTIONS = [
   ["metadata", "Metadata", MetadataTab],
   ["source", "Source", SourceTab],
   ["files", "Files", FilesTab],
+  ["episodes", "Episodes", EpisodesTab, "series"],
   ["playback", "Playback check", PlaybackTab],
   ["storage", "Keep on disk", StorageTab],
 ];
+
+// Series-only tabs carry their type in the fourth slot.
+function sectionsFor(entry) {
+  return SECTIONS.filter(([, , , type]) => !type || type === entry.type);
+}
 
 function diskBadge(entry) {
   const diskCopy = entry.diskCopy;
@@ -1458,11 +1797,12 @@ export function DetailSheet() {
     entry.playback?.fileId !== undefined || entry.playback?.positionSeconds;
   const check = sourceCheckBadge(entry.sourceCheck);
   const disk = diskBadge(entry);
-  const active = SECTIONS.find(([key]) => key === state.tab) ?? SECTIONS[0];
+  const sections = sectionsFor(entry);
+  const active = sections.find(([key]) => key === state.tab) ?? sections[0];
   const [, , Tab] = active;
   // Arrow keys move between tabs, as the tablist pattern expects.
   const onTabKey = (event) => {
-    const keys = SECTIONS.map(([key]) => key);
+    const keys = sections.map(([key]) => key);
     const index = keys.indexOf(active[0]);
     const next =
       event.key === "ArrowRight"
@@ -1575,7 +1915,7 @@ export function DetailSheet() {
           aria-label="Sections"
           onKeyDown=${onTabKey}
         >
-          ${SECTIONS.map(
+          ${sections.map(
             ([key, label]) => html`
               <button
                 type="button"

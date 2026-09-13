@@ -8,6 +8,9 @@ import { z } from "zod";
 
 export const TAG_MAX_LENGTH = 40;
 export const TAGS_PER_ENTRY_MAX = 32;
+// Pinned tags become Board rows (one catalog each); more than a handful
+// makes the Board scroll forever, so the cap is deliberately low.
+export const PINNED_TAGS_MAX = 8;
 
 // Union of the TMDB movie/TV genre lists and IMDb's title genres, merged
 // where the vocabularies overlap. Content-type labels (Adult, TV Movie,
@@ -57,6 +60,7 @@ export const entryTagsSchema = z
 
 const registrySchema = z.object({
   tags: z.array(tagNameSchema),
+  pinned: z.array(tagNameSchema).optional(),
 });
 
 export function tagKey(name: string): string {
@@ -82,6 +86,8 @@ export class TagError extends Error {}
 export class Tags {
   private readonly path: string;
   private names: string[] | undefined;
+  // Pin order is Board order; holds registry spellings only.
+  private pins: string[] = [];
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(path: string) {
@@ -91,10 +97,15 @@ export class Tags {
   private async load(): Promise<string[]> {
     if (this.names) return this.names;
     try {
-      this.names = dedupeTags(
-        registrySchema.parse(JSON.parse(await readFile(this.path, "utf8")))
-          .tags,
+      const stored = registrySchema.parse(
+        JSON.parse(await readFile(this.path, "utf8")),
       );
+      this.names = dedupeTags(stored.tags);
+      const names = this.names;
+      this.pins = dedupeTags(stored.pinned ?? [])
+        .map((pin) => names.find((name) => tagKey(name) === tagKey(pin)))
+        .filter((name): name is string => name !== undefined)
+        .slice(0, PINNED_TAGS_MAX);
     } catch {
       // First run (or an unreadable file): seed the default genre set.
       this.names = [...DEFAULT_TAGS];
@@ -108,7 +119,7 @@ export class Tags {
     const temporary = `${this.path}.tmp`;
     await writeFile(
       temporary,
-      `${JSON.stringify({ tags: names }, null, 2)}\n`,
+      `${JSON.stringify({ tags: names, pinned: this.pins }, null, 2)}\n`,
       { mode: 0o600 },
     );
     await rename(temporary, this.path);
@@ -130,6 +141,33 @@ export class Tags {
     return [...(await this.load())].sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" }),
     );
+  }
+
+  // Pinned tags in pin order, each in its registry spelling.
+  async pinned(): Promise<string[]> {
+    await this.queue;
+    await this.load();
+    return [...this.pins];
+  }
+
+  async setPinned(name: string, pinned: boolean): Promise<string> {
+    return this.mutate((names) => {
+      const canonical = names.find((tag) => tagKey(tag) === tagKey(name));
+      if (!canonical) throw new TagError(`Tag "${name}" not found`);
+      const index = this.pins.findIndex(
+        (tag) => tagKey(tag) === tagKey(canonical),
+      );
+      if (pinned && index === -1) {
+        if (this.pins.length >= PINNED_TAGS_MAX)
+          throw new TagError(
+            `Up to ${PINNED_TAGS_MAX} tags can be pinned to the Board`,
+          );
+        this.pins.push(canonical);
+      } else if (!pinned && index !== -1) {
+        this.pins.splice(index, 1);
+      }
+      return canonical;
+    });
   }
 
   // The registry's spelling of a name, if it is registered.
@@ -175,6 +213,8 @@ export class Tags {
       if (clash) throw new TagError(`Tag "${clash}" already exists`);
       const previous = names[index];
       names[index] = next;
+      const pin = this.pins.findIndex((tag) => tagKey(tag) === tagKey(from));
+      if (pin !== -1) this.pins[pin] = next;
       return previous;
     });
   }
@@ -183,6 +223,7 @@ export class Tags {
     return this.mutate((names) => {
       const index = names.findIndex((tag) => tagKey(tag) === tagKey(name));
       if (index === -1) throw new TagError(`Tag "${name}" not found`);
+      this.pins = this.pins.filter((tag) => tagKey(tag) !== tagKey(name));
       return names.splice(index, 1)[0];
     });
   }

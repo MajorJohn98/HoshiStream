@@ -53,13 +53,18 @@ Expected result:
 Actual result and frequency:
 Approximate time and time zone:
 Sanitized error/event text (minimal excerpt, no raw log attachment):
+Diagnostics bundle (System → Status → Copy diagnostics, pasted after review):
 Impact: setup / playback / upgrade / data loss / exposure
 Last working build, if known:
 Assistance required and workaround, if any:
 ```
 
 Do not attach `.env`, headers, tokens, private URLs, magnets, `.torrent` files,
-whole libraries/backups, raw logs, HAR captures or browser storage. Screenshots
+whole libraries/backups, raw logs, HAR captures or browser storage. The
+**Copy diagnostics** bundle is the one log-derived artifact that is allowed:
+it is redacted on the server (see
+[troubleshooting](troubleshooting.md#ask-for-help-with-a-diagnostics-bundle))
+and carries library counts, not titles. Screenshots
 must omit address bars, media titles/paths, device names and credentials.
 Replace sensitive substrings with `[redacted]` locally before submission and
 inspect the entire excerpt; automatic logging redaction is not sufficient.
