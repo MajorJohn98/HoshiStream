@@ -41,7 +41,8 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 | `addon.ts`, `catalog.ts`, `metadata.ts`, `streams.ts` | Stremio catalog/meta/stream resources |
 | `library.ts` | Atomic JSON library CRUD (`library.json`), tag rename/removal cascade |
 | `tags.ts`, `routes/tags-api.ts` | Tag registry (`tags.json`, seeded with TMDB/IMDb genres) and `/api/tags` |
-| `types.ts` | Zod schemas for library entries (create/patch) |
+| `types.ts` | Zod schemas for library entries (create/patch) and fetched-metadata provenance |
+| `cinemeta.ts`, `title-query.ts`, `metadata-enrichment.ts`, `metadata-settings.ts`, `artwork-cache.ts`, `routes/metadata-api.ts` | Opt-in Cinemeta enrichment (ADR 0026): bounded client, name cleaning, fill/replace merge with viewer-edit ownership, settings, local artwork cache and `/api/metadata*` routes |
 | `imports/`, `routes/imports-api.ts` | Provider-neutral manual drafts, identity validation, retry-safe import, and episode-preview/series append (ADR 0020) |
 | `browser/`, `assets/chrome-extension/` | Chrome MV3 companion and narrow macOS/Windows native-messaging relays; master token remains local |
 | `torrserver-client.ts` | Verified TorrServer API subset with timeouts and Zod parsing |
@@ -89,6 +90,8 @@ Two processes are always supervised together:
 | `<state dir>/library.json` | The library, a JSON array written atomically |
 | `<state dir>/tags.json` | Tag registry behind the Tags page and Stremio genre options |
 | `<state dir>/media/` | Browser-uploaded managed media (`UPLOAD_ROOT`) |
+| `<state dir>/metadata-settings.json` | Cinemeta enrichment on/off and auto-on-add |
+| `<state dir>/artwork/` | Locally cached Cinemeta posters, backgrounds, logos (one folder per entry) |
 | `<state dir>/torrserver/config/settings.json` | Cache size, connection, and cleanup settings |
 | `<state dir>/torrserver/torrents/` | TorrServer disk cache |
 | `<state dir>/transcode/` | Stream-repair HLS sessions (swept at startup) |

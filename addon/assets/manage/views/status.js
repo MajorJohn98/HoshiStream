@@ -92,6 +92,131 @@ function fromForm(form) {
 const APPLY_WARNING =
   "Apply TorrServer settings?\n\nTorrServer reconnects and drops every active torrent. Anything playing right now will stall until the viewer presses play again.";
 
+const CINEMETA_DISCLOSURE =
+  "Sends the title and year of each entry to strem.io. Artwork is downloaded once and served from this computer.";
+
+export function MetadataSettings() {
+  const [settings, setSettings] = useState(null);
+  const [backfill, setBackfill] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const reload = async () => {
+    try {
+      const [next, progress] = await Promise.all([
+        api("metadata/settings"),
+        api("metadata/backfill"),
+      ]);
+      setSettings(next);
+      setBackfill(progress);
+      setError("");
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  useEffect(() => {
+    void reload();
+  }, []);
+  // Poll while a backfill is running so the count moves.
+  useEffect(() => {
+    if (!backfill?.running) return undefined;
+    const timer = setInterval(() => {
+      api("metadata/backfill").then(setBackfill, () => undefined);
+    }, 1500);
+    return () => clearInterval(timer);
+  }, [backfill?.running]);
+  const update = async (patch) => {
+    setBusy(true);
+    try {
+      setSettings(
+        await api("metadata/settings", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(patch),
+        }),
+      );
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const start = async () => {
+    setBusy(true);
+    try {
+      setBackfill(await api("metadata/backfill", { method: "POST" }));
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const enabled = Boolean(settings?.enabled);
+  const progressLabel = () => {
+    if (!backfill) return "";
+    if (backfill.running)
+      return `Fetching… ${backfill.done} of ${backfill.total}`;
+    if (backfill.total > 0)
+      return (
+        `Last run: ${backfill.done} of ${backfill.total} titles checked` +
+        (backfill.failed ? `, ${backfill.failed} could not be fetched` : "")
+      );
+    return "";
+  };
+  return html`
+    <section class="page-section" id="status-metadata">
+      <div class="section-head">
+        <h2 class="section-title">Title details from Cinemeta</h2>
+        <span class="inline-note">
+          ${settings ? (enabled ? "On" : "Off") : error || "Loading…"}
+        </span>
+        <label class="check">
+          <input
+            type="checkbox"
+            checked=${enabled}
+            disabled=${busy || !settings}
+            onChange=${(e) => update({ enabled: e.target.checked })}
+          />
+          Fetch posters, descriptions, and episode names
+        </label>
+      </div>
+      <p class="muted section-note">${CINEMETA_DISCLOSURE}</p>
+      ${
+        enabled
+          ? html`
+              <label class="check">
+                <input
+                  type="checkbox"
+                  checked=${Boolean(settings.autoOnAdd)}
+                  disabled=${busy}
+                  onChange=${(e) => update({ autoOnAdd: e.target.checked })}
+                />
+                Fetch automatically when a title is added
+              </label>
+              <div class="row">
+                <button
+                  type="button"
+                  class="secondary"
+                  disabled=${busy || backfill?.running}
+                  onClick=${start}
+                >
+                  ${
+                    backfill?.running
+                      ? "Fetching…"
+                      : "Fetch details for existing titles"
+                  }
+                </button>
+                <span class="muted">${progressLabel()}</span>
+              </div>
+            `
+          : html`<p class="muted section-note">
+              Off: nothing leaves this computer. Titles keep whatever details
+              you typed.
+            </p>`
+      }
+    </section>
+  `;
+}
+
 export function TorrServerTuning() {
   const [data, setData] = useState(null);
   const [form, setForm] = useState(null);
@@ -458,6 +583,7 @@ export function HealthSection() {
       </div>
     </section>
     <${Resources} />
+    <${MetadataSettings} />
     <${TorrServerTuning} />
     <section class="page-section" id="status-checks">
       <div class="section-head">

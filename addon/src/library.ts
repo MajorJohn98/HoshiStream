@@ -25,6 +25,7 @@ import {
   TITLE_METADATA_FIELDS,
   type CreateEntry,
   type DiskCopy,
+  type EntryMetadata,
   type InspectionCache,
   type LibraryEntry,
   type PlaybackState,
@@ -47,6 +48,49 @@ const CACHE_INVALIDATING_FIELDS = [
   "fileOverrides",
   "extraSources",
 ] as const;
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || a === undefined || b === undefined)
+    return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length)
+      return false;
+    return a.every((item, index) => deepEqual(item, b[index]));
+  }
+  if (typeof a === "object" && typeof b === "object") {
+    const left = a as Record<string, unknown>;
+    const right = b as Record<string, unknown>;
+    const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+    for (const key of keys) if (!deepEqual(left[key], right[key])) return false;
+    return true;
+  }
+  return false;
+}
+
+// Ownership rule (ADR 0026): a value the viewer changes stops being
+// enrichment-owned, so a later refresh leaves it alone. Only a *changed*
+// value transfers — the management UI sends every field on save.
+export function transferOwnership(
+  current: LibraryEntry,
+  updated: LibraryEntry,
+  input: Record<string, unknown>,
+): EntryMetadata | undefined {
+  const metadata = current.metadata;
+  if (!metadata) return undefined;
+  const owned = metadata.owned.filter((field) => {
+    if (!(field in input)) return true;
+    return deepEqual(current[field], updated[field]);
+  });
+  const ownedTags = metadata.ownedTags.filter((tag) =>
+    (updated.tags ?? []).includes(tag),
+  );
+  const ownedEpisodes = metadata.ownedEpisodes.filter((key) => {
+    if (!("episodes" in input)) return true;
+    return deepEqual(current.episodes?.[key], updated.episodes?.[key]);
+  });
+  return { ...metadata, owned, ownedTags, ownedEpisodes };
+}
 
 export class LibraryError extends Error {}
 
@@ -329,6 +373,8 @@ export class Library {
           entrySourceDefinitionRevision(current)
         )
           delete updated.sourceCheck;
+        const metadata = transferOwnership(current, updated, input);
+        if (metadata) updated.metadata = metadata;
         entries[index] = updated;
         return updated;
       },
@@ -336,6 +382,39 @@ export class Library {
         if (updated && previous && cleanup) await cleanup(previous, remaining);
       },
     );
+  }
+
+  /**
+   * Rewrite one entry under the mutation queue. `change` sees the stored
+   * entry (not a stale copy) and returns the replacement, which is
+   * validated before it is written; `undefined` leaves the entry as is.
+   * Used by metadata enrichment to merge fetched values without racing
+   * viewer edits.
+   */
+  mutate(
+    id: string,
+    change: (
+      current: LibraryEntry,
+    ) =>
+      | Record<string, unknown>
+      | undefined
+      | Promise<Record<string, unknown> | undefined>,
+  ): Promise<LibraryEntry | undefined> {
+    return this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return undefined;
+      const current = entries[index];
+      const candidate = await change(current);
+      if (!candidate) return current;
+      const updated = libraryEntrySchema.parse({
+        ...candidate,
+        id,
+        createdAt: current.createdAt,
+        updatedAt: new Date().toISOString(),
+      });
+      entries[index] = updated;
+      return updated;
+    });
   }
 
   remove(id: string, cleanup?: SourceCleanup): Promise<boolean> {
@@ -371,6 +450,13 @@ export class Library {
           updatedAt: now,
         };
         if (!tags.length) delete candidate.tags;
+        if (entry.metadata)
+          candidate.metadata = {
+            ...entry.metadata,
+            ownedTags: entry.metadata.ownedTags.flatMap((tag) =>
+              tagKey(tag) === key ? (to === undefined ? [] : [to]) : [tag],
+            ),
+          };
         entries[index] = libraryEntrySchema.parse(candidate);
         changed += 1;
       });

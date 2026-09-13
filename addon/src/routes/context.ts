@@ -25,6 +25,8 @@ import type { WatchProgress, WatchStates } from "../watch-state.ts";
 import type { LogRing } from "../diagnostics.ts";
 import type { IdentityStore } from "../identity.ts";
 import type { ThumbnailService } from "../thumbnail-service.ts";
+import type { ArtworkCache } from "../artwork-cache.ts";
+import type { MetadataEnrichment } from "../metadata-enrichment.ts";
 
 // Support-bundle inputs (Phase 9). The secret is only ever used to redact.
 export interface DiagnosticsOptions {
@@ -59,6 +61,9 @@ export interface HandlerContext {
   tags?: Tags;
   identity?: IdentityStore;
   thumbnails?: ThumbnailService;
+  /** Opt-in Cinemeta enrichment (ADR 0026); routes answer 409 when absent. */
+  metadata?: MetadataEnrichment;
+  artwork?: ArtworkCache;
   imports?: ImportService;
   sourceChecks?: SourceChecks;
   onboarding?: Onboarding;

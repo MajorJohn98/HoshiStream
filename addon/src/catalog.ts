@@ -6,7 +6,7 @@ import {
   UNWATCHED_ID,
 } from "./manifest.ts";
 import { tagKey } from "./tags.ts";
-import type { LibraryEntry } from "./types.ts";
+import type { ArtworkKind, LibraryEntry } from "./types.ts";
 import type { SelectedFile } from "./media-file-selection.ts";
 import {
   lastWatchActivity,
@@ -44,7 +44,24 @@ export function derivedRuntime(entry: LibraryEntry): string | undefined {
   return hours ? `${hours}h${rest ? ` ${rest}m` : ""}` : `${rest}m`;
 }
 
-export function toMetaPreview(entry: LibraryEntry) {
+// Where a player should load cached Cinemeta artwork from (ADR 0026). When
+// the request origin is unknown (SDK fallback path) the remote URL stands.
+export type ArtworkUrl = (entryId: string, kind: ArtworkKind) => string;
+export interface PreviewOptions {
+  artworkUrl?: ArtworkUrl;
+}
+
+function artworkFor(
+  entry: LibraryEntry,
+  kind: ArtworkKind,
+  options: PreviewOptions | undefined,
+): string | undefined {
+  const remote = entry[kind];
+  if (!options?.artworkUrl || !entry.metadata?.artwork?.[kind]) return remote;
+  return options.artworkUrl(entry.id, kind);
+}
+
+export function toMetaPreview(entry: LibraryEntry, options?: PreviewOptions) {
   const links = [
     ...(entry.tags ?? []).map((tag) => searchLink("Genres", tag)),
     ...(entry.cast ?? []).map((name) => searchLink("Cast", name)),
@@ -54,9 +71,9 @@ export function toMetaPreview(entry: LibraryEntry) {
     type: entry.type,
     name: entry.name,
     description: entry.description,
-    poster: entry.poster,
+    poster: artworkFor(entry, "poster", options),
     posterShape: entry.posterShape ?? "poster",
-    background: entry.background,
+    background: artworkFor(entry, "background", options),
     ...(entry.tags?.length ? { genres: [...entry.tags] } : {}),
     releaseInfo: entry.releaseInfo,
     runtime: entry.runtime ?? derivedRuntime(entry),
@@ -66,7 +83,7 @@ export function toMetaPreview(entry: LibraryEntry) {
     writer: entry.writer,
     country: entry.country,
     language: entry.language,
-    logo: entry.logo,
+    logo: artworkFor(entry, "logo", options),
     awards: entry.awards,
     trailers: entry.trailers,
     ...(links.length ? { links } : {}),
@@ -89,7 +106,11 @@ export function videoIdFor(entry: LibraryEntry, file: SelectedFile): string {
 // Entries with something to resume, newest activity first, each opening on
 // the file playback should pick up at. Entries whose every file is watched
 // drop out, so the row stays a to-do list rather than a history.
-export async function continueWatching(library: Library, type: string) {
+export async function continueWatching(
+  library: Library,
+  type: string,
+  options?: PreviewOptions,
+) {
   const rows: { entry: LibraryEntry; file: SelectedFile; at: number }[] = [];
   for (const entry of await library.list()) {
     if (entry.type !== type || !entry.watchStates?.length) continue;
@@ -99,7 +120,7 @@ export async function continueWatching(library: Library, type: string) {
   return rows
     .sort((a, b) => b.at - a.at)
     .map(({ entry, file }) => ({
-      ...toMetaPreview(entry),
+      ...toMetaPreview(entry, options),
       behaviorHints: { defaultVideoId: videoIdFor(entry, file) },
     }));
 }
@@ -109,12 +130,14 @@ export async function getCatalog(
   type: string,
   extra: Record<string, string | string[] | undefined>,
   id?: string,
+  options?: PreviewOptions,
 ) {
+  const preview = (entry: LibraryEntry) => toMetaPreview(entry, options);
   const parsedSkip = Number.parseInt(String(extra.skip ?? "0"), 10);
   const skip =
     Number.isSafeInteger(parsedSkip) && parsedSkip > 0 ? parsedSkip : 0;
   if (id === CONTINUE_WATCHING_ID) {
-    const metas = await continueWatching(library, type);
+    const metas = await continueWatching(library, type, options);
     return { metas: metas.slice(skip, skip + PAGE_SIZE) };
   }
   // Board rows (Phase 15). Recently added orders by when the title entered
@@ -131,7 +154,7 @@ export async function getCatalog(
           : b.updatedAt.localeCompare(a.updatedAt),
       )
       .slice(skip, skip + PAGE_SIZE)
-      .map(toMetaPreview);
+      .map(preview);
     return { metas };
   }
   const search = String(extra.search ?? "").toLocaleLowerCase();
@@ -149,6 +172,6 @@ export async function getCatalog(
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(skip, skip + PAGE_SIZE)
-    .map(toMetaPreview);
+    .map(preview);
   return { metas: entries };
 }

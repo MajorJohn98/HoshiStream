@@ -22,6 +22,11 @@ import { Tags } from "./tags.ts";
 import { IdentityStore } from "./identity.ts";
 import { SubtitleService } from "./subtitle-service.ts";
 import { ThumbnailService } from "./thumbnail-service.ts";
+import { ArtworkCache } from "./artwork-cache.ts";
+import { CinemetaClient } from "./cinemeta.ts";
+import { MetadataEnrichment } from "./metadata-enrichment.ts";
+import { MetadataSettingsStore } from "./metadata-settings.ts";
+import { releaseInfo } from "./release.ts";
 import { runSpeedTest, stopSpeedTest } from "./speedtest.ts";
 import { VolumeRegistry } from "./volumes.ts";
 import { DiskCleanup } from "./disk-copy.ts";
@@ -78,6 +83,22 @@ export async function startHoshiStream(settings = config) {
     dir: settings.THUMBNAILS_DIR,
     ffmpegPath: settings.FFMPEG_PATH,
     volumes,
+  });
+  // Opt-in Cinemeta enrichment (ADR 0026). Constructed always so the toggle
+  // can be flipped from the UI; nothing leaves the machine until it is on.
+  const artwork = new ArtworkCache({
+    dir: settings.ARTWORK_DIR,
+    userAgent: `HoshiStream/${releaseInfo.version}`,
+  });
+  const metadata = new MetadataEnrichment({
+    library,
+    tags,
+    settings: new MetadataSettingsStore(settings.METADATA_SETTINGS_PATH),
+    client: new CinemetaClient({
+      baseUrl: settings.CINEMETA_URL,
+      userAgent: `HoshiStream/${releaseInfo.version}`,
+    }),
+    artwork,
   });
   const archiver = new Archiver(library, torrServer, volumes, {
     schedule: archiveSchedule,
@@ -173,6 +194,8 @@ export async function startHoshiStream(settings = config) {
       tags,
       identity: new IdentityStore(settings.IDENTITY_PATH),
       thumbnails,
+      metadata,
+      artwork,
       imports,
       sourceChecks,
       volumes,

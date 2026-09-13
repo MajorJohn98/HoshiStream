@@ -31,7 +31,7 @@ function invalidRequest(error: unknown) {
 }
 
 export const handleImports: RouteHandler = async (
-  { imports },
+  { imports, metadata },
   { request, response, url, method },
 ) => {
   const draftMatch = /^\/api\/imports\/drafts\/([^/]+)$/.exec(url.pathname);
@@ -121,11 +121,15 @@ export const handleImports: RouteHandler = async (
       const result = await imports.commitSeries(
         seriesCommitInputSchema.parse(await body(request)),
       );
+      // A new season may bring new episodes: refill details in the
+      // background, after the response (ADR 0026).
+      if (result.outcome === "appended") metadata?.queueAuto(result.entry.id);
       return noStoreReply(response, 200, result);
     }
     const result = await imports.commit(
       importCommitInputSchema.parse(await body(request)),
     );
+    if (result.outcome === "created") metadata?.queueAuto(result.entry.id);
     return noStoreReply(
       response,
       result.outcome === "created" ? 201 : 200,

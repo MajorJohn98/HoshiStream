@@ -2,7 +2,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { managementHtml } from "../management.ts";
 import { manifestForLibrary } from "../manifest.ts";
-import { getMetadata } from "../metadata.ts";
+import { getCatalog } from "../catalog.ts";
+import { artworkResolver, getMetadata } from "../metadata.ts";
 import { ownPublicIp } from "../public-ip.ts";
 import { validToken } from "../security.ts";
 import {
@@ -205,6 +206,35 @@ export const handleProtocol: RouteHandler = async (
       : undefined;
     return { resolved, repair };
   };
+  // Catalog rows and movie meta carry cached artwork URLs (ADR 0026), which
+  // need the origin the client reached us on; the SDK router has no host.
+  if (resource === "catalog") {
+    const resolved = resolvePublicUrls(request.headers.host, publicUrls);
+    const result = await getCatalog(
+      library,
+      type,
+      Object.fromEntries(new URLSearchParams(rawExtra ?? "")),
+      decodeURIComponent(rawId),
+      { artworkUrl: artworkResolver(resolved.addonUrl, accessToken) },
+    );
+    return noStoreReply(response, 200, result);
+  }
+  if (resource === "meta" && type === "movie") {
+    const resolved = resolvePublicUrls(request.headers.host, publicUrls);
+    const result = await getMetadata(
+      library,
+      torrServer,
+      type,
+      decodeURIComponent(rawId),
+      {
+        torrServer,
+        publicTorrServerUrl: resolved.torrServerUrl,
+        publicAddonUrl: resolved.addonUrl,
+        accessToken,
+      },
+    );
+    return noStoreReply(response, 200, result);
+  }
   if (resource === "meta" && type === "series") {
     const { resolved, repair } = await streamTarget();
     const result = await getMetadata(

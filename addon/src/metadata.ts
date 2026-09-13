@@ -1,4 +1,4 @@
-import { toMetaPreview } from "./catalog.ts";
+import { toMetaPreview, type ArtworkUrl } from "./catalog.ts";
 import { episodeOverrideFor, episodeTitle } from "./episode-titles.ts";
 import { resolveStreamSource, warmStreamSource } from "./inspection.ts";
 import type { Library } from "./library.ts";
@@ -10,6 +10,24 @@ import {
 } from "./streams.ts";
 import type { ThumbnailService } from "./thumbnail-service.ts";
 import type { TorrServerClient } from "./torrserver-client.ts";
+import type { ArtworkKind } from "./types.ts";
+
+export function artworkUrl(
+  addonUrl: string,
+  accessToken: string,
+  entryId: string,
+  kind: ArtworkKind,
+): string {
+  return `${addonUrl}/artwork/${encodeURIComponent(accessToken)}/${encodeURIComponent(entryId)}/${kind}`;
+}
+
+/** Local artwork resolver for the origin a client reached us on. */
+export function artworkResolver(
+  addonUrl: string,
+  accessToken: string,
+): ArtworkUrl {
+  return (entryId, kind) => artworkUrl(addonUrl, accessToken, entryId, kind);
+}
 
 export function thumbnailUrl(
   addonUrl: string,
@@ -31,7 +49,14 @@ export async function getMetadata(
 ) {
   const entry = await library.get(id);
   if (!entry || entry.type !== type) return { meta: null };
-  const meta = toMetaPreview(entry);
+  // Cached Cinemeta artwork needs the origin the client reached us on, which
+  // only the embed options carry (ADR 0026).
+  const meta = toMetaPreview(
+    entry,
+    embed
+      ? { artworkUrl: artworkResolver(embed.publicAddonUrl, embed.accessToken) }
+      : undefined,
+  );
   if (entry.type === "movie") {
     warmStreamSource(entry, torrServer, library);
     return { meta };

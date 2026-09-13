@@ -289,6 +289,63 @@ export const TITLE_METADATA_FIELDS = Object.keys(
   titleMetadataSchema.shape,
 ) as (keyof TitleMetadata)[];
 
+// Provenance of fetched metadata (ADR 0026). `owned*` name the values that
+// enrichment wrote and may therefore overwrite on a refresh or remove on
+// unlink; anything the viewer typed is never listed here. Artwork refs point
+// at files under ARTWORK_DIR, relative to the entry's folder.
+export const IMDB_ID = /^tt\d{7,8}$/;
+export const artworkRefSchema = z.object({
+  file: z.string().regex(/^[a-z]+\.(?:jpg|png|webp)$/),
+  bytes: z.number().int().nonnegative(),
+  etag: z.string().min(1).max(80),
+  fetchedAt: z.string().datetime(),
+  sourceUrl: z.string().url(),
+});
+export const ARTWORK_KINDS = ["poster", "background", "logo"] as const;
+export type ArtworkKind = (typeof ARTWORK_KINDS)[number];
+export const metadataCandidateSchema = z.object({
+  imdbId: z.string().regex(IMDB_ID),
+  name: z.string().trim().min(1).max(200),
+  releaseInfo: z.string().trim().max(40).optional(),
+  poster: z.string().url().optional(),
+});
+export const ENRICHABLE_FIELDS = [
+  "description",
+  "poster",
+  "background",
+  "tags",
+  "ongoing",
+  ...TITLE_METADATA_FIELDS,
+] as const;
+export type EnrichableField = (typeof ENRICHABLE_FIELDS)[number];
+export const entryMetadataSchema = z.object({
+  provider: z.literal("cinemeta"),
+  imdbId: z.string().regex(IMDB_ID).optional(),
+  status: z.enum(["matched", "needs-review", "unavailable", "unmatched"]),
+  fetchedAt: z.string().datetime().optional(),
+  query: z
+    .object({
+      title: z.string().min(1).max(120),
+      year: z.number().int().min(1800).max(2200).optional(),
+    })
+    .optional(),
+  candidates: z.array(metadataCandidateSchema).max(5).optional(),
+  owned: z.array(z.enum(ENRICHABLE_FIELDS)).max(40).default([]),
+  ownedEpisodes: z.array(z.string().regex(EPISODE_KEY)).max(500).default([]),
+  ownedTags: z.array(z.string().trim().min(1).max(40)).max(50).default([]),
+  artwork: z
+    .object({
+      poster: artworkRefSchema.optional(),
+      background: artworkRefSchema.optional(),
+      logo: artworkRefSchema.optional(),
+    })
+    .optional(),
+  lastError: z.string().max(200).optional(),
+});
+export type EntryMetadata = z.infer<typeof entryMetadataSchema>;
+export type MetadataCandidate = z.infer<typeof metadataCandidateSchema>;
+export type ArtworkRef = z.infer<typeof artworkRefSchema>;
+
 export const libraryEntrySchema = z
   .object({
     id: z.string().min(1),
@@ -336,6 +393,8 @@ export const libraryEntrySchema = z
     searchReceipts: z.array(searchReceiptSchema).optional(),
     sourceCheck: sourceCheckSchema.optional(),
     mediaFacts: z.array(mediaFactSchema).optional(),
+    // Fetched-metadata provenance (ADR 0026); server-owned.
+    metadata: entryMetadataSchema.optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -371,6 +430,7 @@ export const createEntrySchema = libraryEntrySchema
     searchReceipts: true,
     sourceCheck: true,
     mediaFacts: true,
+    metadata: true,
     createdAt: true,
     updatedAt: true,
   })

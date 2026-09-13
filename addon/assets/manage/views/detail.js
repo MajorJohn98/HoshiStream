@@ -146,6 +146,246 @@ function NotYet({ state, children }) {
   `;
 }
 
+// "from Cinemeta" hint for fields enrichment wrote; viewer edits drop the hint.
+function fetchedHint(entry, field) {
+  return entry.metadata?.owned?.includes(field)
+    ? html`<span class="meta">from Cinemeta</span>`
+    : null;
+}
+
+function candidateLabel(candidate) {
+  return candidate.releaseInfo
+    ? candidate.name + " (" + candidate.releaseInfo + ")"
+    : candidate.name;
+}
+
+function MatchCard({ state }) {
+  const entry = state.selected;
+  const meta = entry.metadata;
+  const [settings, setSettings] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState(null);
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    api("metadata/settings").then(setSettings, () => setSettings(null));
+  }, []);
+  useEffect(() => {
+    setSearching(false);
+    setResults(null);
+    setQuery("");
+  }, [entry.id]);
+  const enabled = Boolean(settings?.enabled);
+  const base = "library/" + encodeURIComponent(entry.id) + "/metadata";
+  const refetchEntry = async () =>
+    syncSelectedEntry(await api("library/" + encodeURIComponent(entry.id)));
+  // A freshly added title is usually mid-fetch; poll briefly for the result.
+  const pending =
+    enabled &&
+    !meta &&
+    Boolean(settings.autoOnAdd) &&
+    Date.now() - Date.parse(entry.createdAt) < 60_000;
+  useEffect(() => {
+    if (!pending) return undefined;
+    const timer = setInterval(() => void refetchEntry().catch(() => {}), 2000);
+    return () => clearInterval(timer);
+  }, [pending, entry.id]);
+  if (!enabled) return null;
+
+  const run = async (fn, message) => {
+    setBusy(true);
+    try {
+      await fn();
+      await refetchEntry();
+      if (message) notify(message);
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const post = (path, body) =>
+    api(path, {
+      method: "POST",
+      headers: body ? { "content-type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  const apply = (imdbId) =>
+    run(async () => {
+      const outcome = await post(base + "/apply", { imdbId });
+      setSearching(false);
+      setResults(null);
+      return outcome;
+    }, "Details fetched");
+  const refresh = () => run(() => post(base + "/refresh"), "Details refreshed");
+  const unlink = () =>
+    run(() => api(base, { method: "DELETE" }), "Fetched details removed");
+  const fetchNow = () => run(() => post(base + "/refresh"));
+  const search = async (event) => {
+    event?.preventDefault();
+    setBusy(true);
+    try {
+      const q = query.trim();
+      setResults(
+        await api(base + "/search" + (q ? "?q=" + encodeURIComponent(q) : "")),
+      );
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const candidates = results?.candidates ?? meta?.candidates ?? [];
+  const showPicker = searching || meta?.status === "needs-review";
+  const status = () => {
+    if (pending) return html`<span>Fetching details…</span>`;
+    if (!meta) return html`<span>Not fetched yet.</span>`;
+    switch (meta.status) {
+      case "matched":
+        return html`<span>
+          IMDb <span class="mono">${meta.imdbId}</span>
+          ${meta.fetchedAt ? " · fetched " + agoLabel(meta.fetchedAt) : ""}
+        </span>`;
+      case "needs-review":
+        return html`<span
+          >Several titles matched — pick the right one below.</span
+        >`;
+      case "unavailable":
+        return html`<span
+          >Cinemeta could not be
+          reached${
+            meta.imdbId ? "; keeping the last fetched details" : ""
+          }.</span
+        >`;
+      default:
+        return html`<span>No match found for “${meta.query?.title}”.</span>`;
+    }
+  };
+
+  return html`
+    <div class="stacked-sm" id="match-card">
+      <div class="row between">
+        <div class="stacked-xs">
+          <span class="field-label">Match</span>
+          <span class="muted">${status()}</span>
+        </div>
+        <div class="row tight">
+          ${
+            meta?.imdbId
+              ? html`
+                  <button
+                    type="button"
+                    class="secondary"
+                    disabled=${busy}
+                    onClick=${refresh}
+                  >
+                    ${busy ? "Working…" : "Refresh"}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary"
+                    disabled=${busy}
+                    onClick=${() => {
+                      setSearching(true);
+                      void search();
+                    }}
+                  >
+                    Change match
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary danger"
+                    disabled=${busy}
+                    onClick=${unlink}
+                    title="Remove fetched details; anything you typed stays"
+                  >
+                    Unlink
+                  </button>
+                `
+              : html`
+                  <button
+                    type="button"
+                    class="secondary"
+                    disabled=${busy}
+                    onClick=${fetchNow}
+                  >
+                    ${busy ? "Fetching…" : "Fetch details"}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary"
+                    disabled=${busy}
+                    onClick=${() => {
+                      setSearching(true);
+                      void search();
+                    }}
+                  >
+                    Search…
+                  </button>
+                `
+          }
+        </div>
+      </div>
+      ${
+        showPicker
+          ? html`
+              <form class="picker-row" onSubmit=${search}>
+                <input
+                  class="grow"
+                  placeholder=${"Search Cinemeta for " + entry.type + "s…"}
+                  value=${query}
+                  onInput=${(e) => setQuery(e.target.value)}
+                />
+                <button class="secondary" disabled=${busy}>Search</button>
+                <button
+                  type="button"
+                  class="secondary"
+                  onClick=${() => {
+                    setSearching(false);
+                    setResults(null);
+                  }}
+                >
+                  Close
+                </button>
+              </form>
+              ${
+                candidates.length
+                  ? html`<ul class="rows compact">
+                      ${candidates.map(
+                        (c) => html`
+                          <li class="rowitem no-lead" key=${c.imdbId}>
+                            <span class="main">
+                              <strong>${candidateLabel(c)}</strong>
+                              <span class="meta mono">${c.imdbId}</span>
+                            </span>
+                            <span class="trail">
+                              <button
+                                type="button"
+                                class="primary"
+                                disabled=${busy}
+                                onClick=${() => apply(c.imdbId)}
+                              >
+                                Use this
+                              </button>
+                            </span>
+                          </li>
+                        `,
+                      )}
+                    </ul>`
+                  : results
+                    ? html`<p class="muted">
+                        No titles found. Try another spelling.
+                      </p>`
+                    : null
+              }
+            `
+          : null
+      }
+    </div>
+  `;
+}
+
 function OverviewTab({ state }) {
   const entry = state.selected;
   const [tags, setTags] = useState(entry.tags ?? []);
@@ -175,6 +415,7 @@ function OverviewTab({ state }) {
       title="Details"
       note="Title, artwork, description, and tags as Stremio sees them."
     >
+      <${MatchCard} state=${state} />
       <form class="form-grid" key=${entry.id} onSubmit=${onSubmit}>
         <label> Title<input name="name" defaultValue=${entry.name} /> </label>
         <label>
@@ -189,15 +430,15 @@ function OverviewTab({ state }) {
           </select>
         </label>
         <label class="span2">
-          Description
+          Description ${fetchedHint(entry, "description")}
           <textarea name="description">${entry.description || ""}</textarea>
         </label>
         <label>
-          Poster URL
+          Poster URL ${fetchedHint(entry, "poster")}
           <input name="poster" type="url" defaultValue=${entry.poster || ""} />
         </label>
         <label>
-          Background URL
+          Background URL ${fetchedHint(entry, "background")}
           <input
             name="background"
             type="url"
@@ -205,7 +446,7 @@ function OverviewTab({ state }) {
           />
         </label>
         <div class="span2">
-          <span class="field-label">Tags</span>
+          <span class="field-label">Tags ${fetchedHint(entry, "tags")}</span>
           <${TagPicker} value=${tags} onChange=${setTags} />
         </div>
         ${
@@ -249,7 +490,7 @@ function MetadataTab({ state }) {
     >
       <form class="form-grid" key=${entry.id} onSubmit=${onSubmit}>
         <label>
-          Year or range
+          Year or range ${fetchedHint(entry, "releaseInfo")}
           <input
             name="releaseInfo"
             placeholder="2019 or 2019-2021"
@@ -257,7 +498,7 @@ function MetadataTab({ state }) {
           />
         </label>
         <label>
-          Runtime
+          Runtime ${fetchedHint(entry, "runtime")}
           <input
             name="runtime"
             placeholder=${entry.type === "movie" ? "From the probe when blank" : "e.g. 45m"}
@@ -265,7 +506,7 @@ function MetadataTab({ state }) {
           />
         </label>
         <label>
-          Rating (0–10)
+          Rating (0–10) ${fetchedHint(entry, "imdbRating")}
           <input
             name="imdbRating"
             inputmode="decimal"
@@ -289,7 +530,7 @@ function MetadataTab({ state }) {
           </select>
         </label>
         <label class="span2">
-          Cast
+          Cast ${fetchedHint(entry, "cast")}
           <input
             name="cast"
             placeholder="Comma-separated names"
@@ -297,7 +538,7 @@ function MetadataTab({ state }) {
           />
         </label>
         <label>
-          Director
+          Director ${fetchedHint(entry, "director")}
           <input
             name="director"
             placeholder="Comma-separated"
@@ -305,7 +546,7 @@ function MetadataTab({ state }) {
           />
         </label>
         <label>
-          Writer
+          Writer ${fetchedHint(entry, "writer")}
           <input
             name="writer"
             placeholder="Comma-separated"
@@ -313,23 +554,23 @@ function MetadataTab({ state }) {
           />
         </label>
         <label>
-          Country
+          Country ${fetchedHint(entry, "country")}
           <input name="country" defaultValue=${entry.country || ""} />
         </label>
         <label>
-          Language
+          Language ${fetchedHint(entry, "language")}
           <input name="language" defaultValue=${entry.language || ""} />
         </label>
         <label class="span2">
-          Logo URL
+          Logo URL ${fetchedHint(entry, "logo")}
           <input name="logo" type="url" defaultValue=${entry.logo || ""} />
         </label>
         <label class="span2">
-          Awards
+          Awards ${fetchedHint(entry, "awards")}
           <input name="awards" defaultValue=${entry.awards || ""} />
         </label>
         <label class="span2">
-          Trailers
+          Trailers ${fetchedHint(entry, "trailers")}
           <textarea
             name="trailers"
             placeholder="One YouTube link or id per line"

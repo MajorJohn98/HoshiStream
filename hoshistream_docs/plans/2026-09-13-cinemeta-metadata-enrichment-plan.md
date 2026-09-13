@@ -1,7 +1,7 @@
 # Cinemeta metadata enrichment (opt-in)
 
 Date: 2026-09-13
-Status: **Approved, not started.**
+Status: **Done** — see [changelog/cinemeta-metadata-enrichment.md](../changelog/cinemeta-metadata-enrichment.md).
 Decision: [ADR 0026](../decisions/0026-opt-in-cinemeta-metadata-enrichment.md).
 
 Goal: when the viewer opts in, a freshly added movie or series gets its

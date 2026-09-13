@@ -32,9 +32,10 @@ includes `library.json` and its `.bak`/quarantines, `.env` when colocated,
 `onboarding.json`, `tags.json` (with its `pinned` list), `identity.json`,
 `device-names.json`, `pointer-settings.json`,
 `pointer-state.json`, `volumes.json`, `disk-cleanup.json`, `disk-schedule.json`,
-TorrServer `config/` (including `config.db` and settings), `thumbnails/`
-(episode frames — regenerable from the Episodes tab, so optional), and cache
-directories.
+`metadata-settings.json`, TorrServer `config/` (including `config.db` and
+settings), `thumbnails/` (episode frames — regenerable from the Episodes tab,
+so optional), `artwork/` (cached Cinemeta posters — refetched on Refresh, so
+optional), and cache directories.
 For checkout/custom layouts also copy the project `.env` and entire `data/`
 directory separately; record all original absolute paths. Never back up a
 whole checkout merely to capture these three locations.

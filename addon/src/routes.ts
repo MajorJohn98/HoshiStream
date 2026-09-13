@@ -52,6 +52,7 @@ import {
   handleDiskMedia,
   handleHls,
   handleLocalMedia,
+  handleArtwork,
   handleSubtitleFile,
   handleThumbnail,
 } from "./routes/media.ts";
@@ -78,6 +79,13 @@ import type { SourceChecks } from "./source-checks.ts";
 import type { Onboarding } from "./onboarding.ts";
 import type { IdentityStore } from "./identity.ts";
 import type { ThumbnailService } from "./thumbnail-service.ts";
+import type { ArtworkCache } from "./artwork-cache.ts";
+import type { MetadataEnrichment } from "./metadata-enrichment.ts";
+import {
+  handleMetadataBackfill,
+  handleMetadataItem,
+  handleMetadataSettings,
+} from "./routes/metadata-api.ts";
 import { handleOnboarding } from "./routes/onboarding-api.ts";
 import { WatchProgress, WatchStates } from "./watch-state.ts";
 
@@ -110,6 +118,8 @@ export interface HandlerOptions {
   tags?: Tags;
   identity?: IdentityStore;
   thumbnails?: ThumbnailService;
+  metadata?: MetadataEnrichment;
+  artwork?: ArtworkCache;
   imports?: ImportService;
   sourceChecks?: SourceChecks;
   onboarding?: Onboarding;
@@ -127,6 +137,7 @@ const OPEN_ROUTES: RouteHandler[] = [
   handleDiskMedia,
   handleSubtitleFile,
   handleThumbnail,
+  handleArtwork,
 ];
 
 // Everything under /api/* requires a bearer token (checked once in the
@@ -146,6 +157,9 @@ const API_ROUTES: RouteHandler[] = [
   handleEpisodes,
   handleThumbnailGeneration,
   handleTags,
+  handleMetadataSettings,
+  handleMetadataBackfill,
+  handleMetadataItem,
   handleStremioRefresh,
   handlePlayer,
   handleClients,

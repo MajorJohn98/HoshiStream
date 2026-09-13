@@ -8,6 +8,7 @@ import { serveMediaSource } from "../media-source.ts";
 import { directPlayForFile } from "../media-facts.ts";
 import type { DirectPlay } from "../direct-play.ts";
 import { validToken } from "../security.ts";
+import { isArtworkKind } from "../artwork-cache.ts";
 import type { SubtitlePayload } from "../subtitle-service.ts";
 import { repairTier, TranscodeBusyError } from "../transcode.ts";
 import { rangeFraction, type WatchProgress } from "../watch-state.ts";
@@ -295,5 +296,54 @@ export const handleThumbnail: RouteHandler = async (
     return true;
   }
   await pipeline(createReadStream(frame.path), response).catch(() => undefined);
+  return true;
+};
+
+// Cached Cinemeta artwork (ADR 0026). The kind comes from a fixed allowlist
+// and the entry id is re-encoded by the cache, so the URL cannot name a file
+// outside ARTWORK_DIR. The file changes only when the remote URL changes, so
+// a week of caching plus the content ETag is safe.
+export const handleArtwork: RouteHandler = async (
+  { accessToken, artwork, library },
+  { request, response, url, method },
+) => {
+  const match = /^\/artwork\/([^/]+)\/([^/]+)\/([a-z]+)$/.exec(url.pathname);
+  if (
+    !match ||
+    !isReadMethod(method) ||
+    !validToken(decodeURIComponent(match[1]), accessToken)
+  )
+    return false;
+  const kind = match[3];
+  if (!artwork || !isArtworkKind(kind))
+    return reply(response, 404, { error: "Unknown artwork" });
+  const entryId = decodeURIComponent(match[2]);
+  const entry = await library.get(entryId);
+  const ref = entry?.metadata?.artwork?.[kind];
+  const stored = ref ? await artwork.stat(entryId, kind, ref) : undefined;
+  if (!stored) return reply(response, 404, { error: "Unknown artwork" });
+  const headers = {
+    etag: stored.etag,
+    "cache-control": "max-age=604800",
+    "access-control-allow-origin": "*",
+    "x-content-type-options": "nosniff",
+  };
+  if (request.headers["if-none-match"] === stored.etag) {
+    response.writeHead(304, headers);
+    response.end();
+    return true;
+  }
+  response.writeHead(200, {
+    ...headers,
+    "content-type": stored.contentType,
+    "content-length": stored.size,
+  });
+  if (method === "HEAD") {
+    response.end();
+    return true;
+  }
+  await pipeline(createReadStream(stored.path), response).catch(
+    () => undefined,
+  );
   return true;
 };

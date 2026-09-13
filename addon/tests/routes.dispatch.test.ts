@@ -98,15 +98,13 @@ describe("createHandler dispatch", () => {
     expect(await tokenized.json()).toMatchObject({ id: "test" });
   });
 
-  it("proxies catalog requests to the add-on interface", async () => {
+  it("serves catalog requests from the library on the tokenized path", async () => {
     const response = await fetch(
       `${baseUrl}/addon/${TOKEN}/catalog/movie/private-movies.json`,
     );
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      resource: "catalog",
-      type: "movie",
-    });
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(await response.json()).toEqual({ metas: [] });
   });
 
   it("requires a bearer token for the management API", async () => {

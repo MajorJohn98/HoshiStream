@@ -10,6 +10,7 @@ import { VolumeError } from "../volumes.ts";
 import { ImportError } from "../imports/errors.ts";
 import { TorrServerError } from "../torrserver-client.ts";
 import { MediaSelectionError } from "../media-file-selection.ts";
+import { MetadataError } from "../metadata-enrichment.ts";
 
 // Domain errors whose message is safe and useful to show the caller.
 const DESCRIPTIVE_CLIENT_ERRORS = [
@@ -37,6 +38,19 @@ export function classifyError(error: unknown): {
             : 503,
       message: error.message,
       code: error.code,
+    };
+  if (error instanceof MetadataError)
+    return {
+      status:
+        error.code === "not-found"
+          ? 404
+          : error.code === "unavailable"
+            ? 503
+            : error.code === "invalid"
+              ? 400
+              : 409,
+      message: error.message,
+      code: `metadata-${error.code}`,
     };
   if (error instanceof MediaSelectionError)
     return { status: 422, message: error.message, code: "no_playable_file" };

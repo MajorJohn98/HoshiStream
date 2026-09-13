@@ -7,8 +7,9 @@ import { episodeKey } from "./types.ts";
 
 const EPISODE_TOKEN = /\bS(\d{1,3})[ ._-]?E(\d{1,4})(?:[ ._-]?E\d{1,4})*\b/i;
 const ALT_EPISODE_TOKEN = /\b(\d{1,3})x(\d{1,4})\b/i;
-// Anything from here to the end is release metadata, not a title.
-const NOISE = new RegExp(
+// Anything from here to the end is release metadata, not a title. Shared
+// with title-query.ts, which cleans whole release names the same way.
+export const NOISE = new RegExp(
   [
     "\\b(?:2160p|1080p|720p|480p|4k|uhd)\\b",
     "\\b(?:web[ ._-]?dl|webrip|web|bluray|blu[ ._-]?ray|bdrip|brrip|hdtv|dvdrip|hdrip|remux|amzn|nf|dsnp|hmax|atvp|itunes)\\b",

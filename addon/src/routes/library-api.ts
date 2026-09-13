@@ -48,10 +48,11 @@ function rejectServerOwnedFields(input: Record<string, unknown>): void {
     "searchReceipts" in input ||
     "sourceCheck" in input ||
     "mediaFacts" in input ||
-    "watchStates" in input
+    "watchStates" in input ||
+    "metadata" in input
   )
     throw new SyntaxError(
-      "Source identity, search metadata, source checks, and watch state are server-owned",
+      "Source identity, search metadata, source checks, watch state, and fetched metadata are server-owned",
     );
 }
 
@@ -128,7 +129,7 @@ async function normalizeTags(
 }
 
 export const handleLibraryCollection: RouteHandler = async (
-  { library, nativePicker, tags },
+  { library, nativePicker, tags, metadata },
   { request, response, url, method },
 ) => {
   if (url.pathname !== "/api/library") return false;
@@ -176,12 +177,16 @@ export const handleLibraryCollection: RouteHandler = async (
       createEntrySchema.parse(input),
       receipt,
     );
-    if (result.created)
+    if (result.created) {
       logInfo("library_created", { entryId: result.entry.id });
+      metadata?.queueAuto(result.entry.id);
+    }
     return reply(response, result.created ? 201 : 200, result.entry);
   }
   const entry = await library.create(createEntrySchema.parse(input));
   logInfo("library_created", { entryId: entry.id });
+  // Cinemeta lookup runs after the response; the add never waits on it.
+  metadata?.queueAuto(entry.id);
   return reply(response, 201, entry);
 };
 
@@ -260,6 +265,7 @@ export const handleLibraryItem: RouteHandler = async (
     tags,
     sourceChecks,
     thumbnails,
+    metadata,
   },
   { request, response, url, method },
 ) => {
@@ -336,7 +342,10 @@ export const handleLibraryItem: RouteHandler = async (
         await diskCleanup?.add({ volumeId, relativeDir });
       }
     }
-    if (removed) await thumbnails?.remove(id).catch(() => undefined);
+    if (removed) {
+      await thumbnails?.remove(id).catch(() => undefined);
+      await metadata?.forget(id);
+    }
     if (cleanupError) throw cleanupError;
     if (removed) logInfo("library_deleted", { entryId: id });
     return reply(response, removed ? 204 : 404, { error: "Not found" });

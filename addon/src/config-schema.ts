@@ -103,6 +103,25 @@ export const configSchema = z.object({
   IDENTITY_PATH: z.string().min(1).default(join(root, "identity.json")),
   // Episode thumbnails grabbed from on-disk files (Phase 13).
   THUMBNAILS_DIR: z.string().min(1).default(join(root, "thumbnails")),
+  // Opt-in Cinemeta enrichment (ADR 0026): the toggle file, the local
+  // artwork copies, and the Cinemeta origin (loopback http for tests).
+  METADATA_SETTINGS_PATH: z
+    .string()
+    .min(1)
+    .default(join(root, "metadata-settings.json")),
+  ARTWORK_DIR: z.string().min(1).default(join(root, "artwork")),
+  CINEMETA_URL: httpUrl
+    .refine(
+      (value) => {
+        const url = new URL(value);
+        return (
+          url.protocol === "https:" ||
+          ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
+        );
+      },
+      { message: "CINEMETA_URL must use HTTPS unless it is loopback" },
+    )
+    .default("https://v3-cinemeta.strem.io"),
   // Registered storage volumes for the disk library (external drives are
   // identified by an on-disk marker, not by mount path).
   VOLUMES_PATH: z.string().min(1).default(join(root, "volumes.json")),

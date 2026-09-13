@@ -18,6 +18,8 @@ http://127.0.0.1:7000/manage/<ACCESS_TOKEN>
 
 Press **+ Add Media** in the Library toolbar to open the Add Media dialog. From there you can add magnet links, upload `.torrent` files, pick local files (native Finder picker with the menu-bar app, or browser upload fallback), and pick tags; the entry sheet then lets you edit metadata, posters, and tags, inspect entries, and probe technical details.
 
+Details can also be fetched for you. Turn on **Title details from Cinemeta** under System → Status (off by default; it sends each title's name and year to Stremio's public Cinemeta service, see [privacy](privacy-and-network.md)). New titles then get their description, artwork, year, runtime, rating, cast, genres, and episode names automatically when the match is unambiguous; otherwise the entry sheet's **Match** card shows a short pick list. Anything you type yourself is never overwritten — a field written by Cinemeta shows a small "from Cinemeta" hint until you edit it. **Fetch details for existing titles** on the same card backfills a library that was added before the toggle.
+
 ### Saved does not mean ready to play
 
 **Inspect and check after saving** is on by default in interactive Add, with a

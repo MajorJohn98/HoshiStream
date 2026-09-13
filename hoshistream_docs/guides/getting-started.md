@@ -11,6 +11,11 @@ Choose **Add media** and use a magnet link, a `.torrent` file, or a video alread
 on your computer. Only add media you own or are authorized to access. Review the
 details before saving.
 
+Posters and descriptions can be filled in for you: turn on **Title details from
+Cinemeta** under System → Status. It is off by default because it sends each
+title's name to Stremio's public metadata service; the toggle explains exactly
+what leaves your computer.
+
 The first step completes when a title is actually in your library. Source checks
 remain separate: saving a title is not a promise that it will play. Open the
 entry to inspect its files, check the source, or investigate a playback problem.
