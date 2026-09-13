@@ -37,6 +37,7 @@
 - [decisions/0023-file-scoped-readiness-evidence.md](decisions/0023-file-scoped-readiness-evidence.md) — Separate metadata, sampled media, and player support; file-scoped facts, shared checks and explicit longer retries.
 - [decisions/0024-immutable-pointer-blob-versions.md](decisions/0024-immutable-pointer-blob-versions.md) — Pointer Blob records become immutable versions located via `list`, because the public Blob CDN served in-place overwrites stale for days.
 - [decisions/0025-watched-state-from-observed-reads.md](decisions/0025-watched-state-from-observed-reads.md) — Per-file watched state derived from observed reads (`/cache` reader position, `Range` starts, browser player) stored in `library.json`; TorrServer `/viewed` mirrored best-effort.
+- [decisions/0026-opt-in-cinemeta-metadata-enrichment.md](decisions/0026-opt-in-cinemeta-metadata-enrichment.md) — Opt-in pull-and-store metadata from Stremio's Cinemeta for movies and series: title/year only leaves the machine, viewer edits win, artwork cached locally, ids stay `hoshi:`.
 
 ## Guides
 
@@ -68,10 +69,12 @@
 
 ## Plans
 
+- [plans/2026-09-13-cinemeta-metadata-enrichment-plan.md](plans/2026-09-13-cinemeta-metadata-enrichment-plan.md) — Opt-in Cinemeta enrichment: verified API contract, ownership rule, title-query cleaning, artwork cache + `/artwork` route, auto/manual/backfill triggers, Match card UI, tests (approved, not started).
 - [plans/2026-09-13-episode-metadata-and-thumbnails-plan.md](plans/2026-09-13-episode-metadata-and-thumbnails-plan.md) — Phase 13: per-episode title/overview/air-date overrides, cleaned filename titles, on-disk frame thumbnails via ffmpeg, and the Ongoing flag (implemented).
 - [plans/2026-09-13-torrserver-settings-and-board-rows-plan.md](plans/2026-09-13-torrserver-settings-and-board-rows-plan.md) — Phases 10 and 15: TorrServer tuning form backed by `/settings set`, and Board rows (Recently added, Unwatched, pinned tags) plus add-on identity and embedded episode streams (both implemented).
 - [plans/2026-09-13-disk-copy-policies-and-diagnostics-plan.md](plans/2026-09-13-disk-copy-policies-and-diagnostics-plan.md) — Phases 8–9: per-series rolling window (`keepAhead`, `evictWatched`) driven by watch state, and a redacted diagnostics bundle with "Copy diagnostics" (implemented).
 - [plans/2026-09-13-first-play-episode-probe-plan.md](plans/2026-09-13-first-play-episode-probe-plan.md) — Probe each episode's bitrate the first time it plays and keep it as a per-file media fact, so the runway line covers every episode (implemented).
+- [plans/2026-09-13-entry-health-card-plan.md](plans/2026-09-13-entry-health-card-plan.md) — Entry sheet: health card ("can I watch this?") atop the Details tab and the metadata form behind an Edit details disclosure (proposed, awaiting review).
 - [plans/2026-09-13-watched-state-plan.md](plans/2026-09-13-watched-state-plan.md) — Phase 5: per-file started/watched state from observed reads, Continue Watching catalogs, `defaultVideoId` resume, UI toggle, TorrServer `/viewed` mirror (implemented).
 - [plans/2026-09-12-playback-pointer-library-expansion-plan.md](plans/2026-09-12-playback-pointer-library-expansion-plan.md) — Fifteen-phase expansion, **complete**: playback telemetry, bitrate-aware streams, pointer drift detection, watched state, subtitles, mapping repair, disk-copy policies, diagnostics, TorrServer settings UI, and Stremio protocol coverage (rich title and episode metadata, thumbnails, stream descriptions, Board rows) shipped; Phase 3 (buffer-ahead gate) and Phase 11 (signing and CI smoke) closed as not implemented and not necessary.
 - [plans/2026-09-12-stale-pointer-reads-and-slow-link-tuning.md](plans/2026-09-12-stale-pointer-reads-and-slow-link-tuning.md) — Root causes and fixes for stale pointer redirects (Blob CDN) and TV buffering on a ~9 Mbps line (TorrServer upload/connection tuning).

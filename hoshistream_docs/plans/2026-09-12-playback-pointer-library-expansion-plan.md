@@ -1,7 +1,9 @@
 # Playback, pointer, library and operations expansion
 
 Date: 2026-09-12
-Status: **Phases 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14 and 15 done** — see
+Status: **Complete.** Phases 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14 and 15
+are done; Phases 3 and 11 are **not implemented and not necessary** (closed
+2026-09-13, see their sections). Changelogs:
 [playback telemetry and line fit](../changelog/playback-telemetry-and-line-fit.md),
 [watched state](../changelog/watched-state.md),
 [subtitle sidecars](../changelog/subtitle-sidecars.md),
@@ -13,12 +15,13 @@ Status: **Phases 1, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14 and 15 done** — see
 [rich title metadata](../changelog/rich-title-metadata.md),
 [stream descriptions](../changelog/stream-descriptions.md),
 [Board rows and identity](../changelog/board-rows-and-identity.md) and
-[episode metadata and thumbnails](../changelog/episode-metadata-and-thumbnails.md). Phase 3 waits on
-the Phase 1 exit criterion. Phase 1's runway now covers every episode of a
-series through the [first-play episode probe](2026-09-13-first-play-episode-probe-plan.md). Phases 12–15 (Stremio protocol coverage) were
-added 2026-09-12 after a review of protocol features the add-on does not use.
-Implement one phase at a time and stop for review between phases; a phase
-heading carries ✅ once its changelog entry exists.
+[episode metadata and thumbnails](../changelog/episode-metadata-and-thumbnails.md).
+Phase 1's runway covers every episode of a series through the
+[first-play episode probe](2026-09-13-first-play-episode-probe-plan.md).
+Phases 12–15 (Stremio protocol coverage) were added 2026-09-12 after a review
+of protocol features the add-on does not use. A phase heading carries ✅ once
+its changelog entry exists and ⛔ when it was closed without implementation.
+No further work is planned under this document.
 
 ## Goal and scope
 
@@ -152,14 +155,16 @@ line. Uses only data the add-on already has plus Phase 1's speed.
 Exit: a 12 Mbps file on a 9 Mbps line is listed after fitting alternatives
 with an explicit reason; a 4 Mbps file is unaffected.
 
-## Phase 3 — Add-on-sized buffer-ahead gate (conditional on Phase 1 evidence)
+## Phase 3 — Add-on-sized buffer-ahead gate ⛔ not implemented, not necessary
 
-Status 2026-09-13: the first Phase 1 evidence shows sustained under-speed
-(swarm slower than the file's bitrate), which a start-up gate cannot fix.
-Phase 3 stays parked until a stall is observed where the swarm keeps up but
-the cache is empty at start. The remedies that fit the evidence so far are
-Phase 2's line-fit ordering, picking a lower-bitrate release, or the
-disk-copy path.
+Closed 2026-09-13 without implementation. Phase 1's evidence never showed the
+failure mode this gate was designed for: every observed stall was sustained
+under-speed (swarm slower than the file's bitrate), which no start-up gate
+can fix. The remedies that fit the evidence — Phase 2's line-fit ordering,
+Phase 14's stream descriptions, choosing a lower-bitrate release, and the
+disk-copy path with Phase 8's rolling window — are all shipped. Reopen only
+if telemetry shows a stall where the swarm keeps up but the cache is empty
+at start; the original design is kept below for that case.
 
 Goal: give the player a real runway at start without TorrServer's 1.6 GiB
 preload. Only proceed if Phase 1 shows stalls correlate with a near-empty
@@ -354,7 +359,16 @@ seed-once behaviour explicit.
 Exit: changing `UploadRateLimit` in the UI is reflected by `/settings get` and
 in `settings.json` after restart.
 
-## Phase 11 — Signing and cross-platform smoke
+## Phase 11 — Signing and cross-platform smoke ⛔ not implemented, not necessary
+
+Closed 2026-09-13 without implementation. HoshiStream is a private,
+single-owner install: there is no Developer ID to sign with, the ad-hoc
+signed bundle and the documented **Open Anyway** flow already cover the
+owner's own Macs, and the local `smoke-native.mjs` / Windows installer smoke
+run before each install. Notarization and hosted CI runners would add
+accounts and third-party services for no user of this deployment. Reopen only
+if binaries are ever distributed beyond the owner. The original design is
+kept below for that case.
 
 Goal: remove install friction and catch platform drift.
 
@@ -518,10 +532,8 @@ flowchart LR
   P12 --> P15
 ```
 
-Phases 4, 7 and 12 are independent and can be scheduled whenever convenient
-(Phase 6 was too, and is done). Phase 14 needs only Phase 2's line fit, which exists.
-Phase 15's **Unwatched** row needs Phase 5; the rest of 15 needs Phase 12.
-Phase 3 is explicitly conditional on Phase 1's evidence.
+Every edge above is satisfied or moot: Phases 3 and 11 were closed without
+implementation (see their sections), so nothing remains blocked.
 
 ## Cross-cutting rules
 
@@ -531,21 +543,21 @@ Phase 3 is explicitly conditional on Phase 1's evidence.
 - Logs stay structured JSON; never tokens, auth headers, or magnet URIs.
 - Each phase ends with `npm run typecheck && npm test && npm run lint &&
 npm run format:check` in `addon/`, a changelog entry, and index updates.
-  New decisions (Phase 3 gate semantics, Phase 5 persistence, Phase 11
-  signing) get ADRs.
+  New decisions (Phase 5 persistence got one; Phase 3 gate semantics and
+  Phase 11 signing were closed unimplemented and need none) get ADRs.
 - No phase adds a runtime dependency without asking first.
 
 ## Open questions to settle before the relevant phase
 
 - Phase 1: JSON casing of `CacheState` fields in a live `/cache` response
   (Go struct has no JSON tags).
-- Phase 3: whether Nuvio issues its own head/tail probing requests that would
-  make the tail warm redundant — observe in Phase 1 first.
+- Phase 3 (moot): whether Nuvio issues its own head/tail probing requests —
+  the phase was closed unimplemented.
 - Phase 5 (settled): `stremio-addon-sdk` 1.6.10 has no `watched` video field;
   `behaviorHints.defaultVideoId` is used. Whether Nuvio honours it on series
   is still unverified on a device.
-- Phase 11: availability of a Developer ID; without it, Phase 11 reduces to
-  CI smoke only.
+- Phase 11 (moot): availability of a Developer ID — none, and the phase was
+  closed unimplemented.
 - Phase 12: whether Nuvio renders `trailers[]` and `links[]` (Stremio desktop
   and web do); verify on the TV before building the trailer field UI.
 - Phase 13: acceptable thumbnail size on disk for a large library (budget:
