@@ -120,6 +120,12 @@ playhead. No behavior change for the player.
 Exit: while a TV stream stalls, the Activity page shows runway hitting zero
 and swarm speed below bitrate — or shows the opposite, which redirects Phase 2.
 
+Evidence 2026-09-13: a series episode that stalled every few seconds showed
+runway at zero with the swarm at ~2.1 Mbps against a measured ~3.8 Mbps
+bitrate, on a ~6 Mbps line. The stall was sustained under-speed from the
+swarm, not an empty cache at start. A movie on the same line streamed with a
+stable runway. Phase 3's gate would not have helped this case; see Phase 3.
+
 ## Phase 2 — Bitrate-aware stream presentation ✅
 
 Goal: stop stalls before they start by telling the client which files fit the
@@ -141,6 +147,13 @@ Exit: a 12 Mbps file on a 9 Mbps line is listed after fitting alternatives
 with an explicit reason; a 4 Mbps file is unaffected.
 
 ## Phase 3 — Add-on-sized buffer-ahead gate (conditional on Phase 1 evidence)
+
+Status 2026-09-13: the first Phase 1 evidence shows sustained under-speed
+(swarm slower than the file's bitrate), which a start-up gate cannot fix.
+Phase 3 stays parked until a stall is observed where the swarm keeps up but
+the cache is empty at start. The remedies that fit the evidence so far are
+Phase 2's line-fit ordering, picking a lower-bitrate release, or the
+disk-copy path.
 
 Goal: give the player a real runway at start without TorrServer's 1.6 GiB
 preload. Only proceed if Phase 1 shows stalls correlate with a near-empty
