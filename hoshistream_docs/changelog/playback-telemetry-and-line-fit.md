@@ -77,6 +77,15 @@ the viewer plainly which stream their line can carry.
   Outcomes are logged as `playback_probe_finished`. The Activity runway line
   reads "measuring bitrate…" while the probe runs. Plan:
   [first-play episode probe](../plans/2026-09-13-first-play-episode-probe-plan.md).
+- **Entries without an inspection cache (2026-09-13 fix).** Editing an
+  entry's sources (adding a season as an extra source, say) drops its
+  inspection cache and media facts until the next inspection, which only
+  happens on the next `stream` request. A player that kept playing from a
+  cached URL left the torrent unattributable: `Idle`, no runway. Both hash →
+  entry maps now use `entryHashes()` — the declared source hashes and the
+  magnet links' infohashes as well as the inspection cache — and the
+  first-play probe runs through a missing cache so the check re-inspects
+  and measures in one pass.
 - Tests: `tests/playback-telemetry.test.ts`, `tests/playback-probes.test.ts`,
   `tests/runway-ui.test.ts`, new
   `cacheState` cases in `tests/torrserver-client.test.ts`, the route in

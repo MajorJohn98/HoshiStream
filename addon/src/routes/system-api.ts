@@ -1,5 +1,6 @@
 import { z, ZodError } from "zod";
 import { recentEntryActivity, recentStreamActivity } from "../activity.ts";
+import { entryHashes } from "../imports/source-identity.ts";
 import { listClients } from "../clients.ts";
 import { manifestWithGenres } from "../manifest.ts";
 import { lookupHostname } from "../hostname.ts";
@@ -116,18 +117,13 @@ export const handlePlaybackSessions: RouteHandler = async (
 ) => {
   if (url.pathname !== "/api/playback" || method !== "GET") return false;
   const torrents = await torrServer.list().catch(() => []);
-  // Torrent hash → library entries, via the primary and extra source hashes.
+  // Torrent hash → library entries, via every hash the entry is known by.
   // Several entries can share one torrent (a re-added series, say), so the
   // session reports whichever owner is actually busy rather than the last
   // one indexed.
   const owners = new Map<string, string[]>();
   for (const entry of await library.list()) {
-    const cache = entry.inspectionCache;
-    if (!cache) continue;
-    const hashes = new Set([cache.hash.toLowerCase()]);
-    for (const file of cache.selectedFiles)
-      if (file.hash) hashes.add(file.hash.toLowerCase());
-    for (const hash of hashes) {
+    for (const hash of entryHashes(entry)) {
       const list = owners.get(hash) ?? [];
       list.push(entry.id);
       owners.set(hash, list);

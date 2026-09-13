@@ -77,27 +77,29 @@ export function magnetIdentity(magnet: string) {
   return { hash, suggestedName: magnetSuggestedName(magnet) };
 }
 
+// Every infohash an entry is known by, lower-cased: declared sources, the
+// magnet links themselves, and whatever inspection recorded. Works before
+// the entry has been inspected (or after an edit invalidated the cache).
+export function entryHashes(entry: LibraryEntry): Set<string> {
+  const hashes = new Set<string>();
+  const add = (hash: string | undefined) => {
+    if (hash) hashes.add(hash.toLowerCase());
+  };
+  add(entry.sourceHash);
+  add(entry.searchImport?.hash);
+  add(magnetHash(entry.magnetUri));
+  add(entry.inspectionCache?.hash);
+  for (const source of entry.extraSources ?? []) {
+    add(source.sourceHash);
+    add(source.searchImport?.hash);
+    add(magnetHash(source.magnetUri));
+  }
+  for (const file of entry.inspectionCache?.selectedFiles ?? []) add(file.hash);
+  return hashes;
+}
+
 export function entryHasHash(entry: LibraryEntry, hash: string): boolean {
-  hash = hash.toLowerCase();
-  return (
-    entry.sourceHash?.toLowerCase() === hash ||
-    entry.searchImport?.hash.toLowerCase() === hash ||
-    magnetHash(entry.magnetUri) === hash ||
-    entry.inspectionCache?.hash.toLowerCase() === hash ||
-    Boolean(
-      entry.extraSources?.some(
-        (source) =>
-          source.sourceHash?.toLowerCase() === hash ||
-          source.searchImport?.hash.toLowerCase() === hash ||
-          magnetHash(source.magnetUri) === hash,
-      ),
-    ) ||
-    Boolean(
-      entry.inspectionCache?.selectedFiles.some(
-        (file) => file.hash?.toLowerCase() === hash,
-      ),
-    )
-  );
+  return entryHashes(entry).has(hash.toLowerCase());
 }
 
 function sourceDefinition(entry: LibraryEntry) {

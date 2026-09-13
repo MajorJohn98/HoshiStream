@@ -179,6 +179,17 @@ describe("PlaybackProbes", () => {
     expect(h.check).toHaveBeenCalledTimes(2);
   });
 
+  it("probes through a missing inspection cache so the check re-inspects", async () => {
+    const h = harness(entry({ inspectionCache: undefined }));
+    h.probes.ensure(target);
+    await h.settle();
+    expect(h.check).toHaveBeenCalledWith(
+      "hoshi:series",
+      expect.objectContaining({ fileId: 2 }),
+    );
+    expect(h.onBitrate).toHaveBeenCalledWith(target, 4.2);
+  });
+
   it("ignores unknown entries and files without re-reading every tick", async () => {
     const h = harness(entry());
     h.probes.ensure({ ...target, fileId: 9 });

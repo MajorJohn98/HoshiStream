@@ -213,6 +213,41 @@ describe("createHandler dispatch", () => {
     ]);
   });
 
+  it("maps a torrent to an entry through its magnet link before inspection", async () => {
+    const hash = "b".repeat(40);
+    const extra = "e".repeat(40);
+    const stamp = new Date().toISOString();
+    await writeFile(
+      libraryPath,
+      JSON.stringify([
+        {
+          id: "hoshi:uninspected",
+          type: "series",
+          name: "Uninspected",
+          magnetUri: `magnet:?xt=urn:btih:${hash}`,
+          extraSources: [{ magnetUri: `magnet:?xt=urn:btih:${extra}` }],
+          createdAt: stamp,
+          updatedAt: stamp,
+        },
+      ]),
+    );
+    torrents = [
+      { title: "main", hash, stat: 3, stat_string: "Torrent working" },
+      {
+        title: "extra",
+        hash: extra.toUpperCase(),
+        stat: 3,
+        stat_string: "Torrent working",
+      },
+    ];
+    markStreamActivity(Date.now(), "hoshi:uninspected");
+    const { sessions } = await (await api("/api/playback")).json();
+    expect(sessions).toMatchObject([
+      { entryId: "hoshi:uninspected", activity: "streaming" },
+      { entryId: "hoshi:uninspected", activity: "streaming" },
+    ]);
+  });
+
   it("reports status and falls through to 404 for unknown paths", async () => {
     const status = await api("/api/status");
     expect(status.status).toBe(200);

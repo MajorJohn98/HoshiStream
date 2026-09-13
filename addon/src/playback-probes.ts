@@ -66,20 +66,29 @@ export class PlaybackProbes {
 
   async #run(target: StreamTarget, id: string): Promise<void> {
     const entry = await this.#library.get(target.entryId);
-    const file = entry?.inspectionCache?.selectedFiles.find(
-      (candidate) => candidate.id === target.fileId,
-    );
-    if (!entry || !file) {
+    if (!entry) {
       this.#failedAt.set(id, this.#now());
       return;
     }
-    const known = mediaFactForFile(entry, file, target.hash)?.technical
-      .bitrateMbps;
-    if (known !== undefined) {
-      // Already measured; hand the figure to a target noted without it.
-      if (known > 0) this.#onBitrate?.(target, known);
-      this.#failedAt.set(id, this.#now());
-      return;
+    // An edit to the entry's sources drops its inspection cache until the
+    // next inspection; the check below re-inspects, and validates the file
+    // id itself, so only a cache that exists is consulted here.
+    if (entry.inspectionCache) {
+      const file = entry.inspectionCache.selectedFiles.find(
+        (candidate) => candidate.id === target.fileId,
+      );
+      if (!file) {
+        this.#failedAt.set(id, this.#now());
+        return;
+      }
+      const known = mediaFactForFile(entry, file, target.hash)?.technical
+        .bitrateMbps;
+      if (known !== undefined) {
+        // Already measured; hand the figure to a target noted without it.
+        if (known > 0) this.#onBitrate?.(target, known);
+        this.#failedAt.set(id, this.#now());
+        return;
+      }
     }
     // A check the user started (or one already probing this file) is left
     // alone; the next tick looks again.

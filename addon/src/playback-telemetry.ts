@@ -4,6 +4,7 @@
 // the swarm is keeping up with the file's bitrate. Observation only — nothing
 // here changes what the player receives. Everything stays in memory.
 import { markStreamActivity, recentEntryActivity } from "./activity.ts";
+import { entryHashes } from "./imports/source-identity.ts";
 import { directPlayForFile } from "./media-facts.ts";
 import { rawFileId } from "./media-file-selection.ts";
 import type { SelectedFile } from "./media-file-selection.ts";
@@ -376,12 +377,7 @@ export class PlaybackTelemetry {
     // can credit the one that is actually being watched.
     const index = new Map<string, LibraryEntry[]>();
     for (const entry of entries) {
-      const cache = entry.inspectionCache;
-      if (!cache) continue;
-      const hashes = new Set([cache.hash.toLowerCase()]);
-      for (const file of cache.selectedFiles)
-        if (file.hash) hashes.add(file.hash.toLowerCase());
-      for (const hash of hashes) {
+      for (const hash of entryHashes(entry)) {
         const list = index.get(hash) ?? [];
         list.push(entry);
         index.set(hash, list);

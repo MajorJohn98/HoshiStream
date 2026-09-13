@@ -477,6 +477,45 @@ describe("PlaybackTelemetry", () => {
     ]);
   });
 
+  it("discovers a stream for an entry whose inspection cache was invalidated", async () => {
+    const hash = "b".repeat(40);
+    const entry = libraryEntrySchema.parse({
+      id: "hoshi:b",
+      type: "series",
+      name: "B",
+      magnetUri: `magnet:?xt=urn:btih:${hash}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    const torrent: TorrentStatus = {
+      title: "B",
+      hash,
+      stat: 3,
+      stat_string: "Torrent working",
+      file_stats: [
+        { id: 0, path: "S01E01.mkv", length: 10 * PIECE },
+        { id: 1, path: "S01E02.mkv", length: 10 * PIECE },
+      ],
+    };
+    const reader = { startPiece: 10, endPiece: 19, readerPiece: 13 };
+    const telemetry = new PlaybackTelemetry(
+      {
+        list: vi.fn<TorrServerClient["list"]>().mockResolvedValue([torrent]),
+        cacheState: vi
+          .fn<TorrServerClient["cacheState"]>()
+          .mockResolvedValue(cache([13, 14], [reader], { hash })),
+      } as unknown as TorrServerClient,
+      { entries: async () => [entry] },
+    );
+    const clock = 60_000_000;
+    await telemetry.sample(clock);
+    // The file comes from TorrServer's own listing; the bitrate is unknown
+    // until the first-play probe re-inspects.
+    expect(activeStreamTargets(clock)).toMatchObject([
+      { entryId: "hoshi:b", hash, fileId: 1, bitrateMbps: undefined },
+    ]);
+  });
+
   it("logs a rate-limited warning when TorrServer's list cannot be read", async () => {
     const list = vi
       .fn<TorrServerClient["list"]>()
