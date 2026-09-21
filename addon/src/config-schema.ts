@@ -54,6 +54,16 @@ export const configSchema = z.object({
     .transform((value) => value === "true"),
   MEDIA_ROOT: z.string().min(1).default(join(homedir(), "Movies")),
   UPLOAD_ROOT: z.string().min(1).default(join(root, "media")),
+  UPLOAD_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(50 * 1024 ** 3),
+  UPLOAD_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30 * 60 * 1000),
   NATIVE_PICKER_SOCKET: z
     .string()
     .min(1)

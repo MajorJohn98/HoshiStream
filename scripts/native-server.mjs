@@ -401,6 +401,12 @@ try {
     ONBOARDING_FIRST_RUN: firstRun ? "true" : "false",
     MEDIA_ROOT: mediaRoot,
     UPLOAD_ROOT: uploadRoot,
+    ...(projectEnvironment.UPLOAD_MAX_BYTES
+      ? { UPLOAD_MAX_BYTES: projectEnvironment.UPLOAD_MAX_BYTES }
+      : {}),
+    ...(projectEnvironment.UPLOAD_TIMEOUT_MS
+      ? { UPLOAD_TIMEOUT_MS: projectEnvironment.UPLOAD_TIMEOUT_MS }
+      : {}),
     NATIVE_PICKER_SOCKET:
       process.env.NATIVE_PICKER_SOCKET ??
       join(stateRoot, "run", "supervisor.sock"),
