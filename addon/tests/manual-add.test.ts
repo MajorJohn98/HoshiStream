@@ -16,6 +16,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const directories: string[] = [];
 const originalUploadRoot = process.env.UPLOAD_ROOT;
+const originalUploadMaxBytes = process.env.UPLOAD_MAX_BYTES;
+const originalUploadTimeout = process.env.UPLOAD_TIMEOUT_MS;
 
 async function testDirectory() {
   const directory = resolve(`.test-manual-add-${randomUUID()}`);
@@ -27,6 +29,10 @@ async function testDirectory() {
 afterEach(async () => {
   if (originalUploadRoot === undefined) delete process.env.UPLOAD_ROOT;
   else process.env.UPLOAD_ROOT = originalUploadRoot;
+  if (originalUploadMaxBytes === undefined) delete process.env.UPLOAD_MAX_BYTES;
+  else process.env.UPLOAD_MAX_BYTES = originalUploadMaxBytes;
+  if (originalUploadTimeout === undefined) delete process.env.UPLOAD_TIMEOUT_MS;
+  else process.env.UPLOAD_TIMEOUT_MS = originalUploadTimeout;
   vi.restoreAllMocks();
   vi.resetModules();
   await Promise.all(
@@ -36,10 +42,17 @@ afterEach(async () => {
   );
 });
 
-async function loadManualModules(uploadRoot?: string) {
+async function loadManualModules(
+  uploadRoot?: string,
+  options: { maxBytes?: number; timeoutMs?: number } = {},
+) {
   vi.resetModules();
   if (uploadRoot === undefined) delete process.env.UPLOAD_ROOT;
   else process.env.UPLOAD_ROOT = uploadRoot;
+  if (options.maxBytes === undefined) delete process.env.UPLOAD_MAX_BYTES;
+  else process.env.UPLOAD_MAX_BYTES = String(options.maxBytes);
+  if (options.timeoutMs === undefined) delete process.env.UPLOAD_TIMEOUT_MS;
+  else process.env.UPLOAD_TIMEOUT_MS = String(options.timeoutMs);
   const [{ Library }, routes, localMedia, sourceIdentity] = await Promise.all([
     import("../src/library.ts"),
     import("../src/routes/library-api.ts"),
@@ -66,8 +79,11 @@ function jsonRequest(value: unknown): IncomingMessage {
 
 function binaryRequest(
   chunks: Iterable<Uint8Array> | AsyncIterable<Uint8Array>,
+  headers: Record<string, string> = {},
 ): IncomingMessage {
-  return Readable.from(chunks) as IncomingMessage;
+  const request = Readable.from(chunks) as IncomingMessage;
+  request.headers = headers;
+  return request;
 }
 
 function route(
@@ -432,6 +448,73 @@ describe("manual upload durability", () => {
     });
     expect(
       await readdir(dirname(destination)).catch(() => []),
+    ).not.toContainEqual(expect.stringContaining(".pending"));
+  });
+
+  it("rejects uploads over the configured limit before and during streaming", async () => {
+    const directory = await testDirectory();
+    const uploadRoot = join(directory, "uploads");
+    const { saveUpload } = await loadManualModules(uploadRoot, {
+      maxBytes: 4,
+    });
+    const batch = randomUUID();
+
+    await expect(
+      saveUpload(
+        binaryRequest([Buffer.from("12345")], { "content-length": "5" }),
+        batch,
+        "Movies/too-large.mp4",
+      ),
+    ).rejects.toMatchObject({ code: "upload_too_large", status: 413 });
+
+    const streamedBatch = randomUUID();
+    await expect(
+      saveUpload(
+        binaryRequest([Buffer.from("12"), Buffer.from("345")]),
+        streamedBatch,
+        "Movies/too-large-streamed.mp4",
+      ),
+    ).rejects.toMatchObject({ code: "upload_too_large", status: 413 });
+    await expect(
+      readFile(
+        join(uploadRoot, streamedBatch, "Movies/too-large-streamed.mp4"),
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("times out stalled uploads and removes the partial file", async () => {
+    const directory = await testDirectory();
+    const uploadRoot = join(directory, "uploads");
+    const { saveUpload } = await loadManualModules(uploadRoot, {
+      timeoutMs: 10,
+    });
+    const batch = randomUUID();
+    const relativePath = "Movies/stalled.mp4";
+
+    let pushed = false;
+    await expect(
+      saveUpload(
+        binaryRequest(
+          new Readable({
+            read() {
+              if (!pushed) {
+                pushed = true;
+                this.push(Buffer.from("partial"));
+              }
+            },
+          }),
+        ),
+        batch,
+        relativePath,
+      ),
+    ).rejects.toMatchObject({ code: "upload_timeout", status: 408 });
+    await expect(
+      readFile(join(uploadRoot, batch, relativePath)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(
+      await readdir(dirname(join(uploadRoot, batch, relativePath))).catch(
+        () => [],
+      ),
     ).not.toContainEqual(expect.stringContaining(".pending"));
   });
 

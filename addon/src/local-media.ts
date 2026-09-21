@@ -43,6 +43,10 @@ const MEDIA_ROOT = resolve(process.env.MEDIA_ROOT ?? "/media");
 const UPLOAD_ROOT = resolve(
   process.env.UPLOAD_ROOT ?? join(stateRoot(), "media"),
 );
+const MAX_UPLOAD_BYTES = Number(process.env.UPLOAD_MAX_BYTES ?? 50 * 1024 ** 3);
+const UPLOAD_TIMEOUT_MS = Number(
+  process.env.UPLOAD_TIMEOUT_MS ?? 30 * 60 * 1000,
+);
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONTENT_TYPES: Record<string, string> = {
@@ -208,26 +212,74 @@ export async function saveUpload(
   if (!containsPath(batchRoot, destination) || !isPlayablePath(destination))
     throw new SyntaxError("Invalid upload path");
   await ensureOwnedDirectory(uploadRoot, dirname(destination));
+  const contentLength = Number(request.headers?.["content-length"] ?? "");
+  if (Number.isFinite(contentLength) && contentLength > MAX_UPLOAD_BYTES)
+    throw new ImportError(
+      "upload_too_large",
+      `Media upload exceeds the ${MAX_UPLOAD_BYTES}-byte limit`,
+      413,
+    );
   const temporary = uploadTemporaryPath(destination);
   const hash = createHash("sha256");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+    request.destroy(new Error("Upload timed out"));
+  }, UPLOAD_TIMEOUT_MS);
+  const onAborted = () => {
+    controller.abort();
+    request.destroy(new Error("Upload was cancelled"));
+  };
+  request.once("aborted", onAborted);
   let size = 0;
   try {
     await pipeline(
       request,
       async function* (source) {
-        for await (const chunk of source) {
-          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        const iterator = source[Symbol.asyncIterator]();
+        const cancelled = new Promise<never>((_, reject) => {
+          controller.signal.addEventListener(
+            "abort",
+            () => reject(new Error("Upload was cancelled")),
+            { once: true },
+          );
+        });
+        while (true) {
+          const next = await Promise.race([iterator.next(), cancelled]);
+          if (next.done) break;
+          const bytes = Buffer.isBuffer(next.value)
+            ? next.value
+            : Buffer.from(next.value);
           size += bytes.length;
+          if (size > MAX_UPLOAD_BYTES)
+            throw new ImportError(
+              "upload_too_large",
+              `Media upload exceeds the ${MAX_UPLOAD_BYTES}-byte limit`,
+              413,
+            );
           hash.update(bytes);
           yield bytes;
         }
       },
       createWriteStream(temporary, { flags: "wx", mode: 0o600 }),
+      { signal: controller.signal },
     );
     await publishOwnedFile(destination, temporary, size, hash.digest("hex"));
   } catch (error) {
     await unlink(temporary).catch(() => undefined);
+    if (controller.signal.aborted && !(error instanceof ImportError)) {
+      throw new ImportError(
+        request.aborted ? "upload_aborted" : "upload_timeout",
+        request.aborted
+          ? "Media upload was cancelled"
+          : "Media upload timed out",
+        408,
+      );
+    }
     throw error;
+  } finally {
+    clearTimeout(timeout);
+    request.removeListener("aborted", onAborted);
   }
   await unlink(temporary).catch(() => undefined);
   return { path: destination, folderRoot: batchRoot };
