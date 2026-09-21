@@ -1,6 +1,7 @@
 # Windows CI portability plan
 
-**Date:** 2026-09-21 · **Issue:** #14 · **Status:** implemented
+**Date:** 2026-09-21 · **Issue:** #14 · **Status:** implemented (test step
+green; smoke/installer steps split into a follow-up issue)
 
 ## Problem
 
@@ -42,15 +43,28 @@ runtime bug and a handful of tests written without a Windows branch.
    suffix; `local-media.test.ts` → explicit `utimes` on the directory after
    adding the file; `player-ipc.test.ts` → `fakeMpv.emit` waits for the first
    server-side client.
+5. Found while iterating on CI (runtime fixes, all in `private-files.mjs`):
+   allow 30 s for a Windows PowerShell cold start under parallel load, and
+   resolve `powershell.exe` by absolute path because the native runtime runs
+   with a minimal `PATH` (System32 only) that omits `WindowsPowerShell\v1.0`.
+   Also `.gitattributes` pins LF so Windows checkouts pass `format:check`.
 
-## Acceptance
+## Outcome
 
-- `shared (windows-2025)` and `shared (macos-15)` both pass.
+- **Test step: green on Windows** — 1111 passed, 0 failed (was 25 failed).
+  Typecheck, lint, format and build also pass on Windows.
 - No blanket `skipIf(win32)`; every Windows branch says what differs and why.
-- `typecheck`, `test`, `lint`, `format:check` clean locally.
+- **Job still red** at `Smoke source startup and private control shutdown`,
+  the first of seven Windows-only steps that had never executed before. The
+  native runtime now starts and stays alive but does not report ready within
+  45 s. The harness withholds child output by design and the runtime logs to
+  stdout only, so nothing is inspectable from CI. Split into a follow-up
+  issue rather than iterating blind in this change.
 
 ## Follow-ups (not in this change)
 
-- The Windows smoke steps further down the workflow (`smoke-native.mjs`,
-  installer upgrade) have never executed because the test step failed first.
-  They may surface further issues once reached.
+- Windows smoke startup readiness, then the six never-run Windows steps
+  behind it (built smoke, runtime fetches, installer upgrade/uninstall, .NET
+  self-tests, Unicode-path packaged runtime, clean-revision check). Likely
+  needs a redacted, CI-only child-output capture in `smoke-native.mjs` to be
+  debuggable at all.
