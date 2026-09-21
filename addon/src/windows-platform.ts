@@ -82,6 +82,18 @@ export function windowsPowerShellPath(): string {
   );
 }
 
+// Windows PowerShell 5.1 must not inherit PSModulePath from a PowerShell 7
+// parent (pwsh terminals, GitHub runners): it would try to load the PS 7 module
+// builds and fail with CouldNotAutoloadMatchingModule. Mirrors
+// scripts/private-files.mjs, which src/ cannot import.
+export function windowsPowerShellEnvironment(): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.toLowerCase() !== "psmodulepath") environment[key] = value;
+  }
+  return environment;
+}
+
 const mountRootsSchema = z.array(z.string().regex(/^[a-z]:\\$/i)).max(26);
 
 export function parseWindowsMounts(stdout: string): string[] {
@@ -103,6 +115,7 @@ export async function enumerateWindowsMounts(
       maxBuffer: number;
       windowsHide: boolean;
       encoding: "utf8";
+      env: NodeJS.ProcessEnv;
     },
   ) => Promise<{ stdout: string }> = execFileAsync,
 ): Promise<string[]> {
@@ -115,7 +128,13 @@ export async function enumerateWindowsMounts(
       "-Command",
       WINDOWS_MOUNTS_SCRIPT,
     ],
-    { timeout: 5_000, maxBuffer: 8_192, windowsHide: true, encoding: "utf8" },
+    {
+      timeout: 5_000,
+      maxBuffer: 8_192,
+      windowsHide: true,
+      encoding: "utf8",
+      env: windowsPowerShellEnvironment(),
+    },
   );
   return parseWindowsMounts(stdout);
 }

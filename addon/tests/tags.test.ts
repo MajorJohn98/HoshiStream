@@ -1,8 +1,9 @@
 import { createServer, type Server } from "node:http";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { expectOwnerOnly } from "./helpers/private-files.ts";
 import { Library } from "../src/library.ts";
 import { manifest, manifestWithGenres } from "../src/manifest.ts";
 import { NativePicker } from "../src/native-picker.ts";
@@ -26,7 +27,7 @@ describe("Tags registry", () => {
     const path = join(stateDir, "tags.json");
     const tags = new Tags(path);
     expect(await tags.list()).toEqual([...DEFAULT_TAGS]);
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    await expectOwnerOnly(path);
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual({
       tags: DEFAULT_TAGS,
       pinned: [],

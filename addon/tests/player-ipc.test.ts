@@ -23,8 +23,13 @@ async function fakeMpv(
       : join(directory, "mpv.sock");
   const received: unknown[][] = [];
   const clients: import("node:net").Socket[] = [];
+  let announceClient!: () => void;
+  const firstClient = new Promise<void>((resolve) => {
+    announceClient = resolve;
+  });
   const server: Server = createServer((socket) => {
     clients.push(socket);
+    announceClient();
     // The client may disconnect mid-reply; EPIPE here is expected.
     socket.on("error", () => undefined);
     let buffer = "";
@@ -54,7 +59,10 @@ async function fakeMpv(
   return {
     socketPath,
     received,
-    emit(event: unknown) {
+    // On Windows named pipes the server's "connection" callback can fire after
+    // the client's connect() resolves, so wait for the accept before writing.
+    async emit(event: unknown) {
+      await firstClient;
       for (const socket of clients)
         if (!socket.destroyed) socket.write(`${JSON.stringify(event)}\n`);
     },
@@ -140,7 +148,7 @@ describe("player IPC", () => {
     const seen: Array<[string, unknown]> = [];
     ipc.onEvent((event, payload) => seen.push([event, payload]));
 
-    mpv.emit({ event: "property-change", name: "time-pos", data: 12.5 });
+    await mpv.emit({ event: "property-change", name: "time-pos", data: 12.5 });
     await vi.waitFor(() => expect(seen).toHaveLength(1));
 
     expect(seen[0][0]).toBe("property-change");
@@ -154,7 +162,7 @@ describe("player IPC", () => {
     const mpv = await fakeMpv(() => ({ error: "success", data: 1 }));
     const ipc = new PlayerIpc(mpv.socketPath);
     await ipc.connect();
-    mpv.emit("not json");
+    await mpv.emit("not json");
 
     await expect(ipc.command("loadfile", "x")).resolves.toBe(1);
 

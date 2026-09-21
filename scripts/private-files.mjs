@@ -18,6 +18,21 @@ foreach ($identity in @($sid, (New-Object System.Security.Principal.SecurityIden
 Set-Acl -LiteralPath $env:HOSHISTREAM_PRIVATE_PATH -AclObject $acl
 `;
 
+// Environment for spawning Windows PowerShell 5.1 (`powershell.exe`). When the
+// parent is PowerShell 7 (`pwsh`, the default shell on GitHub's Windows runners
+// and common in developer terminals) its PSModulePath points at PS 7 modules.
+// Inheriting it makes 5.1 try to load the PS 7 build of
+// Microsoft.PowerShell.Security, and Set-Acl fails with
+// CouldNotAutoloadMatchingModule. Dropping the variable lets 5.1 use its own
+// default module path.
+export function windowsPowerShellEnvironment(extra = {}) {
+  const environment = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.toLowerCase() !== "psmodulepath") environment[key] = value;
+  }
+  return { ...environment, ...extra };
+}
+
 export async function restrictAccess(path, { directory = false } = {}) {
   if (process.platform !== "win32") {
     await chmod(path, directory ? 0o700 : 0o600);
@@ -29,11 +44,10 @@ export async function restrictAccess(path, { directory = false } = {}) {
     {
       timeout: 10_000,
       windowsHide: true,
-      env: {
-        ...process.env,
+      env: windowsPowerShellEnvironment({
         HOSHISTREAM_PRIVATE_PATH: path,
         HOSHISTREAM_PRIVATE_DIRECTORY: String(directory),
-      },
+      }),
     },
   );
 }

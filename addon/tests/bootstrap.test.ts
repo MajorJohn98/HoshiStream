@@ -12,6 +12,7 @@ import {
   needsAccessToken,
   parseEnvFile,
 } from "../../scripts/bootstrap.mjs";
+import { windowsPowerShellEnvironment } from "../../scripts/private-files.mjs";
 
 async function temporaryRoot() {
   return mkdtemp(join(tmpdir(), "hoshistream-bootstrap-"));
@@ -104,7 +105,7 @@ describe("ensureFirstRunSetup", { timeout: 15_000 }, () => {
           "-Command",
           "$acl = Get-Acl -LiteralPath $env:HOSHISTREAM_TEST_PATH; $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; if (-not $acl.AreAccessRulesProtected) { throw 'Inherited ACL' }; foreach ($rule in $acl.Access) { $id = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; if ($id -ne $sid -and $id -ne 'S-1-5-18') { throw 'Unexpected ACL' } }; Write-Output 'private'",
         ],
-        { env: { ...process.env, HOSHISTREAM_TEST_PATH: path } },
+        { env: windowsPowerShellEnvironment({ HOSHISTREAM_TEST_PATH: path }) },
       );
       expect(stdout.trim()).toBe("private");
     } else {

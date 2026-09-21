@@ -15,7 +15,10 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve, win32 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { restrictAccess } from "./private-files.mjs";
+import {
+  restrictAccess,
+  windowsPowerShellEnvironment,
+} from "./private-files.mjs";
 
 export const HOST_NAME = "com.hoshistream.chrome";
 export const WINDOWS_REGISTRY_KEY = `Software\\Google\\Chrome\\NativeMessagingHosts\\${HOST_NAME}`;
@@ -69,14 +72,13 @@ export function createWindowsRegistry({ run = execFileAsync } = {}) {
           windowsHide: true,
           timeout: 10_000,
           maxBuffer: 64_000,
-          env: {
-            ...process.env,
+          env: windowsPowerShellEnvironment({
             HOSHI_REG_ACTION: action,
             HOSHI_REG_VIEW: String(view),
             HOSHI_REG_PATH: path ?? "",
             HOSHI_REG_EXPECTED_PRESENT: String(expected !== null),
             HOSHI_REG_EXPECTED: expected ?? "",
-          },
+          }),
         },
       );
       if (action !== "read") return;

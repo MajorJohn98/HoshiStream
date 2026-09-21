@@ -6,6 +6,7 @@ import {
   realpath,
   stat,
   symlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
@@ -228,6 +229,11 @@ describe("local inspection cache", () => {
     expect((await inspectLocalEntry(entry))?.files).toHaveLength(1);
 
     await writeFile(join(directory, "Extra.mkv"), "y".repeat(64));
+    // The cache keys on the directory's mtime. POSIX bumps it on file creation;
+    // NTFS updates a directory's LastWriteTime lazily, so make the change
+    // observable the same way on every platform.
+    const later = new Date(Date.now() + 5_000);
+    await utimes(directory, later, later);
 
     expect((await inspectLocalEntry(entry))?.files).toHaveLength(2);
   });

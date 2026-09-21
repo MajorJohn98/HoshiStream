@@ -1,7 +1,8 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { expectOwnerOnly } from "./helpers/private-files.ts";
 import { DeviceNames } from "../src/device-names.ts";
 import { parsePtrAnswer, reverseName } from "../src/hostname.ts";
 
@@ -22,7 +23,7 @@ describe("DeviceNames", () => {
 
     const reloaded = new DeviceNames(path);
     expect(await reloaded.get("192.168.1.60")).toBe("Bedroom TV");
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    await expectOwnerOnly(path);
     expect(JSON.parse(await readFile(path, "utf8"))).toEqual({
       "192.168.1.60": "Bedroom TV",
     });

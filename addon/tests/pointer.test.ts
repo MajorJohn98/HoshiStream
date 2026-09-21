@@ -1,14 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import {
-  mkdir,
-  readFile,
-  readdir,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { expectOwnerOnly } from "./helpers/private-files.ts";
 import {
   PointerClient,
   PointerError,
@@ -169,7 +163,7 @@ describe("PointerClient setup", () => {
       enabled: true,
       pointerUrl: "https://custom.example",
     });
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    await expectOwnerOnly(path);
     const restarted = client({
       pointerUrl: "https://changed-env.example",
       fetchImpl,
@@ -364,7 +358,7 @@ describe("manual pointer lifecycle", () => {
     });
     expect(contents).not.toContain(TOKEN);
     expect(contents).not.toContain(SECRET);
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    await expectOwnerOnly(path);
   });
 
   it("keeps two recipient claims independent and preserves both across restarts", async () => {
