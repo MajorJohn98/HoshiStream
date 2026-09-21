@@ -1,8 +1,9 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { expectOwnerOnly } from "./helpers/private-files.ts";
 import { Onboarding } from "../src/onboarding.ts";
 import { Library } from "../src/library.ts";
 import { NativePicker } from "../src/native-picker.ts";
@@ -32,7 +33,7 @@ describe("local onboarding state", () => {
     const path = join(directory, "onboarding.json");
     const state = new Onboarding(path, true);
     expect((await state.read()).welcomePending).toBe(true);
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    await expectOwnerOnly(path);
     await state.update({ action: "dismiss" }, false);
     const reopened = new Onboarding(path, true);
     expect(await reopened.read()).toMatchObject({

@@ -1,0 +1,70 @@
+# Windows CI portability plan
+
+**Date:** 2026-09-21 · **Issue:** #14 · **Status:** implemented (test step
+green; smoke/installer steps split into a follow-up issue)
+
+## Problem
+
+`Native desktop validation / shared (windows-2025)` has failed on every run
+since the job was added (2026-09-07). The last run before this work reported
+**25 failed tests across 10 files**; macOS passes. Windows is a planned native
+target ([ADR 0009](../decisions/0009-native-only-deployment.md)), so the job
+must be green rather than ignored.
+
+## Root causes
+
+The codebase was already Windows-aware in most places (named pipes in
+`player-ipc`, an ACL script in `scripts/private-files.mjs`, a `Get-Acl`
+verification branch in `bootstrap.test.ts`). The failures reduce to one
+runtime bug and a handful of tests written without a Windows branch.
+
+| #   | Cause                                                                                                                                                                                                                                                                                                               | Tests                                              | Kind                                                                                |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 1   | `restrictAccess` spawns `powershell.exe` (Windows PowerShell 5.1) with `{ ...process.env }`. On the runner the parent is `pwsh` 7, whose `PSModulePath` points at PS 7 modules. 5.1 then tries to load the PS 7 build of `Microsoft.PowerShell.Security` and `Set-Acl` fails with `CouldNotAutoloadMatchingModule`. | `bootstrap` ×10, `native-runtime` ×6               | **runtime bug** — would also affect a user who launches the app from a pwsh 7 shell |
+| 2   | `expect(stat.mode & 0o777).toBe(0o600)` — Windows has no POSIX mode bits; `writeFile({ mode })` is a no-op and `stat` reports `0o666`.                                                                                                                                                                              | `tags`, `onboarding`, `device-names`, `pointer` ×2 | test-only                                                                           |
+| 3   | `stateRoot("darwin")` test compares with the host `path.join`; the source correctly uses `path.posix`.                                                                                                                                                                                                              | `config`                                           | test-only                                                                           |
+| 4   | `pathFor` test matches `/\/1\/2\.jpg$/`; Windows uses `\`.                                                                                                                                                                                                                                                          | `thumbnails`                                       | test-only                                                                           |
+| 5   | NTFS updates a directory's `LastWriteTime` lazily, so adding a file does not reliably bump the parent `mtimeMs` that the inspection cache keys on.                                                                                                                                                                  | `local-media`                                      | test-only (the 30 s cache TTL bounds the product effect)                            |
+| 6   | Named pipes: the server-side `connection` callback can fire _after_ the client's `connect` resolves, so the fake mpv had no client to `emit` to.                                                                                                                                                                    | `player-ipc`                                       | test-only race                                                                      |
+
+## Changes
+
+1. `scripts/private-files.mjs` — export `windowsPowerShellEnvironment(extra)`
+   that copies `process.env` **without** `PSModulePath` (and `PSModulePath`
+   in any casing), and use it for the `Set-Acl` spawn.
+2. `addon/tests/helpers/private-files.ts` — `expectOwnerOnly(path)`:
+   asserts `0o600` on POSIX; on Windows asserts only that the file exists
+   and documents why (per-file mode bits are not the mechanism there — the
+   state root under `%LOCALAPPDATA%` is per-user and `restrictAccess`
+   protects the directories that need an explicit ACL).
+3. `bootstrap.test.ts` — keep the real `Get-Acl` verification for `.env`
+   (that file _is_ ACL-restricted) but spawn with the cleaned environment.
+4. `config.test.ts` → `posix.join`; `thumbnails.test.ts` → `sep`-aware
+   suffix; `local-media.test.ts` → explicit `utimes` on the directory after
+   adding the file; `player-ipc.test.ts` → `fakeMpv.emit` waits for the first
+   server-side client.
+5. Found while iterating on CI (runtime fixes, all in `private-files.mjs`):
+   allow 30 s for a Windows PowerShell cold start under parallel load, and
+   resolve `powershell.exe` by absolute path because the native runtime runs
+   with a minimal `PATH` (System32 only) that omits `WindowsPowerShell\v1.0`.
+   Also `.gitattributes` pins LF so Windows checkouts pass `format:check`.
+
+## Outcome
+
+- **Test step: green on Windows** — 1111 passed, 0 failed (was 25 failed).
+  Typecheck, lint, format and build also pass on Windows.
+- No blanket `skipIf(win32)`; every Windows branch says what differs and why.
+- **Job still red** at `Smoke source startup and private control shutdown`,
+  the first of seven Windows-only steps that had never executed before. The
+  native runtime now starts and stays alive but does not report ready within
+  45 s. The harness withholds child output by design and the runtime logs to
+  stdout only, so nothing is inspectable from CI. Split into a follow-up
+  issue rather than iterating blind in this change.
+
+## Follow-ups (not in this change)
+
+- Windows smoke startup readiness, then the six never-run Windows steps
+  behind it (built smoke, runtime fetches, installer upgrade/uninstall, .NET
+  self-tests, Unicode-path packaged runtime, clean-revision check). Likely
+  needs a redacted, CI-only child-output capture in `smoke-native.mjs` to be
+  debuggable at all.

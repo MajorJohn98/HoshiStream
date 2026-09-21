@@ -12,6 +12,10 @@ import {
   needsAccessToken,
   parseEnvFile,
 } from "../../scripts/bootstrap.mjs";
+import {
+  windowsPowerShellEnvironment,
+  windowsPowerShellPath,
+} from "../../scripts/private-files.mjs";
 
 async function temporaryRoot() {
   return mkdtemp(join(tmpdir(), "hoshistream-bootstrap-"));
@@ -69,7 +73,9 @@ describe("platform defaults", () => {
   });
 });
 
-describe("ensureFirstRunSetup", { timeout: 15_000 }, () => {
+// Each setup ACL-restricts the .env twice on Windows; PowerShell 5.1 cold
+// starts under parallel workers can take several seconds each.
+describe("ensureFirstRunSetup", { timeout: 60_000 }, () => {
   it("does not mistake an unreadable existing environment for a fresh install", async () => {
     const projectRoot = await temporaryRoot();
     await mkdir(join(projectRoot, ".env"));
@@ -97,14 +103,14 @@ describe("ensureFirstRunSetup", { timeout: 15_000 }, () => {
     const path = join(projectRoot, ".env");
     if (process.platform === "win32") {
       const { stdout } = await promisify(execFile)(
-        "powershell.exe",
+        windowsPowerShellPath(),
         [
           "-NoProfile",
           "-NonInteractive",
           "-Command",
           "$acl = Get-Acl -LiteralPath $env:HOSHISTREAM_TEST_PATH; $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; if (-not $acl.AreAccessRulesProtected) { throw 'Inherited ACL' }; foreach ($rule in $acl.Access) { $id = $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; if ($id -ne $sid -and $id -ne 'S-1-5-18') { throw 'Unexpected ACL' } }; Write-Output 'private'",
         ],
-        { env: { ...process.env, HOSHISTREAM_TEST_PATH: path } },
+        { env: windowsPowerShellEnvironment({ HOSHISTREAM_TEST_PATH: path }) },
       );
       expect(stdout.trim()).toBe("private");
     } else {

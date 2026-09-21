@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join, win32 } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   containerHostnameWarning,
@@ -75,8 +75,10 @@ describe("parseConfig", () => {
 
 describe("state root", () => {
   it("uses Application Support on macOS", () => {
+    // stateRoot builds the target platform's path flavour, so compare with
+    // posix.join rather than the host's join (which is win32 on Windows CI).
     expect(stateRoot("darwin", {})).toBe(
-      join(homedir(), "Library", "Application Support", "HoshiStream"),
+      posix.join(homedir(), "Library", "Application Support", "HoshiStream"),
     );
   });
 

@@ -142,7 +142,7 @@ describe("ThumbnailService", () => {
       { dir: join(stateDir, "thumbs"), run: fakeRunner().run },
     );
     expect(() => service.pathFor("x", -1, 1)).not.toThrow();
-    expect(service.pathFor("id", 1, 2)).toMatch(/\/1\/2\.jpg$/);
+    expect(service.pathFor("id", 1, 2).endsWith(join("1", "2.jpg"))).toBe(true);
   });
 });
 

@@ -1,0 +1,4 @@
+# Prettier (format:check) enforces LF. Windows runners and developers default
+# to core.autocrlf=true, which would rewrite every text file to CRLF on
+# checkout and fail the check. Pin LF for all text; git still detects binaries.
+* text=auto eol=lf
