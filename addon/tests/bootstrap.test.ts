@@ -70,7 +70,9 @@ describe("platform defaults", () => {
   });
 });
 
-describe("ensureFirstRunSetup", { timeout: 15_000 }, () => {
+// Each setup ACL-restricts the .env twice on Windows; PowerShell 5.1 cold
+// starts under parallel workers can take several seconds each.
+describe("ensureFirstRunSetup", { timeout: 60_000 }, () => {
   it("does not mistake an unreadable existing environment for a fresh install", async () => {
     const projectRoot = await temporaryRoot();
     await mkdir(join(projectRoot, ".env"));

@@ -42,7 +42,9 @@ export async function restrictAccess(path, { directory = false } = {}) {
     "powershell.exe",
     ["-NoProfile", "-NonInteractive", "-Command", aclScript],
     {
-      timeout: 10_000,
+      // Windows PowerShell cold-starts .NET; the first launch on a loaded
+      // machine (or many parallel test workers) can exceed 10 s.
+      timeout: 30_000,
       windowsHide: true,
       env: windowsPowerShellEnvironment({
         HOSHISTREAM_PRIVATE_PATH: path,
