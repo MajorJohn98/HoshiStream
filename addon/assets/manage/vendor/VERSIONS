@@ -1,0 +1,11 @@
+Vendored browser assets (no build step, served as static files).
+
+preact-htm.js
+  Source: https://unpkg.com/htm@3.1.1/preact/standalone.module.js
+  Package: htm 3.1.1 (MIT) — standalone ESM bundling preact + preact/hooks + htm
+  Fetched: 2026-08-23
+
+hls.js
+  Source: https://unpkg.com/hls.js@1.7.1/dist/hls.mjs
+  Package: hls.js 1.7.1 (Apache-2.0) — HLS playback via MSE for non-Safari browsers
+  Fetched: 2026-08-23

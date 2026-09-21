@@ -8,7 +8,7 @@ pointer/.vercel/
 build/
 native-data/
 run/
-vendor/
+/vendor/
 data/*
 !data/.gitkeep
 torrserver/config/*
