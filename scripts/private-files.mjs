@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { chmod } from "node:fs/promises";
+import { win32 } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -17,6 +18,18 @@ foreach ($identity in @($sid, (New-Object System.Security.Principal.SecurityIden
 }
 Set-Acl -LiteralPath $env:HOSHISTREAM_PRIVATE_PATH -AclObject $acl
 `;
+
+// Absolute path: the native runtime is started with a minimal PATH (System32
+// only) that does not include the WindowsPowerShell\v1.0 directory.
+export function windowsPowerShellPath() {
+  return win32.join(
+    process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+}
 
 // Environment for spawning Windows PowerShell 5.1 (`powershell.exe`). When the
 // parent is PowerShell 7 (`pwsh`, the default shell on GitHub's Windows runners
@@ -39,7 +52,7 @@ export async function restrictAccess(path, { directory = false } = {}) {
     return;
   }
   await execFileAsync(
-    "powershell.exe",
+    windowsPowerShellPath(),
     ["-NoProfile", "-NonInteractive", "-Command", aclScript],
     {
       // Windows PowerShell cold-starts .NET; the first launch on a loaded

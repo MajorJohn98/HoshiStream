@@ -12,7 +12,10 @@ import {
   needsAccessToken,
   parseEnvFile,
 } from "../../scripts/bootstrap.mjs";
-import { windowsPowerShellEnvironment } from "../../scripts/private-files.mjs";
+import {
+  windowsPowerShellEnvironment,
+  windowsPowerShellPath,
+} from "../../scripts/private-files.mjs";
 
 async function temporaryRoot() {
   return mkdtemp(join(tmpdir(), "hoshistream-bootstrap-"));
@@ -100,7 +103,7 @@ describe("ensureFirstRunSetup", { timeout: 60_000 }, () => {
     const path = join(projectRoot, ".env");
     if (process.platform === "win32") {
       const { stdout } = await promisify(execFile)(
-        "powershell.exe",
+        windowsPowerShellPath(),
         [
           "-NoProfile",
           "-NonInteractive",

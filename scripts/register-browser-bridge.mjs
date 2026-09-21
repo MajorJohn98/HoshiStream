@@ -18,6 +18,7 @@ import { promisify } from "node:util";
 import {
   restrictAccess,
   windowsPowerShellEnvironment,
+  windowsPowerShellPath,
 } from "./private-files.mjs";
 
 export const HOST_NAME = "com.hoshistream.chrome";
@@ -60,13 +61,7 @@ export function createWindowsRegistry({ run = execFileAsync } = {}) {
     if (![32, 64].includes(view)) throw new Error("Invalid registry view");
     try {
       const result = await run(
-        win32.join(
-          process.env.SystemRoot ?? "C:\\Windows",
-          "System32",
-          "WindowsPowerShell",
-          "v1.0",
-          "powershell.exe",
-        ),
+        windowsPowerShellPath(),
         ["-NoProfile", "-NonInteractive", "-Command", registryScript],
         {
           windowsHide: true,
