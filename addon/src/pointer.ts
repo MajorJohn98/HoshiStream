@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { writeJsonFile } from "./json-file.ts";
 import { lanIPv4 } from "./mdns.ts";
 import {
   pointerSettingsSchema,
@@ -255,25 +256,10 @@ async function readJson(path: string): Promise<unknown> {
 }
 
 async function writePrivateJson(path: string, value: unknown): Promise<void> {
-  const staged = `${path}.${randomUUID()}.pending`;
   try {
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    await writeFile(staged, `${JSON.stringify(value, null, 2)}\n`, {
-      mode: 0o600,
-      flag: "wx",
-    });
-    await rename(staged, path);
+    await writeJsonFile(path, value, { directoryMode: 0o700 });
   } catch {
     throw storageError();
-  } finally {
-    await rm(staged, { force: true }).catch(() => {
-      console.error(
-        JSON.stringify({
-          level: "warn",
-          event: "pointer_temporary_cleanup_failed",
-        }),
-      );
-    });
   }
 }
 

@@ -119,6 +119,14 @@ backup. Follow the [stopped backup and same-path restore procedure](backup-resto
 Do not run an older app against newer state or remove a stale lock merely to
 make backup commands proceed.
 
+Smaller state files (`tags.json`, `identity.json`, `device-names.json`,
+`metadata-settings.json`, the disk schedule and cleanup files) have no `.bak`.
+When one is malformed, HoshiStream moves it aside as `<file>.corrupt-<time>`,
+logs `state_file_quarantined`, and starts that file from defaults; copy values
+back from the quarantined file if needed. A file that exists but cannot be
+read (permissions, a vanished volume) is never overwritten: saves to it fail
+until access is restored.
+
 ## Updating, uninstalling or reporting a problem
 
 Quit the whole app before replacing its bundle. Keep the previous artifact

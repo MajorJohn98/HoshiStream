@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -44,6 +44,27 @@ describe("DeviceNames", () => {
     await new DeviceNames(path).set("10.0.0.5", "TV");
     const corrupted = new DeviceNames(join(stateDir, "missing.json"));
     expect(await corrupted.all()).toEqual({});
+  });
+
+  it("keeps every name when renames overlap", async () => {
+    const path = join(stateDir, "device-names.json");
+    const names = new DeviceNames(path);
+    await Promise.all(
+      Array.from({ length: 10 }, (_, index) =>
+        names.set(`10.0.0.${index}`, `TV ${index}`),
+      ),
+    );
+    const stored = JSON.parse(await readFile(path, "utf8"));
+    expect(Object.keys(stored)).toHaveLength(10);
+    expect(await new DeviceNames(path).get("10.0.0.7")).toBe("TV 7");
+  });
+
+  it("reads no names but refuses writes when the file is unreadable", async () => {
+    const path = join(stateDir, "device-names.json");
+    await mkdir(path);
+    const names = new DeviceNames(path);
+    expect(await names.all()).toEqual({});
+    await expect(names.set("10.0.0.5", "TV")).rejects.toThrow();
   });
 });
 

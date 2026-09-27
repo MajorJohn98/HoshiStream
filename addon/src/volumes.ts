@@ -1,18 +1,17 @@
 import { randomUUID } from "node:crypto";
 import {
   copyFile,
-  mkdir,
   readdir,
   readFile,
   realpath,
   rename,
   stat,
   statfs,
-  unlink,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, isAbsolute, join, relative, sep } from "node:path";
 import { z } from "zod";
+import { writeJsonFile } from "./json-file.ts";
 import { containsPath, samePath } from "./path-safety.ts";
 import { enumerateWindowsMounts } from "./windows-platform.ts";
 
@@ -444,13 +443,8 @@ export class VolumeRegistry {
   }
 
   private async write(volumes: StorageVolume[]): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true });
-    const temporaryPath = `${this.path}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporaryPath, `${JSON.stringify(volumes, null, 2)}\n`, {
-        mode: 0o600,
-      });
-      await rename(temporaryPath, this.path);
+      await writeJsonFile(this.path, volumes);
       const info = await stat(this.path).catch(() => undefined);
       this.cache = info
         ? {
@@ -462,7 +456,6 @@ export class VolumeRegistry {
       await copyFile(this.path, this.backupPath).catch(() => undefined);
     } catch (error) {
       this.cache = undefined;
-      await unlink(temporaryPath).catch(() => undefined);
       throw error;
     }
   }

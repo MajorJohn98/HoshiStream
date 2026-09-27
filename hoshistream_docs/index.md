@@ -69,6 +69,7 @@
 
 ## Plans
 
+- [plans/2026-09-27-state-durability-and-failure-handling-plan.md](plans/2026-09-27-state-durability-and-failure-handling-plan.md) — Reliability scan follow-up: durable `fsync` writes and corrupt-file quarantine for every JSON store, serialized small-store writers, 503 (not 404) on transient TorrServer failures, and process-level crash handlers (implemented).
 - [plans/2026-09-21-windows-ci-portability-plan.md](plans/2026-09-21-windows-ci-portability-plan.md) — Green `shared (windows-2025)` job (#14): `PSModulePath` leak into Windows PowerShell 5.1 fixed in `restrictAccess`, registry and mount enumeration; Windows-aware test branches for mode bits, path flavour, NTFS directory mtime and named-pipe accept ordering (implemented).
 - [plans/2026-09-13-cinemeta-metadata-enrichment-plan.md](plans/2026-09-13-cinemeta-metadata-enrichment-plan.md) — Opt-in Cinemeta enrichment: verified API contract, ownership rule, title-query cleaning, artwork cache + `/artwork` route, auto/manual/backfill triggers, Match card UI, tests (done).
 - [plans/2026-09-13-episode-metadata-and-thumbnails-plan.md](plans/2026-09-13-episode-metadata-and-thumbnails-plan.md) — Phase 13: per-episode title/overview/air-date overrides, cleaned filename titles, on-disk frame thumbnails via ffmpeg, and the Ongoing flag (implemented).
@@ -107,6 +108,7 @@
 
 ## Changelog
 
+- [changelog/state-durability-and-crash-handling.md](changelog/state-durability-and-crash-handling.md) — JSON state survives power loss and corruption (no more silent tag reseeding), overlapping settings saves no longer lose updates, transient TorrServer failures answer 503, and stray exceptions shut down cleanly instead of orphaning TorrServer.
 - [changelog/windows-ci-portability.md](changelog/windows-ci-portability.md) — `PSModulePath` no longer leaks into Windows PowerShell 5.1 (ACL, registry and mount enumeration worked only when not launched from pwsh 7); Windows-aware test branches make the `windows-2025` CI job green (#14).
 - [changelog/series-meta-from-cache.md](changelog/series-meta-from-cache.md) — Series meta answers from the inspection cache without waiting on TorrServer, source edits refill the cache in the background, one shared inspection per entry revision, and no `defaultVideoId` on series meta (it hid the episode list).
 - [changelog/torrserver-settings-ui.md](changelog/torrserver-settings-ui.md) — **TorrServer tuning** on System → Status: six live knobs, confirm-before-apply, streaming guard, reset to shipped defaults, upload-cap suggestion (Phase 10 of the expansion plan).

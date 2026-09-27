@@ -1,6 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { z } from "zod";
+import { readJsonFile, writeJsonFile } from "./json-file.ts";
 
 // Add-on identity shown on Stremio's Board tile (Phase 15): the contact
 // address the viewer chooses to advertise in the manifest. Stored locally as
@@ -25,6 +24,7 @@ export type Identity = z.infer<typeof identitySchema>;
 export class IdentityStore {
   readonly #path: string;
   #state: Identity | undefined;
+  #queue: Promise<unknown> = Promise.resolve();
 
   constructor(path: string) {
     this.#path = path;
@@ -32,29 +32,30 @@ export class IdentityStore {
 
   async #load(): Promise<Identity> {
     if (this.#state) return this.#state;
-    try {
-      this.#state = identitySchema.parse(
-        JSON.parse(await readFile(this.#path, "utf8")),
-      );
-    } catch {
-      this.#state = { contactEmail: "" };
-    }
+    this.#state = (await readJsonFile(this.#path, identitySchema)) ?? {
+      contactEmail: "",
+    };
     return this.#state;
   }
 
+  // The manifest must keep serving when the file is unreadable, so reads
+  // degrade to the default without caching it; updates surface the error.
   async read(): Promise<Identity> {
-    return { ...(await this.#load()) };
+    try {
+      return { ...(await this.#load()) };
+    } catch {
+      return { contactEmail: "" };
+    }
   }
 
-  async update(patch: Partial<Identity>): Promise<Identity> {
-    const next = identitySchema.parse({ ...(await this.#load()), ...patch });
-    await mkdir(dirname(this.#path), { recursive: true });
-    const temporary = `${this.#path}.tmp`;
-    await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, {
-      mode: 0o600,
+  update(patch: Partial<Identity>): Promise<Identity> {
+    const run = this.#queue.then(async () => {
+      const next = identitySchema.parse({ ...(await this.#load()), ...patch });
+      await writeJsonFile(this.#path, next);
+      this.#state = next;
+      return { ...next };
     });
-    await rename(temporary, this.#path);
-    this.#state = next;
-    return { ...next };
+    this.#queue = run.catch(() => undefined);
+    return run;
   }
 }

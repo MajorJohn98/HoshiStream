@@ -36,7 +36,7 @@ import { defaultAnalyzer, LibraryAnalysis } from "./library-analysis.ts";
 import { SourceChecks } from "./source-checks.ts";
 import { Onboarding } from "./onboarding.ts";
 import { WatchProgress, WatchStates } from "./watch-state.ts";
-import { installConsoleTap, LogRing } from "./diagnostics.ts";
+import { installConsoleTap, LogRing, redactText } from "./diagnostics.ts";
 
 // How long an in-flight response — a stream in progress — may keep the server
 // open during shutdown before its socket is destroyed.
@@ -298,7 +298,10 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  startHoshiStream().catch((error) => {
+  // Direct runs (npm start / npm run dev) own the process: signals and stray
+  // errors must still run close() so child processes release their ports.
+  const secrets = { accessToken: process.env.ACCESS_TOKEN };
+  const running = startHoshiStream().catch((error: unknown) => {
     console.error(
       JSON.stringify({
         level: "error",
@@ -307,5 +310,43 @@ if (
       }),
     );
     process.exitCode = 1;
+    return undefined;
   });
+  let exiting = false;
+  const exit = (code: number) => {
+    if (exiting) return;
+    exiting = true;
+    process.exitCode = code;
+    setTimeout(() => process.exit(1), 10_000).unref();
+    void running
+      .then((instance) => instance?.close())
+      .catch(() => {
+        process.exitCode = 1;
+      })
+      .finally(() => {
+        setTimeout(() => process.exit(), 1_000).unref();
+      });
+  };
+  const crash = (event: string, error: unknown) => {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event,
+        errorName: error instanceof Error ? error.name : typeof error,
+        error: redactText(
+          error instanceof Error ? error.message : String(error),
+          secrets,
+        ).slice(0, 500),
+      }),
+    );
+    exit(1);
+  };
+  process.on("SIGINT", () => exit(0));
+  process.on("SIGTERM", () => exit(0));
+  process.on("uncaughtException", (error) =>
+    crash("uncaught_exception", error),
+  );
+  process.on("unhandledRejection", (reason) =>
+    crash("unhandled_rejection", reason),
+  );
 }

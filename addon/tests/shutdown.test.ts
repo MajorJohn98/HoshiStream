@@ -1,7 +1,9 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { connect } from "node:net";
+import { spawn } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 // src/config.ts parses process.env when it is first imported, and index.ts
@@ -93,4 +95,96 @@ describe("startHoshiStream shutdown", () => {
     await addon.close();
     await expect(fetch(`http://127.0.0.1:${port}/health`)).rejects.toThrow();
   });
+});
+
+async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((done) => probe.listen(0, "127.0.0.1", done));
+  const address = probe.address();
+  await new Promise((done) => probe.close(done));
+  if (!address || typeof address === "string") throw new Error("No port");
+  return address.port;
+}
+
+// Runs src/index.ts as its own process (npm start / npm run dev). A preload
+// script waits until the server answers, then performs `trigger`.
+async function runDirect(trigger: string) {
+  const root = await mkdtemp(join(tmpdir(), "hoshistream-direct-"));
+  closers.push(() => rm(root, { recursive: true, force: true }));
+  const port = await freePort();
+  const preload = join(root, "trigger.mjs");
+  await writeFile(
+    preload,
+    `const poll = setInterval(() => {
+      fetch("http://127.0.0.1:${port}/health").then(() => {
+        clearInterval(poll);
+        setTimeout(() => { ${trigger} }, 50);
+      }, () => undefined);
+    }, 100);\n`,
+  );
+  const token = "a-long-private-token-value";
+  const child = spawn(
+    process.execPath,
+    ["--import", pathToFileURL(preload).href, resolve("src/index.ts")],
+    {
+      cwd: resolve("."),
+      env: {
+        ...process.env,
+        HOME: root,
+        USERPROFILE: root,
+        LOCALAPPDATA: root,
+        XDG_DATA_HOME: root,
+        ADDON_PORT: String(port),
+        PUBLIC_ADDON_URL: `http://127.0.0.1:${port}`,
+        TORRSERVER_INTERNAL_URL: "http://127.0.0.1:1",
+        PUBLIC_TORRSERVER_URL: "http://127.0.0.1:1",
+        ACCESS_TOKEN: token,
+        MDNS_ENABLED: "false",
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+    },
+  );
+  let stderr = "";
+  child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+  const code = await new Promise<number | null>((done, reject) => {
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`direct run did not exit:\n${stderr}`));
+    }, 25_000);
+    child.once("exit", (exitCode) => {
+      clearTimeout(timer);
+      done(exitCode);
+    });
+  });
+  return { code, stderr, port, token };
+}
+
+describe("direct run process handling", () => {
+  it("shuts down cleanly on an uncaught exception without leaking secrets", async () => {
+    const { code, stderr, port, token } = await runDirect(
+      `throw new Error("boom magnet:?xt=urn:btih:abcdef&dn=Film ${"a-long-private-token-value"}");`,
+    );
+    expect(code).toBe(1);
+    expect(stderr).toContain('"event":"uncaught_exception"');
+    expect(stderr).not.toContain("btih:abcdef");
+    expect(stderr).not.toContain(token);
+    await expect(fetch(`http://127.0.0.1:${port}/health`)).rejects.toThrow();
+  }, 30_000);
+
+  it("shuts down cleanly on an unhandled rejection", async () => {
+    const { code, stderr } = await runDirect(
+      `Promise.reject(new Error("stray"));`,
+    );
+    expect(code).toBe(1);
+    expect(stderr).toContain('"event":"unhandled_rejection"');
+  }, 30_000);
+
+  it.skipIf(process.platform === "win32")(
+    "closes and exits 0 on SIGTERM",
+    async () => {
+      const { code } = await runDirect(`process.kill(process.pid, "SIGTERM");`);
+      expect(code).toBe(0);
+    },
+    30_000,
+  );
 });

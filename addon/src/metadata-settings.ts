@@ -1,6 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { z } from "zod";
+import { readJsonFile, writeJsonFile } from "./json-file.ts";
 
 // Opt-in switch for Cinemeta enrichment (ADR 0026). Off by default: with
 // `enabled` false no request ever leaves the machine. `autoOnAdd` runs the
@@ -23,6 +22,7 @@ export const DEFAULT_METADATA_SETTINGS: MetadataSettings = {
 export class MetadataSettingsStore {
   readonly #path: string;
   #state: MetadataSettings | undefined;
+  #queue: Promise<unknown> = Promise.resolve();
 
   constructor(path: string) {
     this.#path = path;
@@ -30,32 +30,33 @@ export class MetadataSettingsStore {
 
   async #load(): Promise<MetadataSettings> {
     if (this.#state) return this.#state;
-    try {
-      this.#state = metadataSettingsSchema.parse(
-        JSON.parse(await readFile(this.#path, "utf8")),
-      );
-    } catch {
-      this.#state = { ...DEFAULT_METADATA_SETTINGS };
-    }
+    this.#state = (await readJsonFile(this.#path, metadataSettingsSchema)) ?? {
+      ...DEFAULT_METADATA_SETTINGS,
+    };
     return this.#state;
   }
 
+  // An unreadable file reads as the privacy-safe default (enrichment off)
+  // without caching it; updates surface the error instead of overwriting.
   async read(): Promise<MetadataSettings> {
-    return { ...(await this.#load()) };
+    try {
+      return { ...(await this.#load()) };
+    } catch {
+      return { ...DEFAULT_METADATA_SETTINGS };
+    }
   }
 
-  async update(patch: Partial<MetadataSettings>): Promise<MetadataSettings> {
-    const next = metadataSettingsSchema.parse({
-      ...(await this.#load()),
-      ...patch,
+  update(patch: Partial<MetadataSettings>): Promise<MetadataSettings> {
+    const run = this.#queue.then(async () => {
+      const next = metadataSettingsSchema.parse({
+        ...(await this.#load()),
+        ...patch,
+      });
+      await writeJsonFile(this.#path, next);
+      this.#state = next;
+      return { ...next };
     });
-    await mkdir(dirname(this.#path), { recursive: true });
-    const temporary = `${this.#path}.tmp`;
-    await writeFile(temporary, `${JSON.stringify(next, null, 2)}\n`, {
-      mode: 0o600,
-    });
-    await rename(temporary, this.#path);
-    this.#state = next;
-    return { ...next };
+    this.#queue = run.catch(() => undefined);
+    return run;
   }
 }

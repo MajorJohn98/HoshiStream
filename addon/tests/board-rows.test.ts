@@ -233,6 +233,28 @@ describe("IdentityStore", () => {
   });
 });
 
+describe("IdentityStore failure handling", () => {
+  it("serializes updates and never overwrites an unreadable file", async () => {
+    const path = join(stateDir, "identity.json");
+    const store = new IdentityStore(path);
+    await Promise.all([
+      store.update({ contactEmail: "a@example.com" }),
+      store.update({ contactEmail: "b@example.com" }),
+    ]);
+    expect(await new IdentityStore(path).read()).toEqual({
+      contactEmail: "b@example.com",
+    });
+
+    const blocked = join(stateDir, "blocked.json");
+    await mkdir(blocked);
+    const unreadable = new IdentityStore(blocked);
+    expect(await unreadable.read()).toEqual({ contactEmail: "" });
+    await expect(
+      unreadable.update({ contactEmail: "c@example.com" }),
+    ).rejects.toThrow();
+  });
+});
+
 describe("Board routes", () => {
   const TOKEN = "an-access-token-for-board-tests";
   const addon: AddonInterface = {

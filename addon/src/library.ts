@@ -1,17 +1,9 @@
 import { randomUUID } from "node:crypto";
-import {
-  copyFile,
-  mkdir,
-  readFile,
-  rename,
-  stat,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
-import { dirname } from "node:path";
+import { copyFile, readFile, rename, stat } from "node:fs/promises";
 import { z } from "zod";
 import { assessDirectPlay, type DirectPlay } from "./direct-play.ts";
 import { ImportError } from "./imports/errors.ts";
+import { writeJsonFile } from "./json-file.ts";
 import type { SeriesPreviewPlan } from "./imports/series.ts";
 import { tagKey } from "./tags.ts";
 import {
@@ -763,13 +755,8 @@ export class Library {
   }
 
   private async write(entries: LibraryEntry[]): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true });
-    const temporaryPath = `${this.path}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporaryPath, `${JSON.stringify(entries, null, 2)}\n`, {
-        mode: 0o600,
-      });
-      await rename(temporaryPath, this.path);
+      await writeJsonFile(this.path, entries);
       const info = await stat(this.path).catch(() => undefined);
       this.cache = info
         ? {
@@ -781,7 +768,6 @@ export class Library {
       await copyFile(this.path, this.backupPath).catch(() => undefined);
     } catch (error) {
       this.cache = undefined;
-      await unlink(temporaryPath).catch(() => undefined);
       throw error;
     }
   }

@@ -1,5 +1,12 @@
 import { createServer, type Server } from "node:http";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -62,6 +69,29 @@ describe("Tags registry", () => {
       "Western",
     ]);
     expect(await tags.list()).toEqual(["Sci-Fi", "Western"]);
+  });
+
+  it("keeps a corrupt registry aside instead of silently reseeding over it", async () => {
+    const path = join(stateDir, "tags.json");
+    await writeFile(path, '{"tags": ["Mine"');
+    const tags = new Tags(path);
+    expect(await tags.list()).toEqual([...DEFAULT_TAGS]);
+    const quarantined = (await readdir(stateDir)).find((name) =>
+      name.startsWith("tags.json.corrupt-"),
+    );
+    expect(quarantined).toBeDefined();
+    expect(await readFile(join(stateDir, quarantined!), "utf8")).toBe(
+      '{"tags": ["Mine"',
+    );
+  });
+
+  it("refuses to overwrite a registry it cannot read", async () => {
+    const path = join(stateDir, "tags.json");
+    await mkdir(path);
+    const tags = new Tags(path);
+    await expect(tags.list()).rejects.toThrow();
+    await expect(tags.ensure(["Western"])).rejects.toThrow();
+    expect(await readdir(stateDir)).toEqual(["tags.json"]);
   });
 
   it("dedupes tag lists keeping the first spelling", () => {

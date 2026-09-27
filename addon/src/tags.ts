@@ -1,6 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { z } from "zod";
+import { readJsonFile, writeJsonFile } from "./json-file.ts";
 
 // The tag registry behind the Tags page. Entries store tag *names*, so the
 // library file stays readable and portable; renames and deletions cascade
@@ -96,33 +95,25 @@ export class Tags {
 
   private async load(): Promise<string[]> {
     if (this.names) return this.names;
-    try {
-      const stored = registrySchema.parse(
-        JSON.parse(await readFile(this.path, "utf8")),
-      );
-      this.names = dedupeTags(stored.tags);
-      const names = this.names;
-      this.pins = dedupeTags(stored.pinned ?? [])
-        .map((pin) => names.find((name) => tagKey(name) === tagKey(pin)))
-        .filter((name): name is string => name !== undefined)
-        .slice(0, PINNED_TAGS_MAX);
-    } catch {
-      // First run (or an unreadable file): seed the default genre set.
+    // An unreadable (not missing) file throws here instead of being reseeded
+    // over; a corrupt one is moved aside by readJsonFile first.
+    const stored = await readJsonFile(this.path, registrySchema);
+    if (!stored) {
       this.names = [...DEFAULT_TAGS];
       await this.persist(this.names).catch(() => undefined);
+      return this.names;
     }
+    const names = dedupeTags(stored.tags);
+    this.names = names;
+    this.pins = dedupeTags(stored.pinned ?? [])
+      .map((pin) => names.find((name) => tagKey(name) === tagKey(pin)))
+      .filter((name): name is string => name !== undefined)
+      .slice(0, PINNED_TAGS_MAX);
     return this.names;
   }
 
   private async persist(names: string[]): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true });
-    const temporary = `${this.path}.tmp`;
-    await writeFile(
-      temporary,
-      `${JSON.stringify({ tags: names, pinned: this.pins }, null, 2)}\n`,
-      { mode: 0o600 },
-    );
-    await rename(temporary, this.path);
+    await writeJsonFile(this.path, { tags: names, pinned: this.pins });
   }
 
   private mutate<T>(work: (names: string[]) => T | Promise<T>): Promise<T> {

@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
 import { z } from "zod";
+import { writeJsonFile } from "./json-file.ts";
 
 const clientSchema = z.enum(["nuvio", "stremio"]);
 const stateSchema = z
@@ -74,28 +73,7 @@ export class Onboarding {
   }
 
   private async persist(state: OnboardingState) {
-    await mkdir(dirname(this.path), { recursive: true });
-    const temporary = `${this.path}.${randomUUID()}.tmp`;
-    try {
-      await writeFile(temporary, JSON.stringify(state, null, 2) + "\n", {
-        mode: 0o600,
-      });
-      await rename(temporary, this.path);
-    } finally {
-      await unlink(temporary).catch((error: unknown) => {
-        if (!(
-          error instanceof Error &&
-          "code" in error &&
-          error.code === "ENOENT"
-        ))
-          console.error(
-            JSON.stringify({
-              level: "warn",
-              event: "onboarding_temp_cleanup_failed",
-            }),
-          );
-      });
-    }
+    await writeJsonFile(this.path, state);
   }
 
   async read() {

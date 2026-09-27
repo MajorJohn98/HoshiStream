@@ -266,3 +266,55 @@ describe("serveMediaSource", () => {
     expect(Buffer.from(await response.arrayBuffer())).toEqual(content);
   });
 });
+
+describe("serveMediaSource failure statuses", () => {
+  async function serve(torrServerUrl: string, key: string) {
+    const base = await mkdtemp(join(tmpdir(), "hoshistream-media-fail-"));
+    temporary.push(base);
+    const library = new Library(join(base, "library.json"));
+    const volumes = new VolumeRegistry(join(base, "volumes.json"), base, 0);
+    const torrServer = new TorrServerClient(torrServerUrl, 500, 1);
+    const entry = await library.create({
+      type: "movie",
+      name: "Example",
+      magnetUri: "magnet:?xt=urn:btih:aaaa",
+    });
+    await library.setInspectionCache(entry.id, {
+      hash: "aaaa",
+      inspectedAt: new Date().toISOString(),
+      selectedFiles: [{ id: 1, path: "Movie.mkv", length: 10 }],
+    });
+    const current = (await library.get(entry.id))!;
+    return listen(
+      createServer((request, response) => {
+        void serveMediaSource(
+          request,
+          response,
+          current,
+          key,
+          volumes,
+          torrServer,
+          library,
+        );
+      }),
+    );
+  }
+
+  it("answers 503 with Retry-After when TorrServer cannot be reached", async () => {
+    const down = createServer();
+    const downUrl = await listen(down);
+    await new Promise((resolve) => down.close(resolve));
+    servers.splice(servers.indexOf(down), 1);
+
+    const response = await fetch(await serve(downUrl, "aaaa:1"));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("5");
+  });
+
+  it("answers 404 when the source resolves but lacks the file", async () => {
+    const torrServerUrl = await fakeTorrServer(Buffer.from("0123456789"));
+    const response = await fetch(await serve(torrServerUrl, "aaaa:9"));
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "Unknown media file" });
+  });
+});
