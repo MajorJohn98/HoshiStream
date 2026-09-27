@@ -272,19 +272,29 @@ async function stop(exitCode = 0) {
     const exited = new Promise((resolveExit) =>
       torrServer.once("exit", resolveExit),
     );
+    // --dontkill makes TorrServer ignore SIGTERM/SIGINT (so a terminal Ctrl+C
+    // reaches only this supervisor), and Windows has no graceful signal at
+    // all. Its /shutdown route closes the torrent client and settings DB,
+    // then exits 0 (MatriX.141 web/api/shutdown.go → torr.Shutdown).
+    await fetch(`http://127.0.0.1:${torrServerPort}/shutdown`, {
+      signal: AbortSignal.timeout(1_000),
+      redirect: "error",
+    }).catch(() => undefined);
     let childTimeout;
-    torrServer.kill("SIGTERM");
     try {
       await Promise.race([
         exited,
         new Promise((resolveWait) => {
-          childTimeout = setTimeout(resolveWait, 5_000);
+          childTimeout = setTimeout(resolveWait, 4_000);
         }),
       ]);
     } finally {
       clearTimeout(childTimeout);
     }
     if (torrServer.exitCode === null && torrServer.signalCode === null) {
+      console.error(
+        JSON.stringify({ level: "warn", event: "torrserver_force_killed" }),
+      );
       torrServer.kill("SIGKILL");
       await exited;
     }

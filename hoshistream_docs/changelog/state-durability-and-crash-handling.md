@@ -26,6 +26,16 @@ Plan: [2026-09-27-state-durability-and-failure-handling-plan.md](../plans/2026-0
   the menu-bar app restarts a fresh process. The direct entry also closes
   cleanly on SIGINT/SIGTERM.
 
+- **Quitting no longer races the shutdown.** TorrServer runs with
+  `--dontkill`, so it ignored the supervisor's SIGTERM and every stop waited
+  5 s for a SIGKILL — skipping TorrServer's own database close — while the
+  macOS app gave the whole shutdown only 7 s before killing Node. A slow quit
+  therefore left a stale `runtime.lock` and TorrServer running on its
+  port for a few more seconds. The supervisor now stops TorrServer through its
+  `GET /shutdown` route (clean DB close, exit 0; SIGKILL only after 4 s), and
+  the macOS app waits 12 s, longer than the supervisor's own 10 s forced
+  exit. Shutdown dropped from ~5 s to well under 1 s in the native smoke test.
+
 ## Internals
 
 - New `addon/src/json-file.ts`: `writeJsonFile` (unique temp, `fsync`, rename,

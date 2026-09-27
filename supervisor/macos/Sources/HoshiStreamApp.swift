@@ -675,7 +675,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         service.terminate()
         DispatchQueue.global().async {
-            let deadline = Date().addingTimeInterval(7)
+            // Longer than native-server.mjs's own 10 s forced exit, so its
+            // bounded cleanup (TorrServer stop, runtime lock release) always
+            // finishes; SIGKILL here is only for a wedged process.
+            let deadline = Date().addingTimeInterval(12)
             while service.isRunning && Date() < deadline { usleep(100_000) }
             if service.isRunning { kill(service.processIdentifier, SIGKILL) }
             DispatchQueue.main.async { sender.reply(toApplicationShouldTerminate: true) }
