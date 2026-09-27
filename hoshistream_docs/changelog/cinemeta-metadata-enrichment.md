@@ -91,3 +91,22 @@ computer until the toggle is switched.
 - `guides/backup-restore-updates.md` — `metadata-settings.json`, `artwork/`.
 - `guides/adding-media.md`, `guides/getting-started.md` — how to turn it on.
 - `architecture/architecture-overview.md` — new modules and state files.
+
+## Fixes (2026-09-27)
+
+- **Series matches no longer fail with "Unexpected meta response".** Cinemeta
+  sends `"director": null` on most series, and the strict response schema
+  rejected the whole title, so nearly every series fetch failed while movies
+  worked. Every optional field (title, episode, and search-hit schemas) now
+  drops a `null` or drifted value on its own instead of failing the response,
+  as the client's loose-validation contract always intended.
+- **Fetch details works on unmatched entries.** The Match card's **Fetch
+  details** calls `POST …/metadata/refresh`, which threw "This entry has no
+  match yet" without an IMDb id. It now searches afresh and auto-accepts when
+  unambiguous, as the API reference documents.
+- **Changing an entry's type re-runs the lookup.** An entry added as a movie
+  and switched to a series kept its movie-catalog pick list. A type change on
+  an entry without a chosen match now looks up again in the right catalog
+  (or, with automatic lookups off, drops the stale candidates).
+- **Failures are visible.** The Match card shows "Last fetch failed: …" when
+  the last fetch errored, instead of a misleading "No match found".

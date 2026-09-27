@@ -24,22 +24,41 @@ export class CinemetaError extends Error {
 
 const IMDB_ID = /^tt\d{7,8}$/;
 const text = z.string().trim().min(1);
-const textList = z
-  .array(z.string())
-  .transform((values) => values.map((value) => value.trim()).filter(Boolean));
-const intish = z
-  .union([z.number(), z.string()])
-  .transform((value) => Number(value))
-  .refine((value) => Number.isInteger(value) && value >= 0);
+// Optional fields tolerate null or a drifted type by dropping just that
+// field: Cinemeta sends `"director": null` on most series, and one odd value
+// must not reject the whole title.
+const loose = <T extends z.ZodType>(schema: T) =>
+  z
+    .preprocess(
+      (value) => (value === null ? undefined : value),
+      schema.optional(),
+    )
+    .catch(undefined);
+const looseText = loose(z.string());
+const looseYear = loose(z.union([z.string(), z.number()]));
+const textList = loose(
+  z.array(z.unknown()).transform((values) =>
+    values
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  ),
+);
+const intish = loose(
+  z
+    .union([z.number(), z.string()])
+    .transform((value) => Number(value))
+    .refine((value) => Number.isInteger(value) && value >= 0),
+);
 
 const candidateSchema = z
   .object({
     id: z.string(),
-    imdb_id: z.string().optional(),
+    imdb_id: looseText,
     name: text,
-    poster: z.string().optional(),
-    releaseInfo: z.union([z.string(), z.number()]).optional(),
-    year: z.union([z.string(), z.number()]).optional(),
+    poster: looseText,
+    releaseInfo: looseYear,
+    year: looseYear,
   })
   .passthrough();
 const searchResponseSchema = z
@@ -48,49 +67,53 @@ const searchResponseSchema = z
 
 export const cinemetaVideoSchema = z
   .object({
-    season: intish.optional(),
-    episode: intish.optional(),
-    number: intish.optional(),
-    name: z.string().optional(),
-    title: z.string().optional(),
-    overview: z.string().optional(),
-    description: z.string().optional(),
-    released: z.string().optional(),
-    firstAired: z.string().optional(),
-    thumbnail: z.string().optional(),
+    season: intish,
+    episode: intish,
+    number: intish,
+    name: looseText,
+    title: looseText,
+    overview: looseText,
+    description: looseText,
+    released: looseText,
+    firstAired: looseText,
+    thumbnail: looseText,
   })
   .passthrough();
 export const cinemetaMetaSchema = z
   .object({
     id: z.string(),
-    imdb_id: z.string().optional(),
-    type: z.string().optional(),
+    imdb_id: looseText,
+    type: looseText,
     name: text,
-    description: z.string().optional(),
-    poster: z.string().optional(),
-    background: z.string().optional(),
-    logo: z.string().optional(),
-    releaseInfo: z.union([z.string(), z.number()]).optional(),
-    year: z.union([z.string(), z.number()]).optional(),
-    runtime: z.string().optional(),
-    imdbRating: z.union([z.string(), z.number()]).optional(),
-    cast: textList.optional(),
-    director: textList.optional(),
-    writer: textList.optional(),
-    country: z.string().optional(),
-    language: z.string().optional(),
-    awards: z.string().optional(),
-    genres: textList.optional(),
-    genre: textList.optional(),
-    trailers: z
-      .array(
-        z
-          .object({ source: z.string(), type: z.string().optional() })
-          .passthrough(),
-      )
-      .optional(),
-    status: z.string().optional(),
-    videos: z.array(z.unknown()).optional(),
+    description: looseText,
+    poster: looseText,
+    background: looseText,
+    logo: looseText,
+    releaseInfo: looseYear,
+    year: looseYear,
+    runtime: looseText,
+    imdbRating: looseYear,
+    cast: textList,
+    director: textList,
+    writer: textList,
+    country: looseText,
+    language: looseText,
+    awards: looseText,
+    genres: textList,
+    genre: textList,
+    trailers: loose(
+      z.array(z.unknown()).transform((values) =>
+        values.flatMap((value) => {
+          const trailer = z
+            .object({ source: z.string(), type: looseText })
+            .passthrough()
+            .safeParse(value);
+          return trailer.success ? [trailer.data] : [];
+        }),
+      ),
+    ),
+    status: looseText,
+    videos: loose(z.array(z.unknown())),
   })
   .passthrough();
 const metaResponseSchema = z.object({ meta: z.unknown() }).passthrough();

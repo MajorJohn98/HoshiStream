@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { CinemetaClient, CinemetaError } from "../src/cinemeta.ts";
+import {
+  CinemetaClient,
+  CinemetaError,
+  cinemetaVideoSchema,
+} from "../src/cinemeta.ts";
 
 type Route = (url: URL, init?: RequestInit) => Response | Promise<Response>;
 
@@ -147,6 +151,59 @@ describe("CinemetaClient.meta", () => {
     await expect(cinemeta.meta("series", "nope")).rejects.toBeInstanceOf(
       CinemetaError,
     );
+  });
+
+  // Regression: Cinemeta sends `"director": null` on most series, which used
+  // to reject the whole payload as "Unexpected meta response".
+  it("drops null or drifted fields instead of rejecting the title", async () => {
+    const { client: cinemeta } = client(() =>
+      json({
+        meta: {
+          id: "tt2467372",
+          imdb_id: "tt2467372",
+          name: "Brooklyn Nine-Nine",
+          director: null,
+          writer: null,
+          cast: ["Andy Samberg", null, 7, " Stephanie Beatriz "],
+          imdbRating: null,
+          runtime: 22,
+          logo: null,
+          status: "Ended",
+          trailers: [{ source: "sEOuJ4z5aTc" }, { source: null }, "bad"],
+          videos: [
+            { season: 1, episode: 1, name: "Pilot", overview: null },
+            { season: 1, episode: 2, name: null, thumbnail: null },
+          ],
+        },
+      }),
+    );
+    const meta = await cinemeta.meta("series", "tt2467372");
+    expect(meta.name).toBe("Brooklyn Nine-Nine");
+    expect(meta.director).toBeUndefined();
+    expect(meta.writer).toBeUndefined();
+    expect(meta.runtime).toBeUndefined();
+    expect(meta.cast).toEqual(["Andy Samberg", "Stephanie Beatriz"]);
+    expect(meta.trailers).toEqual([{ source: "sEOuJ4z5aTc" }]);
+    expect(meta.status).toBe("Ended");
+    const videos = (meta.videos ?? []).map((video) =>
+      cinemetaVideoSchema.parse(video),
+    );
+    expect(videos[0]).toMatchObject({ season: 1, episode: 1, name: "Pilot" });
+    expect(videos[0]?.overview).toBeUndefined();
+    expect(videos[1]).toMatchObject({ season: 1, episode: 2 });
+  });
+
+  it("keeps search hits whose optional fields are null", async () => {
+    const { client: cinemeta } = client(() =>
+      json({
+        metas: [
+          { id: "tt0108778", name: "Friends", poster: null, releaseInfo: null },
+        ],
+      }),
+    );
+    expect(await cinemeta.search("series", "Friends")).toEqual([
+      { imdbId: "tt0108778", name: "Friends" },
+    ]);
   });
 
   it("reports missing titles as not-found", async () => {

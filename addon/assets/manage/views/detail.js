@@ -269,6 +269,13 @@ function MatchCard({ state }) {
         <div class="stacked-xs">
           <span class="field-label">Match</span>
           <span class="muted">${status()}</span>
+          ${
+            meta?.lastError && meta.status !== "unavailable" && !pending
+              ? html`<span class="muted"
+                  >Last fetch failed: ${meta.lastError}.</span
+                >`
+              : null
+          }
         </div>
         <div class="row tight">
           ${

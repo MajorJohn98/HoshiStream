@@ -312,6 +312,8 @@ export const handleLibraryItem: RouteHandler = async (
         warmStreamSource(entry, torrServer, library);
     }
     if (entry) logInfo("library_updated", { entryId: entry.id });
+    if (entry && current && entry.type !== current.type)
+      metadata?.typeChanged(entry.id);
     return reply(response, entry ? 200 : 404, entry ?? { error: "Not found" });
   }
   if (method === "DELETE") {
