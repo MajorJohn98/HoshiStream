@@ -290,6 +290,9 @@ function roundedSwarm(swarm: SwarmSummary): SwarmSummary {
     ...(swarm.sustainedMbps === undefined
       ? {}
       : { sustainedMbps: round1(swarm.sustainedMbps) }),
+    ...(swarm.downloadMbps === undefined
+      ? {}
+      : { downloadMbps: round1(swarm.downloadMbps) }),
     ...(swarm.peakMbps === undefined
       ? {}
       : { peakMbps: round1(swarm.peakMbps) }),
@@ -723,6 +726,10 @@ export class StreamTests {
           record.swarm?.sustainedMbps === undefined
             ? undefined
             : round1(record.swarm.sustainedMbps),
+        downloadMbps:
+          record.swarm?.downloadMbps === undefined
+            ? undefined
+            : round1(record.swarm.downloadMbps),
         bitrateMbps:
           record.bitrate === undefined
             ? undefined

@@ -383,6 +383,7 @@ describe("stream tests", () => {
       bitrate: { mbps: 2, durationSeconds: 3600 },
       swarm: {
         sustainedMbps: 4,
+        downloadMbps: 4,
         peakMbps: 4,
         atLeast: false,
         stillSpeedingUp: false,

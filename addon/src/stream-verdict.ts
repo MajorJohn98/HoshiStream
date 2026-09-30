@@ -36,7 +36,14 @@ export type SwarmMeasurement = {
 };
 
 export type SwarmSummary = {
+  /** R: what a player would get, in order. Sets the verdict level. */
   sustainedMbps?: number;
+  /**
+   * TorrServer's median download rate after warm-up. It counts every byte
+   * peers send, so under a rate limit it can run well above what arrives in
+   * order. It names the bottleneck and spots a stale line reading.
+   */
+  downloadMbps?: number;
   peakMbps?: number;
   atLeast: boolean;
   stillSpeedingUp: boolean;
@@ -142,8 +149,10 @@ export function summarizeSwarm(measurement: SwarmMeasurement): SwarmSummary {
   const rates = settled.map((sample) => sample.downloadMbps);
   const latest = measurement.samples.at(-1);
   let sustainedMbps: number | undefined;
+  let downloadMbps: number | undefined;
   if (rates.length >= MIN_SAMPLES) {
-    sustainedMbps = median(rates);
+    downloadMbps = median(rates);
+    sustainedMbps = downloadMbps;
     const { reader } = measurement;
     // The rate TorrServer reports can include pieces the reader never got
     // in order; the lower of the two figures is what a player would see.
@@ -161,6 +170,7 @@ export function summarizeSwarm(measurement: SwarmMeasurement): SwarmSummary {
     late > 0 && late >= SPEEDING_UP_RATIO * median(rates.slice(0, third));
   return {
     ...(sustainedMbps === undefined ? {} : { sustainedMbps }),
+    ...(downloadMbps === undefined ? {} : { downloadMbps }),
     ...(measurement.samples.length
       ? {
           peakMbps: Math.max(
@@ -191,16 +201,19 @@ function bottleneckFor(
 export function evaluateStreamTest(input: VerdictInput): StreamVerdict {
   const swarm = input.swarm;
   const rate = swarm?.sustainedMbps;
+  // A limit or line caps what peers send, not what arrives in order, so
+  // compare them with TorrServer's own rate.
+  const sent = swarm?.downloadMbps ?? rate;
   const flags = {
     atLeast: swarm?.atLeast ?? false,
     stillSpeedingUp: swarm?.stillSpeedingUp ?? false,
     sharedWithDiskCopy: input.sharedWithDiskCopy ?? false,
   };
   const lineStale =
-    rate !== undefined &&
+    sent !== undefined &&
     input.lineMbps !== undefined &&
     input.lineMbps > 0 &&
-    rate > STALE_LINE_RATIO * input.lineMbps;
+    sent > STALE_LINE_RATIO * input.lineMbps;
   // A longer test waits longer for metadata, peers and the probe; only a
   // stream that interrupted the test calls for waiting instead.
   const inconclusive = (reason: InconclusiveReason): StreamVerdict => ({
@@ -236,7 +249,11 @@ export function evaluateStreamTest(input: VerdictInput): StreamVerdict {
   };
   if (level === "smooth") return verdict;
 
-  const bottleneck = bottleneckFor(rate, input.lineMbps, input.limitMbps);
+  const bottleneck = bottleneckFor(
+    swarm?.downloadMbps ?? rate,
+    input.lineMbps,
+    input.limitMbps,
+  );
   verdict.bottleneck = bottleneck;
   const size = input.sizeBytes ?? 0;
   const duration =

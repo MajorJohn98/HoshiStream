@@ -83,6 +83,8 @@ describe("summarizeSwarm", () => {
       }),
     );
     expect(summary.sustainedMbps).toBeCloseTo(4, 6);
+    // TorrServer's own figure still names the bottleneck.
+    expect(summary.downloadMbps).toBe(10);
   });
 
   it("ignores reader throughput after EOF or over a short window", () => {
@@ -114,6 +116,7 @@ describe("summarizeSwarm", () => {
     );
     expect(summary.samples).toBe(0);
     expect(summary.sustainedMbps).toBeCloseTo(268.435456, 5);
+    expect(summary.downloadMbps).toBeUndefined();
     expect(summary.atLeast).toBe(true);
   });
 
@@ -238,6 +241,23 @@ describe("evaluateStreamTest", () => {
     expect(verdict.remedies?.targetMbps).toBeCloseTo(16 / 1.2, 6);
   });
 
+  it("names a limit that caps what peers send, not what arrives in order", () => {
+    // Live test: a 96 KiB/s limit held TorrServer at 0.8 Mbps while only
+    // 0.4 Mbps reached the reader in order.
+    const verdict = evaluateStreamTest({
+      bitrateMbps: 1.2,
+      durationSeconds: 888,
+      sizeBytes: 129_241_752,
+      swarm: swarm(0.4, { downloadMbps: 0.8 }),
+      lineMbps: 3.6,
+      limitMbps: rateLimitMbps(96),
+    });
+    expect(verdict.level).toBe("too_slow");
+    expect(verdict.bottleneck).toBe("limit");
+    expect(verdict.remedies?.betterSeeded).toBe(false);
+    expect(verdict.remedies?.targetMbps).toBeCloseTo(0.4 / 1.2, 6);
+  });
+
   it("offers to re-measure a line slower than the swarm delivered", () => {
     const verdict = evaluateStreamTest({
       bitrateMbps: 80,
@@ -245,6 +265,18 @@ describe("evaluateStreamTest", () => {
       sizeBytes: 36e9,
       swarm: swarm(60),
       lineMbps: 48,
+    });
+    expect(verdict.lineStale).toBe(true);
+    expect(verdict.bottleneck).toBe("line");
+  });
+
+  it("checks the line reading against what peers sent", () => {
+    const verdict = evaluateStreamTest({
+      bitrateMbps: 10,
+      durationSeconds: 3600,
+      sizeBytes: 4.5e9,
+      swarm: swarm(5, { downloadMbps: 12 }),
+      lineMbps: 10,
     });
     expect(verdict.lineStale).toBe(true);
     expect(verdict.bottleneck).toBe("line");
