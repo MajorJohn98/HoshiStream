@@ -455,6 +455,12 @@ median of the last three speed tests; the card's **Measure line** is a
 separate owner action. Playback telemetry ignores tested hashes, and disk
 copies yield to a running test.
 
+Changed: 2026-10-01, after a live test. The bitrate probe may use the rest
+of the run, since an MP4 indexed at its end needs the tail first. The
+bottleneck and the stale-line check use TorrServer's own download rate,
+because a limit or the line caps what peers send, not what arrives in order.
+The verdict level still uses the in-order rate.
+
 ## Retired decisions
 
 In-app discovery (0016–0018) was retired by 0020 on 2026-09-06 because it was

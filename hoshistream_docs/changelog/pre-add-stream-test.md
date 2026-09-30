@@ -82,3 +82,27 @@ advice only and never blocks **Add to library**.
 - Phase 3: ranking in-app search results by the test
   ([decision 0028](../decisions/decision-log.md), not yet implemented).
 - Testing **Additional torrents**; only the main torrent is tested.
+
+## Live-test fixes (2026-10-01)
+
+A live run against TorrServer MatriX.141 with Sintel, with TorrServer
+capped at 0.8 Mbps to stand in for a slow swarm, found two bugs (details in
+the plan's "Live test" section):
+
+- **Bitrate probe budget.** An MP4 indexed at its end came back Inconclusive
+  (`unknown_bitrate`) on a slow swarm because the 20 s probe ran out before
+  the tail arrived. The probe may now use the rest of the run.
+- **Wrong bottleneck under a limit.** TorrServer reached the cap while only
+  about half of it arrived in order, so the verdict blamed the swarm. The
+  limit and line checks now use TorrServer's own rate, reported as
+  `swarm.downloadMbps` and shown as **TorrServer download rate**. The level
+  still uses the in-order rate.
+
+Tests: slow-probe cases for basic and **Test longer**, a limit-attribution
+case built from the live numbers, a stale-line case, and the new detail
+row. Full suite: 1291 passed, 2 skipped.
+
+Known issue, not fixed: changing TorrServer settings while a torrent is
+connected (for example one a finished test holds) can leave TorrServer
+without a BitTorrent client until it restarts or the settings are saved
+again.
