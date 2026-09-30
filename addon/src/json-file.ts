@@ -1,16 +1,43 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
-import { basename, dirname } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import type { z } from "zod";
+
+type WriteOptions = { mode?: number; directoryMode?: number };
+
+// Tail of each path's write queue. It settles but never rejects, so one
+// failed write cannot block the writes queued behind it.
+const writeQueues = new Map<string, Promise<void>>();
 
 /**
  * Durable replace: unique temp file, fsync, rename, then fsync the directory
  * so a power cut leaves either the old or the new file — never neither.
+ * Writes to one path run one at a time in call order, so the last call wins
+ * and Windows never sees two renames race onto the same file (EPERM).
  */
 export async function writeJsonFile(
   path: string,
   value: unknown,
-  options: { mode?: number; directoryMode?: number } = {},
+  options: WriteOptions = {},
+): Promise<void> {
+  const contents = `${JSON.stringify(value, null, 2)}\n`;
+  const key = resolve(path);
+  const write = (writeQueues.get(key) ?? Promise.resolve()).then(() =>
+    replaceFile(path, contents, options),
+  );
+  const tail = write.catch(() => undefined);
+  writeQueues.set(key, tail);
+  try {
+    await write;
+  } finally {
+    if (writeQueues.get(key) === tail) writeQueues.delete(key);
+  }
+}
+
+async function replaceFile(
+  path: string,
+  contents: string,
+  options: WriteOptions,
 ): Promise<void> {
   const directory = dirname(path);
   await mkdir(directory, {
@@ -23,7 +50,7 @@ export async function writeJsonFile(
   try {
     const handle = await open(temporary, "wx", options.mode ?? 0o600);
     try {
-      await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+      await handle.writeFile(contents, "utf8");
       await handle.sync();
     } finally {
       await handle.close();

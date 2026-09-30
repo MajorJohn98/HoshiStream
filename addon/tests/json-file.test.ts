@@ -1,3 +1,4 @@
+import { rmSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -33,14 +34,40 @@ describe("writeJsonFile", () => {
     expect(await readdir(join(directory, "nested"))).toEqual(["state.json"]);
   });
 
-  it("serves overlapping writers without temp-name collisions", async () => {
+  it("runs overlapping writers one at a time so the last call wins", async () => {
     const path = join(directory, "state.json");
     await Promise.all(
       Array.from({ length: 20 }, (_, count) => writeJsonFile(path, { count })),
     );
     expect(schema.parse(JSON.parse(await readFile(path, "utf8")))).toEqual({
-      count: expect.any(Number),
+      count: 19,
     });
+    expect(await readdir(directory)).toEqual(["state.json"]);
+  });
+
+  it("snapshots the value when called, not when the queued write runs", async () => {
+    const path = join(directory, "state.json");
+    const value = { count: 1 };
+    const first = writeJsonFile(path, { count: 0 });
+    const second = writeJsonFile(path, value);
+    value.count = 2;
+    await Promise.all([first, second]);
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ count: 1 });
+  });
+
+  it("still runs a queued write after the one ahead of it fails", async () => {
+    const path = join(directory, "state.json");
+    await mkdir(join(path, "child"), { recursive: true });
+    // The directory makes the first rename fail. It is removed synchronously
+    // as that write rejects, before the queued write can reach its rename.
+    const first = writeJsonFile(path, { count: 1 }).catch((error: unknown) => {
+      rmSync(path, { recursive: true });
+      throw error;
+    });
+    const second = writeJsonFile(path, { count: 2 });
+    await expect(first).rejects.toThrow();
+    await second;
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ count: 2 });
     expect(await readdir(directory)).toEqual(["state.json"]);
   });
 

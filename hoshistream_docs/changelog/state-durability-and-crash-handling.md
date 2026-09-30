@@ -39,7 +39,9 @@ Plan: [2026-09-27-state-durability-and-failure-handling-plan.md](../plans/2026-0
 ## Internals
 
 - New `addon/src/json-file.ts`: `writeJsonFile` (unique temp, `fsync`, rename,
-  directory `fsync`; skipped on Windows) and `readJsonFile` (missing →
+  directory `fsync`; skipped on Windows; writes to one path run one at a time
+  in call order, because Windows rejects two renames racing onto one file
+  with `EPERM`) and `readJsonFile` (missing →
   `undefined`, malformed/invalid → quarantined, other I/O errors rethrown).
 - Tests: `json-file.test.ts`, store failure cases in `tags`, `device-names`,
   `board-rows` (identity) and `metadata-enrichment` (settings), 503/404 in
