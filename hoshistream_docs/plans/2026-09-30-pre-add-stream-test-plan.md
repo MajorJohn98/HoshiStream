@@ -48,7 +48,8 @@ The verdict is advice only. Save is never disabled or delayed.
    (`selectMediaFiles`): the main video for a movie, or the first episode for
    a series (form type and hints). The owner can pick another playable file.
 4. **Measure, in parallel:**
-   - **Bitrate.** The bounded `probeMedia()` on the `/play` URL (20 s)
+   - **Bitrate.** The bounded `probeMedia()` on the `/play` URL (the rest
+     of the run's time budget; see "Live test" below)
      gives the average bitrate and duration. When ffprobe reports no
      bitrate, the test uses size × 8 / duration.
    - **Swarm rate.** The test reads the file from its start through
@@ -75,7 +76,11 @@ Inputs:
 - `B`: the file's average bitrate (Mbps).
 - `D`: its duration (s).
 - `S`: its size (bytes).
-- `R`: the sustained swarm rate (Mbps).
+- `R`: the sustained swarm rate (Mbps): what a player gets, in order.
+- `T`: TorrServer's download rate, the median of its `download_speed`
+  samples after warm-up (Mbps). It counts every byte peers send, overhead
+  and out-of-order pieces included, so it can run well above `R`. With too
+  few samples, `T` is `R`.
 - `L`: the line speed (Mbps). This is the median of the recent speed tests,
   or the configured `HOME_SPEED_MBPS`, shown with its age. The stream test
   never starts a speed test, because the two would compete for the line.
@@ -83,8 +88,10 @@ Inputs:
 - `C`: the read-ahead window (`CacheSize` × `ReaderReadAHead`%; 3 GiB as
   shipped).
 
-`R` is observed through the real line, so it already reflects `L` and `K`.
-`L` and `K` only decide which limit gets named.
+`R` and `T` are observed through the real line, so they already reflect `L`
+and `K`. `L` and `K` only decide which limit gets named. They cap what peers
+send, not what arrives in order, so they are compared with `T`: at a
+0.8 Mbps limit, a live test saw `T` = 0.8 Mbps but `R` = 0.4 Mbps.
 
 | Level | Rule |
 | --- | --- |
@@ -95,11 +102,11 @@ Inputs:
 
 The named bottleneck is chosen in this order:
 
-1. **The TorrServer limit**, if `K` is set and `R ≥ 0.9 × K`.
-2. **The owner's line**, if `R ≥ 0.9 × L`.
+1. **The TorrServer limit**, if `K` is set and `T ≥ 0.9 × K`.
+2. **The owner's line**, if `T ≥ 0.9 × L`.
 3. **The swarm**, otherwise.
 
-If `R > 1.1 × L`, the line reading is stale, so the card offers **Measure
+If `T > 1.1 × L`, the line reading is stale, so the card offers **Measure
 line** (the existing `POST /api/speedtest`). It is shown only when no test
 is running.
 
@@ -197,8 +204,8 @@ DELETE /api/stream-tests/{testId}  → 204 (cancels and cleans up)
   - `hash` and the elapsed time
   - `file`: its ID, name and size
   - `files`: the playable files, at most 200
-  - `bitrate`, `swarm` (sustained, peak, at-least, still-speeding-up, peers
-    and seeders), `line` and `verdict`
+  - `bitrate`, `swarm` (sustained, TorrServer's download rate, peak,
+    at-least, still-speeding-up, peers and seeders), `line` and `verdict`
 
   It never includes a magnet or a path.
 
@@ -301,7 +308,8 @@ Summary: [changelog/pre-add-stream-test.md](../changelog/pre-add-stream-test.md)
 The open questions keep their defaults. Differences from the plan above:
 
 - **Timing and bytes.**
-  - Test longer also allows the probe 60 s (basic: 20 s).
+  - The bitrate probe may use the rest of the run's time budget (see
+    "Live test" below).
   - The byte cap counts the larger of `/cache` growth and the bytes the
     test's reader received.
   - A test that reads the whole file stops as `complete`.
@@ -347,3 +355,35 @@ The open questions keep their defaults. Differences from the plan above:
     checks the `magnet:?` prefix.
   - Durations round to the minute, and the remedy wording differs from the
     examples above.
+
+## Live test (2026-10-01)
+
+Phase 1 was run against a real TorrServer (MatriX.141) in a throwaway state
+folder, never the installed app, with Sintel (Blender Foundation, CC BY),
+using its archive and WebTorrent torrents. Confirmed: a Smooth verdict,
+`DELETE` cleanup, magnet tests and cancel, the multi-file pick and `fileId`.
+To reproduce a slow swarm, TorrServer's `DownloadRateLimit` was set to
+96 KiB/s (0.8 Mbps) before any torrent was added. Two fixes followed:
+
+- **Probe budget.** A 1.2 Mbps Sintel MP4 came back Inconclusive
+  (`unknown_bitrate`) at 0.4 Mbps. Its index (`moov`) sits at the end of the
+  file, so ffprobe needs the tail before the start, and the 20 s budget ran
+  out first. A player fetches that tail first too, so the probe may now use
+  the whole run: the time left until the test's deadline. After the fix, the
+  same file measured 1.2 Mbps over 888 s.
+- **Bottleneck.** TorrServer reported the 0.8 Mbps cap while only 0.4 Mbps
+  arrived in order, so comparing `R` with `0.9 × K` blamed the swarm and
+  suggested a better-seeded release. The limit and line checks now use `T`,
+  added to the state as `swarm.downloadMbps`, and the details list shows it
+  as **TorrServer download rate** when it differs from `R`. The re-run said
+  Won't keep up, bottleneck the limit.
+
+Without a cap, `T` also ran above `R` (9.3 against 7.4 Mbps).
+
+Known issue, not fixed: with a connected torrent (such as one a finished
+test holds), changing TorrServer settings can leave TorrServer without a
+BitTorrent client. It drops all torrents, and its peer port stops
+listening. Adding a torrent then fails until TorrServer restarts or the
+settings are saved again. `SetSettings` in MatriX.141 ignores the error from
+reconnecting the client. This matters here because the limit remedy leads
+the owner to raise the limit while the test still holds its torrent.

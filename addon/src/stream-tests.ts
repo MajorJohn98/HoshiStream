@@ -62,7 +62,6 @@ export type StreamTestLimits = {
   budgetMs: Record<StreamTestMode, number>;
   capBytes: Record<StreamTestMode, number>;
   metadataTimeoutMs: Record<StreamTestMode, number>;
-  probeTimeoutMs: Record<StreamTestMode, number>;
   ttlMs: number;
   maxQueued: number;
   maxRecords: number;
@@ -77,7 +76,6 @@ export const STREAM_TEST_LIMITS: StreamTestLimits = {
   budgetMs: { basic: 90_000, extended: 180_000 },
   capBytes: { basic: 256 * 1024 ** 2, extended: 1024 ** 3 },
   metadataTimeoutMs: { basic: 30_000, extended: 60_000 },
-  probeTimeoutMs: { basic: 20_000, extended: 60_000 },
   ttlMs: 10 * 60_000,
   maxQueued: 3,
   maxRecords: 8,
@@ -292,6 +290,9 @@ function roundedSwarm(swarm: SwarmSummary): SwarmSummary {
     ...(swarm.sustainedMbps === undefined
       ? {}
       : { sustainedMbps: round1(swarm.sustainedMbps) }),
+    ...(swarm.downloadMbps === undefined
+      ? {}
+      : { downloadMbps: round1(swarm.downloadMbps) }),
     ...(swarm.peakMbps === undefined
       ? {}
       : { peakMbps: round1(swarm.peakMbps) }),
@@ -725,6 +726,10 @@ export class StreamTests {
           record.swarm?.sustainedMbps === undefined
             ? undefined
             : round1(record.swarm.sustainedMbps),
+        downloadMbps:
+          record.swarm?.downloadMbps === undefined
+            ? undefined
+            : round1(record.swarm.downloadMbps),
         bitrateMbps:
           record.bitrate === undefined
             ? undefined
@@ -907,7 +912,10 @@ export class StreamTests {
       url,
       { id: file.id, length: file.length },
       {
-        timeoutMs: limits.probeTimeoutMs[record.mode],
+        // An MP4 with its index at the end needs the tail before the start,
+        // which a slow swarm may take most of the run to send. A player
+        // fetches it first too, so the probe may use the whole run.
+        timeoutMs: Math.max(1, deadline - measureStart),
         signal: AbortSignal.any([signal, stopProbe.signal]),
         bounded: true,
       },

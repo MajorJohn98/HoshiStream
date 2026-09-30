@@ -81,7 +81,10 @@ current speed, peers and data downloaded as it goes. The result compares:
 | **Inconclusive** | No file list, no data, too few readings, an unknown bitrate, or playback started. The figures still show. |
 
 Tight and Won't keep up name the limit: the swarm, your line, or TorrServer's
-download limit (System → Status). They also list options:
+download limit (System → Status). A limit or your line caps everything peers
+send, including data that arrives out of order, so the details also show
+**TorrServer download rate** when it differs from what arrived in order.
+Tight and Won't keep up results also list options:
 
 - **Start it, then pause to buffer**, with the wait and the data it builds
   up. If that data won't fit TorrServer's read-ahead cache, the card says

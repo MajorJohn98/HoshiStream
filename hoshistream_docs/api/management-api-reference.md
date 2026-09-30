@@ -224,17 +224,22 @@ The state contains:
   `{id, name, size, season?, episode?}`. `name` is the path inside the
   torrent.
 - `progress` while measuring: `{downloadMbps?, peers?, seeders?, bytes}`.
-- `bitrate` `{mbps, durationSeconds?}`; `swarm` `{sustainedMbps?, peakMbps?,
-  atLeast, stillSpeedingUp, peers?, seeders?, samples, bytes}`; `line`
+- `bitrate` `{mbps, durationSeconds?}`; `swarm` `{sustainedMbps?,
+  downloadMbps?, peakMbps?, atLeast, stillSpeedingUp, peers?, seeders?,
+  samples, bytes}`, where `sustainedMbps` is the in-order rate a player gets
+  and `downloadMbps` is TorrServer's median download rate, which counts every
+  byte peers send; `line`
   `{mbps, source: "measured" | "configured", measuredAt?}`; `limitMbps`
   (TorrServer's `DownloadRateLimit`, when set) and `cacheWindowBytes`
   (`CacheSize` × `ReaderReadAHead` %).
 - `verdict`:
-  - `level`: `smooth`, `tight`, `too_slow` or `inconclusive`.
+  - `level`: `smooth`, `tight`, `too_slow` or `inconclusive`, from
+    `sustainedMbps`.
   - `reason`, for inconclusive results: `no_metadata`, `no_peers`,
     `few_samples`, `unknown_bitrate` or `stream_started`.
-  - `bottleneck`: `swarm`, `line` or `limit`.
-  - `lineStale`: peers beat the last line reading.
+  - `bottleneck`: `swarm`, `line` or `limit`, from `downloadMbps`, because
+    a limit or the line caps what peers send.
+  - `lineStale`: peers sent more than the last line reading.
   - `remedies`: `waitSeconds`, `bufferBytes`, `fitsCache?`, `copySeconds?`,
     `targetMbps?`, `targetBytes?` and `betterSeeded`.
   - `flags` (`atLeast`, `stillSpeedingUp`, `sharedWithDiskCopy`) and
@@ -269,9 +274,10 @@ Limits:
 - One test runs at a time. Tests and source checks take turns through one
   shared FIFO work slot; at most three tests wait, and a waiting test's
   message says what it waits for.
-- A basic test has 90 seconds in all, 30 of them for metadata, a 20-second
-  bitrate probe and a 256 MiB data cap. Extended allows 180 seconds, 60 for
-  metadata, a 60-second probe and 1 GiB.
+- A basic test has 90 seconds in all, 30 of them for metadata, and a
+  256 MiB data cap. Extended allows 180 seconds, 60 for metadata, and 1 GiB.
+  The bitrate probe may use whatever time is left, because an MP4 with its
+  index at the end needs the file's tail first.
 - Records stay in memory for 10 minutes after they finish, at most eight;
   the oldest finished records go first. Nothing is persisted.
 - The test registers the torrent with `save_to_db: false`. A `done` test

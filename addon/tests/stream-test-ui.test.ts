@@ -403,6 +403,29 @@ describe("stream test figures and remedies", () => {
       "Test length": "90 s of up to 90 s",
     });
     expect(rows).not.toHaveProperty("TorrServer download limit");
+    expect(rows).not.toHaveProperty("TorrServer download rate");
+    const capped = Object.fromEntries(
+      streamTestRows(
+        {
+          ...EPISODE,
+          swarm: { ...EPISODE.swarm, sustainedMbps: 0.5, downloadMbps: 0.8 },
+          limitMbps: 0.8,
+        },
+        NOW,
+      ),
+    );
+    expect(capped).toMatchObject({
+      "Sustained swarm rate": "0.5 Mbps",
+      "TorrServer download rate": "0.8 Mbps",
+      "TorrServer download limit": "0.8 Mbps",
+    });
+    const same = Object.fromEntries(
+      streamTestRows(
+        { ...EPISODE, swarm: { ...EPISODE.swarm, downloadMbps: 4.1 } },
+        NOW,
+      ),
+    );
+    expect(same).not.toHaveProperty("TorrServer download rate");
     const configured = Object.fromEntries(
       streamTestRows(
         {

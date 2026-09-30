@@ -222,6 +222,12 @@ export function streamTestRows(test, now = Date.now()) {
           (swarm.atLeast ? "At least " : "") + mbpsLabel(swarm.sustainedMbps),
         ]
       : null,
+    // What peers sent, overhead and out-of-order pieces included; a limit or
+    // line caps this, not the in-order rate above.
+    swarm?.downloadMbps !== undefined &&
+    swarm.downloadMbps !== swarm.sustainedMbps
+      ? ["TorrServer download rate", mbpsLabel(swarm.downloadMbps)]
+      : null,
     swarm?.peakMbps !== undefined
       ? ["Peak swarm rate", mbpsLabel(swarm.peakMbps)]
       : null,
