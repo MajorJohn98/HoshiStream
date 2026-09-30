@@ -5,40 +5,9 @@
 - [architecture/architecture-overview.md](architecture/architecture-overview.md) — System diagram, module map, data flow, deployment modes, and state layout.
 - [OpenCodeAnalysis.md](OpenCodeAnalysis.md) — Part-by-part codebase walkthrough: components, internals, and end-to-end request flows.
 
-## Decisions (ADRs)
+## Decisions
 
-- [decisions/0001-torrserver-matrix-141-pinning.md](decisions/0001-torrserver-matrix-141-pinning.md) — Pin TorrServer to MatriX.141.1 and use only Swagger-verified endpoints.
-- [decisions/0002-disk-cache-over-ram-tiering.md](decisions/0002-disk-cache-over-ram-tiering.md) — Single bounded 2 GiB disk cache instead of RAM + disk tiering.
-- [decisions/0003-native-menu-bar-app-no-electron.md](decisions/0003-native-menu-bar-app-no-electron.md) — Syncthing-style native supervisor app; Electron rejected.
-- [decisions/0004-token-in-path-and-bearer-security-model.md](decisions/0004-token-in-path-and-bearer-security-model.md) — Path-token add-on URLs, bearer management API, trusted-LAN boundary.
-- [decisions/0005-host-header-public-urls.md](decisions/0005-host-header-public-urls.md) — Derive public stream URLs from the request Host header with configured fallback.
-- [decisions/0006-inspection-cache-on-entries.md](decisions/0006-inspection-cache-on-entries.md) — Persist inspection results on library entries for instant stream resolution.
-- [decisions/0007-lan-detection-via-public-ip-match.md](decisions/0007-lan-detection-via-public-ip-match.md) — Return LAN stream URLs to tunnel clients sharing the server's public IP.
-- [decisions/0008-bundled-mpv-player-over-json-ipc.md](decisions/0008-bundled-mpv-player-over-json-ipc.md) — Drive mpv over its JSON IPC socket for host playback; no Electron, one implementation for macOS and Windows.
-- [decisions/0009-native-only-deployment.md](decisions/0009-native-only-deployment.md) — Remove Docker; the native app is the only deployment mode, and Windows gets a minimal launcher rather than a supervisor rewrite.
-- [decisions/0010-opt-in-realtime-transcoding.md](decisions/0010-opt-in-realtime-transcoding.md) — Proposed: opt-in tiered stream repair (remux, audio fix, hardware video transcode) via vendored ffmpeg, gated by the probe verdict.
-- [decisions/0011-mdns-lan-discovery.md](decisions/0011-mdns-lan-discovery.md) — LAN discovery via a dependency-free mDNS responder in the add-on; external rendezvous rejected.
-- [decisions/0012-vercel-pointer-server.md](decisions/0012-vercel-pointer-server.md) — Permanent manifest URL via a self-controlled Vercel pointer server with strictly manual pushes.
-- [decisions/0013-multi-tenant-pointer-server.md](decisions/0013-multi-tenant-pointer-server.md) — Multi-tenant pointer server keyed by token hash with claim-on-first-push auth, Upstash/Blob storage, and open-redirect hardening.
-- [decisions/0014-run-typescript-source-directly.md](decisions/0014-run-typescript-source-directly.md) — Run `addon/src` directly via Node type stripping: `.ts` import specifiers, erasable-only syntax, `--dev` launcher flag; `tsx` rejected.
-- [decisions/0015-keep-json-stores-sqlite-deferred.md](decisions/0015-keep-json-stores-sqlite-deferred.md) — Keep atomic JSON stores; SQLite (`node:sqlite`) deferred with explicit revisit criteria and the inspection-cache split as the first remedy.
-
-- [decisions/0016-opt-in-curated-torrent-search.md](decisions/0016-opt-in-curated-torrent-search.md) — Approved opt-in open-film search in Add Media, reviewed source pins, bounded torrent parsing, and retry-safe JSON import.
-
-- [decisions/0017-local-search-bridges-and-series-import.md](decisions/0017-local-search-bridges-and-series-import.md) — Optional loopback Prowlarr/Jackett adapters, explicit public indexers, and collision-reviewed series source imports.
-
-- [decisions/0018-bundled-direct-search-providers.md](decisions/0018-bundled-direct-search-providers.md) — Approved bundled YTS/Nyaa/1337x adapters, bounded HTML parsing, and no external search-service requirement.
-
-- [decisions/0019-post-save-source-checks.md](decisions/0019-post-save-source-checks.md) — Opt-out bounded checks after saving, persistent progress, source-revision guards, and honest playback readiness.
-
-- [decisions/0020-manual-import-chrome-companion.md](decisions/0020-manual-import-chrome-companion.md) — Retire discovery and use a least-privilege Chrome companion with a same-computer macOS native bridge.
-- [decisions/0021-native-magnet-link-handler.md](decisions/0021-native-magnet-link-handler.md) — Opt-in macOS magnet handling with private, expiring handoff tickets and explicit Add Media review.
-- [decisions/0022-windows-native-desktop-release.md](decisions/0022-windows-native-desktop-release.md) — Windows 11 tray, self-contained installer, native integration parity and preserved private/manual behavior.
-- [decisions/0023-file-scoped-readiness-evidence.md](decisions/0023-file-scoped-readiness-evidence.md) — Separate metadata, sampled media, and player support; file-scoped facts, shared checks and explicit longer retries.
-- [decisions/0024-immutable-pointer-blob-versions.md](decisions/0024-immutable-pointer-blob-versions.md) — Pointer Blob records become immutable versions located via `list`, because the public Blob CDN served in-place overwrites stale for days.
-- [decisions/0025-watched-state-from-observed-reads.md](decisions/0025-watched-state-from-observed-reads.md) — Per-file watched state derived from observed reads (`/cache` reader position, `Range` starts, browser player) stored in `library.json`; TorrServer `/viewed` mirrored best-effort.
-- [decisions/0026-opt-in-cinemeta-metadata-enrichment.md](decisions/0026-opt-in-cinemeta-metadata-enrichment.md) — Opt-in pull-and-store metadata from Stremio's Cinemeta for movies and series: title/year only leaves the machine, viewer edits win, artwork cached locally, ids stay `hoshi:`.
-- [decisions/0027-advertise-only-private-picker-catalogs.md](decisions/0027-advertise-only-private-picker-catalogs.md) — The manifest advertises only Private Movies and Private Series; Continue Watching and Board rows stay as unadvertised handlers because Nuvio has its own unified Continue Watching.
+- [decisions/decision-log.md](decisions/decision-log.md) — Living decision log: entries 0001–0027 as short, editable decisions grouped by area (platform, playback, security and remote access, library, adding media and search, retired). Replaced the individual ADR files on 2026-09-30; the log explains how to restore them from git.
 
 ## Guides
 
@@ -117,7 +86,7 @@
 - [changelog/series-meta-from-cache.md](changelog/series-meta-from-cache.md) — Series meta answers from the inspection cache without waiting on TorrServer, source edits refill the cache in the background, one shared inspection per entry revision, and no `defaultVideoId` on series meta (it hid the episode list).
 - [changelog/torrserver-settings-ui.md](changelog/torrserver-settings-ui.md) — **TorrServer tuning** on System → Status: six live knobs, confirm-before-apply, streaming guard, reset to shipped defaults, upload-cap suggestion (Phase 10 of the expansion plan).
 - [changelog/episode-metadata-and-thumbnails.md](changelog/episode-metadata-and-thumbnails.md) — **Episodes tab**: readable episode titles, overview and air-date overrides, frame thumbnails for on-disk episodes served from `/thumbnails/…`, `hasScheduledVideos` for ongoing series (Phase 13 of the expansion plan).
-- [changelog/board-rows-and-identity.md](changelog/board-rows-and-identity.md) — **Board rows**: Recently added, Unwatched and up to 8 pinned-tag catalogs per type, manifest `logo`/`contactEmail` via `identity.json`, embedded `videos[].streams` on cached series meta (Phase 15 of the expansion plan). Board rows are no longer advertised as of 2026-09-30; the manifest serves only Private Movies and Private Series ([ADR 0027](decisions/0027-advertise-only-private-picker-catalogs.md)).
+- [changelog/board-rows-and-identity.md](changelog/board-rows-and-identity.md) — **Board rows**: Recently added, Unwatched and up to 8 pinned-tag catalogs per type, manifest `logo`/`contactEmail` via `identity.json`, embedded `videos[].streams` on cached series meta (Phase 15 of the expansion plan). Board rows are no longer advertised as of 2026-09-30; the manifest serves only Private Movies and Private Series ([decision 0027](decisions/decision-log.md)).
 - [changelog/cinemeta-metadata-enrichment.md](changelog/cinemeta-metadata-enrichment.md) — **Title details from Cinemeta** (opt-in, ADR 0026): automatic description/artwork/year/rating/people/genres/episode names for new movies and series, pick list when ambiguous, viewer edits always win, artwork cached under `artwork/` and served from `/artwork/…`, per-entry Match card, library backfill. 2026-09-27 fixes: series fetches no longer rejected on `director: null`, Fetch details works unmatched, type changes re-run the lookup.
 - [changelog/diagnostics-bundle.md](changelog/diagnostics-bundle.md) — `GET /api/diagnostics` redacted support bundle (release, OS, TorrServer settings, speed tests, telemetry, pointer, disk, library counts, last 300 log lines) and **Copy diagnostics** on System → Status (Phase 9 of the expansion plan).
 - [changelog/disk-copy-policies.md](changelog/disk-copy-policies.md) — Per-series rolling window on disk copies: `keepAhead` archives the next episodes after the one just played, `evictWatched` removes watched copies once the window is on disk; `PUT …/disk-copy/policy`, Storage-tab controls (Phase 8 of the expansion plan).

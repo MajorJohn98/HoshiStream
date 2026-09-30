@@ -2,7 +2,7 @@
 
 Date: 2026-08-23
 Status: draft
-Related: [ADR 0010](../decisions/0010-opt-in-realtime-transcoding.md),
+Related: [ADR 0010](../decisions/decision-log.md),
 [2026-08-23-realtime-transcoding-plan.md](2026-08-23-realtime-transcoding-plan.md)
 
 ## Goal

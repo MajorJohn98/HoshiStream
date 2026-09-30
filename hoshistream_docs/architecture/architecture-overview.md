@@ -68,7 +68,7 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 
 ## Deployment
 
-One mode: the native app. Containers were removed in 0.7.0 ([ADR 0009](../decisions/0009-native-only-deployment.md)).
+One mode: the native app. Containers were removed in 0.7.0 ([ADR 0009](../decisions/decision-log.md)).
 
 Two processes are always supervised together:
 
@@ -105,7 +105,7 @@ Two processes are always supervised together:
 
 No in-app torrent discovery, index scraping, challenge bypass, database, graphical
 dashboard beyond the token-gated management page, telemetry, or public exposure.
-[ADR 0020](../decisions/0020-manual-import-chrome-companion.md) replaces the earlier
+[ADR 0020](../decisions/decision-log.md) replaces the earlier
 search-provider direction with manual imports and a Chrome capture/review
 companion. Transcoding remains opt-in repair only
-([ADR 0010](../decisions/0010-opt-in-realtime-transcoding.md)).
+([ADR 0010](../decisions/decision-log.md)).

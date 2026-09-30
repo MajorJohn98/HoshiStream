@@ -294,8 +294,8 @@ with regexes.
 
 Phases are independently approved/shipped. The owner approved phases 0-1,
 including `bencode` and its transitive dependency, then approved the remaining
-phases 2-4; see [ADR 0016](../decisions/0016-opt-in-curated-torrent-search.md)
-and [ADR 0017](../decisions/0017-local-search-bridges-and-series-import.md).
+phases 2-4; see [ADR 0016](../decisions/decision-log.md)
+and [ADR 0017](../decisions/decision-log.md).
 The first release can create Movie or Series entries, but does not attach a
 search result to an existing series. That later flow must explain that the most
 recent source wins overlapping episodes, append atomically without lost updates,

@@ -2,7 +2,7 @@
 
 Implements the
 [Cinemeta metadata enrichment plan](../plans/2026-09-13-cinemeta-metadata-enrichment-plan.md)
-under [ADR 0026](../decisions/0026-opt-in-cinemeta-metadata-enrichment.md):
+under [ADR 0026](../decisions/decision-log.md):
 when the owner turns it on, a newly added movie or series gets its details
 from Stremio's public Cinemeta add-on. Off by default; nothing leaves the
 computer until the toggle is switched.

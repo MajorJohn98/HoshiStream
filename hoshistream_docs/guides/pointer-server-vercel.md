@@ -2,8 +2,8 @@
 
 The pointer server gives HoshiStream a manifest URL that never changes, so
 you enter it into Stremio/Nuvio clients exactly once. Design and trade-offs:
-[ADR 0012](../decisions/0012-vercel-pointer-server.md) and
-[ADR 0013](../decisions/0013-multi-tenant-pointer-server.md) (multi-tenant).
+[ADR 0012](../decisions/decision-log.md) and
+[ADR 0013](../decisions/decision-log.md) (multi-tenant).
 
 What it does:
 
@@ -63,7 +63,7 @@ Pick one:
    connect it (`BLOB_READ_WRITE_TOKEN`). Expiry is enforced at read time and
    rate limiting is best-effort per instance. Records are stored as immutable
    versions and located with the `list` API
-   ([ADR 0024](../decisions/0024-immutable-pointer-blob-versions.md)); the
+   ([ADR 0024](../decisions/decision-log.md)); the
    public store's CDN cannot be trusted to serve an overwritten blob promptly,
    so never point an older deployment at the same store expecting fresh reads.
 

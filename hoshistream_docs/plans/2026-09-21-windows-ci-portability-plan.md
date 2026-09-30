@@ -8,7 +8,7 @@ green; smoke/installer steps split into a follow-up issue)
 `Native desktop validation / shared (windows-2025)` has failed on every run
 since the job was added (2026-09-07). The last run before this work reported
 **25 failed tests across 10 files**; macOS passes. Windows is a planned native
-target ([ADR 0009](../decisions/0009-native-only-deployment.md)), so the job
+target ([ADR 0009](../decisions/decision-log.md)), so the job
 must be green rather than ignored.
 
 ## Root causes

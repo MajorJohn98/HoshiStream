@@ -2,7 +2,7 @@
 
 > **Update (2026-09-30):** Board rows are no longer advertised. The served
 > manifest lists only Private Movies and Private Series
-> ([ADR 0027](../decisions/0027-advertise-only-private-picker-catalogs.md)).
+> ([ADR 0027](../decisions/decision-log.md)).
 > The `recently-added`, `unwatched`, `tag-<key>` and `continue-watching`
 > catalog handlers and the pin API stay dormant so clients holding an older
 > manifest still get responses; pinning a tag no longer adds a row. Add-on

@@ -3,7 +3,7 @@
 Date: 2026-09-13 · Phase 5 of the
 [playback, pointer, library and operations expansion plan](../plans/2026-09-12-playback-pointer-library-expansion-plan.md)
 · plan: [2026-09-13-watched-state-plan.md](../plans/2026-09-13-watched-state-plan.md)
-· decision: [ADR 0025](../decisions/0025-watched-state-from-observed-reads.md).
+· decision: [ADR 0025](../decisions/decision-log.md).
 
 ## What changed
 
@@ -35,7 +35,7 @@ Date: 2026-09-13 · Phase 5 of the
   otherwise ignored — the library is authoritative.
 - **Continue Watching catalogs.** _(No longer advertised since 2026-09-30 —
   Nuvio has its own unified row; see
-  [ADR 0027](../decisions/0027-advertise-only-private-picker-catalogs.md). The
+  [ADR 0027](../decisions/decision-log.md). The
   handler below is unchanged.)_ The manifest adds a `continue-watching`
   catalog for both `movie` and `series` (extra: `skip` only). Rows list
   entries that have watch state and something left to resume, newest activity

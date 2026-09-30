@@ -50,7 +50,7 @@ The native supervisor keeps signal handlers installed during shutdown so repeate
 terminal/watch signals cannot bypass asynchronous child cleanup.
 
 See [the hardening plan](../plans/2026-09-06-search-add-hardening.md) and
-[ADR 0019](../decisions/0019-post-save-source-checks.md).
+[ADR 0019](../decisions/decision-log.md).
 
 ## Readiness follow-up
 
@@ -68,4 +68,4 @@ Management and Chrome companion labels expose the observed evidence. Browser
 startup no longer changes formats merely because metadata is slow, and autoplay,
 buffering, actual playback, and fatal player errors are distinct.
 
-See [ADR 0023](../decisions/0023-file-scoped-readiness-evidence.md).
+See [ADR 0023](../decisions/decision-log.md).

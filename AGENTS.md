@@ -4,7 +4,7 @@ Instructions for AI coding agents working in this repository.
 
 ## Project Overview
 
-HoshiStream is a private, local-first Stremio-compatible add-on for Nuvio: a Node 22 + TypeScript server that keeps a personal JSON library, asks a pinned TorrServer to inspect authorized torrents, and returns direct-play URLs. It runs as a native app — a macOS menu-bar supervisor today, Windows next. There are no containers ([ADR 0009](hoshistream_docs/decisions/0009-native-only-deployment.md)).
+HoshiStream is a private, local-first Stremio-compatible add-on for Nuvio: a Node 22 + TypeScript server that keeps a personal JSON library, asks a pinned TorrServer to inspect authorized torrents, and returns direct-play URLs. It runs as a native app — a macOS menu-bar supervisor today, Windows next. There are no containers ([ADR 0009](hoshistream_docs/decisions/decision-log.md)).
 
 ## Working Agreement (required)
 
@@ -31,7 +31,7 @@ Structure the folder with these subfolders:
 hoshistream_docs/
 ├── index.md          # Lists every doc with a one-line description
 ├── architecture/     # System design, diagrams, data models
-├── decisions/        # ADRs — what was decided and why
+├── decisions/        # decision-log.md — what was decided and why
 ├── guides/           # Setup, how-tos, onboarding
 ├── api/              # API and interface references
 ├── plans/            # Feature plans, task breakdowns, roadmaps
@@ -44,7 +44,7 @@ Rules:
 3. Use clear, kebab-case file names (e.g. `architecture-overview.md`, `api-reference.md`).
 4. Keep `index.md` up to date whenever you add, move, or remove a doc.
 5. Update existing docs instead of creating duplicates.
-6. Name decision records `NNNN-short-title.md` (e.g. `0003-switch-to-postgres.md`) and never edit an accepted ADR — supersede it with a new one.
+6. Record decisions as short numbered entries in `decisions/decision-log.md`, not as separate ADR files. When a decision changes, edit its entry in place and add a dated `Changed:` line with the reason.
 7. Date plan documents (e.g. `2026-08-10-auth-refactor-plan.md`) so stale plans are easy to identify.
 
 ## Setup
@@ -86,7 +86,7 @@ The optional TorrServer integration test is opt-in: `TORRSERVER_TEST_URL=http://
 - **Read before writing.** Inspect existing code and follow its patterns rather than introducing new ones.
 - **Prefer editing over rewriting.** Make surgical changes; don't regenerate whole files.
 - **Leave the codebase consistent.** Update related docs, tests, and comments affected by your change.
-- **Document as you go.** Record significant decisions in `decisions/` and summarize completed work in `changelog/`.
+- **Document as you go.** Record significant decisions in `decisions/decision-log.md` and summarize completed work in `changelog/`.
 - **Ask when uncertain.** If requirements are ambiguous or a change is risky/destructive, stop and ask instead of guessing.
 
 ## Git Conventions

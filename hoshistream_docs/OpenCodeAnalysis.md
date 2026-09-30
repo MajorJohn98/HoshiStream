@@ -28,7 +28,7 @@ HoshiStream is three cooperating processes plus one external service:
 - **`supervisor/macos/`** — ~470 lines of AppKit Swift: a menu-bar accessory app (`LSUIElement`) that launches and restarts the Node stack, exposes a Finder file-picker socket, keeps the Mac awake during playback, and offers Start-at-Login.
 - **`scripts/native-server.mjs`** — the launch shim that turns `.env` + CLI flags into the exact environment the add-on expects, starts TorrServer, then boots the compiled add-on in-process.
 - **`packaging/`** — checksum-pinned fetchers and the `.app` bundle builder that vendors Node and TorrServer binaries.
-- **No containers anywhere** ([ADR 0009](decisions/0009-native-only-deployment.md)); `config-schema.ts` even warns loudly if a URL still points at Docker-era hostnames (`addon`, `torrserver`).
+- **No containers anywhere** ([ADR 0009](decisions/decision-log.md)); `config-schema.ts` even warns loudly if a URL still points at Docker-era hostnames (`addon`, `torrserver`).
 
 The add-on never proxies video bytes and never transcodes: torrent playback is a rewritten `http://<mac>:8090/play/<hash>/<id>` URL handed straight to the player; local playback is either the same kind of direct URL (`/local/…`) served by the add-on with byte ranges, or a raw filesystem path handed to mpv.
 
@@ -63,7 +63,7 @@ All boundaries are Zod-validated. A **library entry** requires exactly one sourc
 - `magnetUri` (`magnet:?…`) or `torrentFilePath` (`*.torrent`) — torrent-backed,
 - `localFilePath` / `localFolderPath` (absolute) — locally hosted,
 - plus optional `poster`, `background`, `description`, `preferredFileIndex` (TorrServer 1-based file ID), `fileOverrides` (per-file include/season/episode), `managedMedia` (safe-to-delete-on-unlink flag),
-- and server-managed state the API strips from client input: `inspectionCache` (hash + selected files + timestamp, persisted per [ADR 0006](decisions/0006-inspection-cache-on-entries.md)), `directPlay` assessment, `playback` resume position, `createdAt`/`updatedAt`.
+- and server-managed state the API strips from client input: `inspectionCache` (hash + selected files + timestamp, persisted per [ADR 0006](decisions/decision-log.md)), `directPlay` assessment, `playback` resume position, `createdAt`/`updatedAt`.
 
 Derived schemas: `createEntrySchema` (client POST), `patchEntrySchema` (partial, allows nulling description/poster/background).
 
@@ -83,7 +83,7 @@ An in-memory-consistent, crash-safe JSON store — deliberately not a database.
 
 ## 5. TorrServer adapter (`torrserver-client.ts`)
 
-A small typed client pinned to the Swagger-verified subset of TorrServer MatriX.141 ([ADR 0001](decisions/0001-torrserver-matrix-141-pinning.md)):
+A small typed client pinned to the Swagger-verified subset of TorrServer MatriX.141 ([ADR 0001](decisions/decision-log.md)):
 
 - `GET /echo` — health/version string.
 - `POST /torrents` with action objects: `add` (magnet, `save_to_db:false`), `get`, `list`, `rem`.

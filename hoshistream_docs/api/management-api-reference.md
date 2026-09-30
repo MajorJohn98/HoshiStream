@@ -34,7 +34,7 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `DELETE /api/library/{id}` | Remove entry (also deletes managed-upload media) → `204` |
 | `PUT /api/library/{id}/playback` | Record the resume point from the in-browser player: `{positionSeconds, fileId?}` → `200` playback state, stamped `source: "browser"`. Host mpv playback writes the same field with `source: "host"`; external Stremio clients never write it (they only touch `lastStreamedAt`) |
 | `DELETE /api/library/{id}/playback` | Clear the resume point (a finished movie) → `204` |
-| `PUT /api/library/{id}/watch` | Set per-file watch state: `{fileId, state: "started" \| "watched"}` → `200` the entry's `watchStates`. `watched` is sticky; used by the Watched toggle and the browser player. Most marks arrive without this call, from observed reads (see [ADR 0025](../decisions/0025-watched-state-from-observed-reads.md)) |
+| `PUT /api/library/{id}/watch` | Set per-file watch state: `{fileId, state: "started" \| "watched"}` → `200` the entry's `watchStates`. `watched` is sticky; used by the Watched toggle and the browser player. Most marks arrive without this call, from observed reads (see [ADR 0025](../decisions/decision-log.md)) |
 | `DELETE /api/library/{id}/watch/{fileId}` | Clear one file's watch state (and TorrServer's viewed mark) → `204` |
 | `POST /api/library/{id}/inspect` | Register with TorrServer, poll metadata, return files and selection |
 | `GET /api/library/{id}/episodes` | Series only (`400` for movies). One row per selected file with a season/episode: `{season, episode, fileId, path, defaultTitle, title?, overview?, released?, onDisk, thumbnail}` — `defaultTitle` is the cleaned filename, `title`/`overview`/`released` the viewer's overrides, `onDisk` whether the media is a local file or a completed disk copy on an online volume, `thumbnail` the frame URL or `null`. Also `eligible` (on-disk count), `inspected` (`false` with an empty list for a torrent series that has never been inspected) and `thumbnails` (generation status or `null` when the service is off) |
@@ -291,7 +291,7 @@ Available only when `TRANSCODE_ENABLED=true`; the UI's "Stream Repair" view is b
 | `PUT /api/torrserver/settings` | Body: any non-empty subset of the six tunables as whole numbers (rate limits ≥ 0, connections ≥ 1, cache ≥ 32 MiB, read-ahead 5–100, timeout ≥ 1). Re-reads TorrServer's full settings struct, merges the edits and applies it with `POST /settings set`, which TorrServer answers by persisting `settings.json`, dropping every torrent and reconnecting. 409 `streaming_active` while any stream was active in the last five minutes; 400 `invalid_body`; 503 `torrserver_unavailable`. Returns `{current, shipped}`. Logs `torrserver_settings_updated` with key names only |
 | `GET /api/identity` | `{contactEmail}` — the address advertised as the manifest's `contactEmail` (empty by default) |
 | `PUT /api/identity` | Body `{contactEmail}`: a valid address or `""` to clear; returns the stored identity. 400 `invalid_body` |
-| `GET\|PUT /api/metadata/settings` | Cinemeta enrichment ([ADR 0026](../decisions/0026-opt-in-cinemeta-metadata-enrichment.md)), `no-store`: `{enabled, autoOnAdd}` (defaults `false`, `true`). `PUT` takes any subset and returns the result. Off means no request ever leaves for `strem.io` |
+| `GET\|PUT /api/metadata/settings` | Cinemeta enrichment ([ADR 0026](../decisions/decision-log.md)), `no-store`: `{enabled, autoOnAdd}` (defaults `false`, `true`). `PUT` takes any subset and returns the result. Off means no request ever leaves for `strem.io` |
 | `GET\|POST /api/metadata/backfill` | `POST` starts a one-at-a-time fetch for every entry without a match (`202`; `409 metadata-busy` while running, `409 metadata-disabled` when off); `GET` reports `{running, done, total, matched, needsReview, failed, startedAt?, finishedAt?}` |
 | `POST /api/torrserver/settings/reset` | Applies the six shipped values from `packaging/torrserver-settings.json` (not TorrServer's own `def` defaults). Same guards and response as `PUT` |
 | `GET\|POST\|DELETE /api/analysis` | Library-wide bounded analysis through the shared check coordinator. `POST {force?}` checks entries without a current-revision check attempt (`force` explicitly rechecks all, including failed/inconclusive attempts; `409` while active/draining); `DELETE` cancels active work as well as scheduling; `GET` reports `{running, total, done, current, failed[], startedAt, finishedAt, cancelled}` |
@@ -350,7 +350,7 @@ tombstone when the drive is offline.
 ## Host playback
 
 These endpoints play a library entry on the machine running HoshiStream, so no add-on
-client is needed to watch locally. See [ADR 0008](../decisions/0008-bundled-mpv-player-over-json-ipc.md).
+client is needed to watch locally. See [ADR 0008](../decisions/decision-log.md).
 
 `POST /api/player/play` takes `{"entryId": "hoshi:…", "fileId": 3}`; `fileId` is optional
 and defaults to the first selected file. It returns:

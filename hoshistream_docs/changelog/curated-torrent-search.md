@@ -74,4 +74,4 @@ extend film licensing to arbitrary separately distributed soundtrack releases.
 To update a pin, review primary rights evidence, Archive inventory, the exact
 torrent bytes and film path/size, and verify canonical metadata identity again.
 Never automatically accept changed bytes or expand the catalog from uploader
-license tags alone. See [ADR 0016](../decisions/0016-opt-in-curated-torrent-search.md).
+license tags alone. See [ADR 0016](../decisions/decision-log.md).

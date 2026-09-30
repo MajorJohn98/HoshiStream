@@ -28,4 +28,4 @@ URLs; saving remains a separate confirmation.
 
 The Chrome Web Store listing is not published by this implementation; local
 testing uses Load unpacked. See [the companion guide](../guides/chrome-companion.md)
-and [ADR 0020](../decisions/0020-manual-import-chrome-companion.md).
+and [ADR 0020](../decisions/decision-log.md).

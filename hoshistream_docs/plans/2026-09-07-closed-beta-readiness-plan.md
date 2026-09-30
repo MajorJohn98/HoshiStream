@@ -324,7 +324,7 @@ with 405 to an unauthenticated GET; no production registration was attempted.
 | `ACCESS_TOKEN` | Existing per-install private add-on credential; preserve it and never reuse the developer's token for recipients. |
 | Vercel deployment credentials, Redis/Blob credentials, legacy deployment-wide `PUSH_SECRET` | Server/operator configuration, not installer assets, browser settings, source code, logs, or shared client credentials. |
 
-- Follow [ADR 0013](../decisions/0013-multi-tenant-pointer-server.md):
+- Follow [ADR 0013](../decisions/decision-log.md):
   per-install authentication and claim-on-first-push, not a shared client secret.
 - Make endpoint setup discoverable without requiring users to know which
   hidden state file to edit. Preserve self-hosted/user-configured endpoints.
@@ -542,5 +542,5 @@ scope explicitly, or hold that part of the rollout.
 - [Privacy and network boundary](../guides/privacy-and-network.md)
 - [Candidate acceptance](../guides/closed-beta-acceptance.md)
 - [Private cohort support](../guides/closed-beta-support.md)
-- [Multi-tenant pointer decision](../decisions/0013-multi-tenant-pointer-server.md)
-- [File-scoped readiness decision](../decisions/0023-file-scoped-readiness-evidence.md)
+- [Multi-tenant pointer decision](../decisions/decision-log.md)
+- [File-scoped readiness decision](../decisions/decision-log.md)
