@@ -266,15 +266,10 @@ export const handlePointer: RouteHandler = async (
         response,
         200,
         await pointer.push(
-          manifestForLibrary(
-            addon.manifest,
-            (await tags?.list()) ?? [],
-            (await tags?.pinned()) ?? [],
-            {
-              addonUrl: publicUrls.addonUrl,
-              contactEmail: (await identity?.read())?.contactEmail,
-            },
-          ),
+          manifestForLibrary(addon.manifest, (await tags?.list()) ?? [], {
+            addonUrl: publicUrls.addonUrl,
+            contactEmail: (await identity?.read())?.contactEmail,
+          }),
         ),
       );
     }

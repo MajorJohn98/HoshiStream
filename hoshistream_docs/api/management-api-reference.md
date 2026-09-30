@@ -197,7 +197,7 @@ Genre-style labels kept in a registry (`tags.json`, seeded with the TMDB/IMDb ge
 |---|---|
 | `GET /api/tags` | `{tags: [{name, count, pinned}], pinned: string[], pinnedLimit: 8}` — every registered tag with how many entries carry it and whether it is pinned to the Board; `pinned` lists pinned names in pin order |
 | `POST /api/tags` | `{name}` → `201 {name}`; `400` if a tag with that name (any case) exists |
-| `PATCH /api/tags/{name}` | `{name}` → rename; returns `{name, entries}` with the number of entries updated. `{pinned: boolean}` → pin or unpin the tag as a Board catalog (`tag-<key>`); returns `{name, pinned, pinnedTags}`; `400` when 8 tags are already pinned |
+| `PATCH /api/tags/{name}` | `{name}` → rename; returns `{name, entries}` with the number of entries updated. `{pinned: boolean}` → pin or unpin the tag (stored only; since 2026-09-30 pins no longer add a Board catalog); returns `{name, pinned, pinnedTags}`; `400` when 8 tags are already pinned |
 | `DELETE /api/tags/{name}` | Remove the tag and strip it from entries → `{name, entries}` |
 
 ### Entry fields (create)
