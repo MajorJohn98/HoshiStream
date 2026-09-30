@@ -8,7 +8,7 @@ import { AnalysisSlot } from "../src/analysis-slot.ts";
 import { ImportError } from "../src/imports/errors.ts";
 import { magnetHash } from "../src/imports/source-identity.ts";
 import type { TorrentFile } from "../src/media-file-selection.ts";
-import type { probeMedia } from "../src/media-probe.ts";
+import { MediaProbeError, type probeMedia } from "../src/media-probe.ts";
 import {
   StreamTests,
   type StreamTestDependencies,
@@ -89,6 +89,32 @@ function fakeClock() {
 
 type Clock = ReturnType<typeof fakeClock>;
 type Swarm = { rateBps: number; peers: number; seeders: number };
+
+/**
+ * Takes `ms` of virtual time, as ffprobe does on a slow swarm, and honours
+ * its timeout and signal the way probeMedia does.
+ */
+async function probeDelay(
+  clock: Clock,
+  ms: number,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+) {
+  const start = clock.now();
+  const { signal, timeoutMs } = options;
+  while (clock.now() - start < ms) {
+    if (signal?.aborted)
+      throw new MediaProbeError("Playback check was cancelled", "cancelled");
+    if (timeoutMs !== undefined && clock.now() - start >= timeoutMs)
+      throw new MediaProbeError(
+        "Timed out reading the video sample",
+        "probe_timeout",
+      );
+    await new Promise<void>((resolve) => {
+      signal?.addEventListener("abort", () => resolve(), { once: true });
+      void clock.tick().then(resolve);
+    });
+  }
+}
 
 type TorrOptions = {
   files?: TorrentFile[];
@@ -235,6 +261,8 @@ type HarnessOptions = {
   drafts?: StreamTestDrafts;
   limits?: Partial<StreamTestLimits>;
   bitrateMbps?: number;
+  /** Virtual time the bitrate probe needs. */
+  probeMs?: number;
   lineMbps?: number;
   diskCopyActive?: () => boolean;
   managedRoot?: string;
@@ -246,10 +274,13 @@ function harness(options: HarnessOptions = {}) {
   const slot = options.slot ?? new AnalysisSlot();
   const entries: LibraryEntry[] = [];
   let lastStream = 0;
-  const probe = vi.fn(async () => ({
-    bitrateMbps: options.bitrateMbps ?? 2,
-    durationSeconds: 3600,
-  }));
+  const probe = vi.fn(async (...args: Parameters<typeof probeMedia>) => {
+    await probeDelay(clock, options.probeMs ?? 0, args[2]);
+    return {
+      bitrateMbps: options.bitrateMbps ?? 2,
+      durationSeconds: 3600,
+    };
+  });
   const fetch = fakeFetch(clock, torr, options.fetch);
   const service = new StreamTests({
     torrServer:
@@ -380,7 +411,7 @@ describe("stream tests", () => {
     expect(h.probe).toHaveBeenCalledWith(
       `http://torrserver.test/play/${HASH}/1`,
       { id: 1, length: MOVIE.length },
-      expect.objectContaining({ bounded: true, timeoutMs: 20_000 }),
+      expect.objectContaining({ bounded: true, timeoutMs: 90_000 }),
     );
     // Kept registered until the result expires, so playing it starts warm.
     expect(h.torr.torrServer.remove).not.toHaveBeenCalled();
@@ -524,8 +555,31 @@ describe("stream tests", () => {
     expect(h.probe).toHaveBeenCalledWith(
       expect.any(String),
       expect.anything(),
-      expect.objectContaining({ timeoutMs: 60_000 }),
+      expect.objectContaining({ timeoutMs: 180_000 }),
     );
+  });
+
+  it("gives a slow bitrate probe the rest of the run", async () => {
+    // A trailing MP4 index on a slow swarm can take a minute to arrive.
+    const slow = await run(harness({ probeMs: 60_000 }));
+    expect(slow).toMatchObject({
+      bitrate: { mbps: 2 },
+      verdict: { level: "smooth" },
+    });
+
+    const slower = harness({ probeMs: 120_000 });
+    const basic = await run(slower);
+    expect(basic).not.toHaveProperty("bitrate");
+    expect(basic.verdict).toMatchObject({
+      level: "inconclusive",
+      reason: "unknown_bitrate",
+      suggestTestLonger: true,
+    });
+    const extended = await run(slower, { mode: "extended" });
+    expect(extended).toMatchObject({
+      bitrate: { mbps: 2 },
+      verdict: { level: "smooth" },
+    });
   });
 
   it("marks the torrent as a test while it runs and flags a shared line", async () => {
