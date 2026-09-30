@@ -1,12 +1,12 @@
 # Board rows, pinned tags and add-on identity
 
 > **Update (2026-09-30):** Board rows are no longer advertised. The served
-> manifest lists only four catalogs — Private Movies, Continue Watching
-> (movie), Private Series, Continue Watching (series). The `recently-added`,
-> `unwatched` and `tag-<key>` catalog handlers and the pin API stay dormant so
-> clients holding an older manifest still get responses; pinning a tag no
-> longer adds a row. Add-on identity and embedded episode streams are
-> unchanged.
+> manifest lists only Private Movies and Private Series
+> ([ADR 0027](../decisions/0027-advertise-only-private-picker-catalogs.md)).
+> The `recently-added`, `unwatched`, `tag-<key>` and `continue-watching`
+> catalog handlers and the pin API stay dormant so clients holding an older
+> manifest still get responses; pinning a tag no longer adds a row. Add-on
+> identity and embedded episode streams are unchanged.
 
 Phase 15 of the [expansion plan](../plans/2026-09-12-playback-pointer-library-expansion-plan.md);
 detailed in the [settings and Board rows plan](../plans/2026-09-13-torrserver-settings-and-board-rows-plan.md).

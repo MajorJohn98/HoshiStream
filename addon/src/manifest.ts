@@ -33,20 +33,10 @@ export const manifest = {
         { name: "skip", isRequired: false },
       ],
     },
-    // Continue Watching rows (plans/2026-09-13-watched-state-plan.md). No
-    // search or genre: the row is short and ordered by recent activity.
-    {
-      type: "movie",
-      id: "continue-watching",
-      name: "Continue Watching",
-      extra: [{ name: "skip", isRequired: false }],
-    },
-    {
-      type: "series",
-      id: "continue-watching",
-      name: "Continue Watching",
-      extra: [{ name: "skip", isRequired: false }],
-    },
+    // Continue Watching (continue-watching) and the Board rows are not
+    // advertised: Nuvio shows its own unified Continue Watching row. Their
+    // catalog handlers stay so clients holding an older manifest still get a
+    // response.
   ],
 };
 
@@ -62,9 +52,7 @@ export const RECENTLY_ADDED_ID = "recently-added";
 export const UNWATCHED_ID = "unwatched";
 export const TAG_CATALOG_PREFIX = "tag-";
 
-// Board rows (Phase 15) are no longer advertised: the served manifest carries
-// only the picker and Continue Watching per type. The catalog handlers for
-// these ids stay so clients holding an older manifest still get a response.
+// Board row ids (Phase 15). Not advertised; see the note on the base catalogs.
 export interface ManifestIdentity {
   /** Absolute origin of this add-on as the client reached it. */
   addonUrl?: string;
@@ -97,17 +85,9 @@ export function manifestForLibrary<T extends Manifest>(
   identity: ManifestIdentity = {},
 ): T & { logo?: string; contactEmail?: string } {
   const withGenres = manifestWithGenres(base, genres);
-  // Group rows per type (picker, then Continue Watching) to match the
-  // requested Board order. Fixtures may omit `types` or `catalogs`.
-  const baseCatalogs = withGenres.catalogs ?? [];
-  const types = base.types ?? [...new Set(baseCatalogs.map((c) => c.type))];
-  const catalogs = types.flatMap((type) =>
-    baseCatalogs.filter((catalog) => catalog.type === type),
-  );
   const contactEmail = identity.contactEmail?.trim();
   return {
     ...withGenres,
-    catalogs,
     ...(identity.addonUrl
       ? { logo: `${identity.addonUrl}/assets/hoshistream-logo.png` }
       : {}),

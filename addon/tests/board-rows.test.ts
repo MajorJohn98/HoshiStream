@@ -30,7 +30,7 @@ afterEach(async () => {
 });
 
 describe("manifestForLibrary", () => {
-  it("serves only the picker and Continue Watching per type, plus identity", () => {
+  it("serves only the private picker catalogs, plus identity", () => {
     const served = manifestForLibrary(manifest, ["Action", "Anime"], {
       addonUrl: "https://addon.test",
       contactEmail: " me@example.com ",
@@ -39,9 +39,9 @@ describe("manifestForLibrary", () => {
       served.catalogs
         .filter((catalog) => catalog.type === type)
         .map((catalog) => catalog.id);
-    expect(ids("movie")).toEqual(["private-movies", "continue-watching"]);
-    expect(ids("series")).toEqual(["private-series", "continue-watching"]);
-    expect(served.catalogs).toHaveLength(4);
+    expect(ids("movie")).toEqual(["private-movies"]);
+    expect(ids("series")).toEqual(["private-series"]);
+    expect(served.catalogs).toHaveLength(2);
     // Genre options still fill the picker catalogs.
     expect(
       served.catalogs[0].extra.find((extra) => extra.name === "genre"),
@@ -56,11 +56,9 @@ describe("manifestForLibrary", () => {
     expect(served).not.toHaveProperty("contactEmail");
     expect(served.catalogs.map((c) => c.id)).toEqual([
       "private-movies",
-      "continue-watching",
       "private-series",
-      "continue-watching",
     ]);
-    expect(manifest.catalogs).toHaveLength(4);
+    expect(manifest.catalogs).toHaveLength(2);
   });
 
   it("keys tag catalogs case-insensitively", () => {
@@ -316,9 +314,7 @@ describe("Board routes", () => {
     ).json();
     expect(served.catalogs.map((c: { id: string }) => c.id)).toEqual([
       "private-movies",
-      "continue-watching",
       "private-series",
-      "continue-watching",
     ]);
     // The logo points at the origin the client used, not the configured one.
     expect(served.logo).toBe(`${baseUrl}/assets/hoshistream-logo.png`);
