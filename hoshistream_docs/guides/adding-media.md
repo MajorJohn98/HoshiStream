@@ -91,8 +91,10 @@ media deletion rules.
 ### Add a captured source to an existing series
 
 In the companion, choose **Add to existing series**, select a torrent-backed
-series and optionally supply a season hint. Local-file/folder entries are not
-eligible. Filename season/episode numbers take precedence over the hint.
+series and optionally supply a season and episode hint. Local-file/folder
+entries are not eligible. Explicit `SxxEyy` filename numbering takes precedence
+over the hints; an episode hint makes a single-episode torrent exactly that
+episode.
 
 Request an episode preview explicitly. This can contact peers through TorrServer
 to inspect metadata, but does not yet add the source. If the existing series
@@ -112,25 +114,47 @@ managed files still referenced elsewhere.
 
 ### Tags
 
-Tags are genre-style labels (Action, Comedy, Anime, …). Toggle them on the Add Media dialog or the entry sheet's Overview form; type a new name and press Enter to create one on the spot. The Library's tag chips filter to titles carrying **every** selected tag, and Stremio shows the same tags as genres in its catalog picker. The **Tags** page (sidebar) lists every tag with its usage count and lets you add, rename, or delete tags — renames and deletions update all titles that carry the tag.
+Tags are genre-style labels (Action, Comedy, Anime, …). Toggle them on the Add Media dialog or the entry sheet's **Details** tab; type a new name and press Enter to create one on the spot. The Library's tag chips filter to titles carrying **every** selected tag, and Stremio shows the same tags as genres in its catalog picker. The **Tags** page (sidebar) lists every tag with its usage count and lets you add, rename, or delete tags — renames and deletions update all titles that carry the tag.
 
 ### Multi-torrent series
 
 One series entry can be backed by several torrents — season packs, single
 episodes, or a mix:
 
-- **Add Media** dialog (magnet source): use **+ Add another torrent** to attach
-  extra magnets, each with an optional season number for packs whose file
-  names carry no `SxxEyy` numbering.
-- **Detail → Source** tab: add or remove extra torrents on an existing
-  torrent-backed series; re-inspect afterwards to refresh the episode list.
-- Filename numbering always wins over the season hint. If two torrents claim
-  the same episode, the most recently added source wins — add a better pack
-  to replace episodes.
+- **Add Media** dialog: **Series numbering** sets an optional Season and
+  Episode for the main torrent or folder. With a magnet source, use **+ Add
+  another torrent** to attach extra magnets, each with its own Season and
+  Episode.
+- **Detail → Source** tab: **Torrents and numbering** lists the main torrent
+  and every extra; edit a torrent's Season/Episode and **Save**, remove
+  extras, add another, or **Make main** to swap an extra with the main
+  torrent (then remove the old main if you no longer want it). Watched state
+  and resume position stay with each episode through removals, reorders and
+  swaps; replacing the main magnet forgets only that torrent's episodes. The
+  episode list refreshes in the background.
+- A series always has a main torrent — it is simply the first slot. An
+  entry built entirely from single-episode torrents works: put one episode
+  in the main slot with its Season/Episode and the rest as additional
+  torrents.
+- Playing or opening any episode registers every torrent of the series with
+  TorrServer. The **Activity** page groups torrents into **Streaming**,
+  **Checking**, **Copying to disk** (only while archiving) and **Idle**
+  (collapsed by default); each group remembers whether you left it open.
+- How numbering works, per file: a manual repair wins, then explicit
+  `S02E05` / `S02 E05` / `2x05` / `Season 2 Episode 5` in the name, then the
+  torrent's hints, then numbers guessed from the name (`Episode 5`, `E05`,
+  `Show - 05`, `05 - Title`, and a `Season 2` / `S02` folder), then the
+  file's position in the torrent. Season hint → the season of files without
+  explicit numbering. Episode hint → a single-episode torrent becomes exactly
+  that episode, and a pack continuing a season (say episodes 13–24 named
+  `01`…`12`) is numbered upward from it. Guessed episode numbers are ignored
+  when they repeat inside one torrent.
+- If two torrents claim the same episode, the most recently added source
+  wins — add a better pack to replace episodes.
 
 ### Local files
 
-- With the native app: Finder pickers link files/folders in place — nothing is copied. The **Add Media** local/folder cards show a **Choose with Finder** button, and the detail **Source** tab offers **Relink in Finder** after moving/renaming. A folder becomes one series; `S01E02` / `1x02` filename patterns map episodes, otherwise files become season 1 in filename order.
+- With the native app: Finder pickers link files/folders in place — nothing is copied. The **Add Media** local/folder cards show a **Choose with Finder** button, and the detail **Source** tab offers **Relink in Finder** after moving/renaming. A folder becomes one series, numbered like a torrent (see *Multi-torrent series* above): explicit `S01E02` / `1x02` names first, then the entry's Season/Episode hints, then guessed numbers, otherwise season 1 in filename order.
 - Set `MEDIA_DIR` in `.env` to the folder containing your videos, restart the app, then choose from the **Local file** menu.
 - Browser upload always copies the file into managed storage; deleting a Finder-linked entry never deletes the source.
 
@@ -194,4 +218,4 @@ Average bitrate and the recommended speed with 50% headroom are estimates.
 download connection, not swarm throughput, client Wi-Fi, or remote upload
 capacity. They do not determine a playable/unplayable verdict.
 
-If automatic file selection is wrong, set `preferredFileIndex` to an inspected playable file ID. For series, `fileOverrides` can include/exclude files per source, and `episodeOverrides` pins season/episode numbers per file after everything else has been applied. In the management UI, open the entry's **Files** tab after inspecting: edit the season/episode boxes, use **Shift up / Shift down** to renumber a whole season at once, and save — rows that would land two files on one episode are highlighted and block saving, and gaps in a season are called out below the toolbar. **Restore automatic mapping** clears both kinds of override.
+If automatic file selection is wrong, set `preferredFileIndex` to an inspected playable file ID. For series, `fileOverrides` can include/exclude files per source, and `episodeOverrides` pins season/episode numbers per file after everything else has been applied. In the management UI, open the entry's **Source** tab and choose **Inspect to edit** in its **Files** section: edit the season/episode boxes, use **Shift up / Shift down** to renumber a whole season at once, and save — rows that would land two files on one episode are highlighted and block saving, and gaps in a season are called out below the toolbar. **Restore automatic mapping** clears both kinds of override.

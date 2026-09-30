@@ -11,13 +11,14 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Library, LibraryError } from "../src/library.ts";
+import { Library, LibraryError, remapSourceFileState } from "../src/library.ts";
 import * as localMedia from "../src/local-media.ts";
 import {
   handleLibraryCollection,
   handleLibraryItem,
 } from "../src/routes/library-api.ts";
 import type { HandlerContext } from "../src/routes/context.ts";
+import { entrySourceDefinitionRevision } from "../src/imports/source-identity.ts";
 import type { TorrServerClient } from "../src/torrserver-client.ts";
 import {
   createEntrySchema,
@@ -576,5 +577,228 @@ describe("library HTTP source ownership boundary", () => {
         route("DELETE", `/api/library/${entry.id}`),
       ),
     ).rejects.toBe(failure);
+  });
+});
+
+describe("series numbering hints", () => {
+  const cache = {
+    hash: "abc123",
+    selectedFiles: [
+      { id: 1, path: "Show.mkv", length: 100, season: 1, episode: 1 },
+    ],
+    inspectedAt: new Date().toISOString(),
+  };
+
+  it("validates hints on the primary and extra sources", () => {
+    const base = {
+      type: "series" as const,
+      name: "Show",
+      magnetUri: "magnet:?xt=urn:btih:primary",
+    };
+    expect(
+      createEntrySchema.parse({
+        ...base,
+        seasonHint: 0,
+        episodeHint: 7,
+        extraSources: [
+          { magnetUri: "magnet:?xt=urn:btih:extra", episodeHint: 13 },
+        ],
+      }),
+    ).toMatchObject({
+      seasonHint: 0,
+      episodeHint: 7,
+      extraSources: [{ episodeHint: 13 }],
+    });
+    for (const invalid of [
+      { episodeHint: 0 },
+      { episodeHint: 1.5 },
+      { seasonHint: -1 },
+      { extraSources: [{ magnetUri: "magnet:?x", episodeHint: 0 }] },
+    ])
+      expect(createEntrySchema.safeParse({ ...base, ...invalid }).success).toBe(
+        false,
+      );
+    expect(
+      patchEntrySchema.parse({ seasonHint: null, episodeHint: null }),
+    ).toEqual({ seasonHint: null, episodeHint: null });
+  });
+
+  it("keeps source revisions of hint-free entries stable", async () => {
+    const { library } = await temporaryLibrary();
+    const entry = await library.create({
+      type: "series",
+      name: "Show",
+      magnetUri: "magnet:?xt=urn:btih:primary",
+      extraSources: [{ magnetUri: "magnet:?xt=urn:btih:extra" }],
+    });
+    const revision = entrySourceDefinitionRevision(entry);
+    const hinted = await library.patch(entry.id, { episodeHint: 5 });
+    expect(entrySourceDefinitionRevision(hinted!)).not.toBe(revision);
+    const cleared = await library.patch(entry.id, { episodeHint: null });
+    expect(cleared).not.toHaveProperty("episodeHint");
+    expect(entrySourceDefinitionRevision(cleared!)).toBe(revision);
+  });
+
+  it("keeps the episode list when a save resends unchanged source fields", async () => {
+    const { library } = await temporaryLibrary();
+    const entry = await library.create({
+      type: "series",
+      name: "Show",
+      magnetUri: "magnet:?xt=urn:btih:primary",
+      seasonHint: 2,
+    });
+    await library.setInspectionCache(entry.id, cache);
+    const saved = await library.patch(entry.id, {
+      name: "Renamed",
+      type: "series",
+      magnetUri: "magnet:?xt=urn:btih:primary",
+      seasonHint: 2,
+    });
+    expect(saved?.inspectionCache).toEqual(cache);
+    const retyped = await library.patch(entry.id, { type: "movie" });
+    expect(retyped?.inspectionCache).toBeUndefined();
+  });
+
+  it("drops the stale episode list when the primary's hints change", async () => {
+    const { library } = await temporaryLibrary();
+    const entry = await library.create({
+      type: "series",
+      name: "Show",
+      magnetUri: "magnet:?xt=urn:btih:primary",
+    });
+    await library.setInspectionCache(entry.id, cache);
+    const hinted = await library.patch(entry.id, {
+      seasonHint: 2,
+      episodeHint: 4,
+    });
+    expect(hinted).toMatchObject({ seasonHint: 2, episodeHint: 4 });
+    expect(hinted?.inspectionCache).toBeUndefined();
+    await library.setInspectionCache(entry.id, cache);
+    const cleared = await library.patch(entry.id, {
+      seasonHint: null,
+      episodeHint: null,
+    });
+    expect(cleared).not.toHaveProperty("seasonHint");
+    expect(cleared).not.toHaveProperty("episodeHint");
+    expect(cleared?.inspectionCache).toBeUndefined();
+  });
+
+  it("keeps extra-source provenance when only its hints are edited", async () => {
+    const { library } = await temporaryLibrary();
+    const created = await library.create({
+      type: "series",
+      name: "Show",
+      magnetUri: "magnet:?xt=urn:btih:primary",
+      extraSources: [{ magnetUri: "magnet:?xt=urn:btih:extra", seasonHint: 1 }],
+    });
+    const updated = await library.patch(created.id, {
+      extraSources: [
+        {
+          magnetUri: "magnet:?xt=urn:btih:extra",
+          seasonHint: 1,
+          episodeHint: 9,
+        },
+      ],
+    });
+    expect(updated?.extraSources?.[0]).toMatchObject({
+      seasonHint: 1,
+      episodeHint: 9,
+    });
+  });
+});
+
+describe("source order and file-keyed state", () => {
+  const stamp = new Date().toISOString();
+  const magnet = (c: string) => `magnet:?xt=urn:btih:${c.repeat(40)}`;
+  async function series() {
+    const { library } = await temporaryLibrary();
+    const created = await library.create({
+      type: "series",
+      name: "Show",
+      magnetUri: magnet("a"),
+      extraSources: [
+        { magnetUri: magnet("b"), seasonHint: 2 },
+        { magnetUri: magnet("c"), seasonHint: 3 },
+      ],
+      episodeOverrides: [{ id: 200_001, season: 3, episode: 9 }],
+    });
+    await library.setWatchState(created.id, 1, "watched");
+    await library.setWatchState(created.id, 100_001, "watched");
+    await library.setWatchState(created.id, 200_001, "started");
+    return { library, id: created.id };
+  }
+  const watched = (entry?: { watchStates?: { fileId: number }[] }) =>
+    entry?.watchStates?.map((state) => state.fileId).sort((a, b) => a - b);
+
+  it("re-homes file ids when an earlier extra is removed", async () => {
+    const { library, id } = await series();
+    const updated = await library.patch(id, {
+      extraSources: [{ magnetUri: magnet("c"), seasonHint: 3 }],
+    });
+    expect(watched(updated)).toEqual([1, 100_001]);
+    expect(updated?.episodeOverrides).toEqual([
+      { id: 100_001, season: 3, episode: 9 },
+    ]);
+  });
+
+  it("forgets only the main torrent's files when its magnet is replaced", async () => {
+    const { library, id } = await series();
+    const updated = await library.patch(id, { magnetUri: magnet("d") });
+    expect(watched(updated)).toEqual([100_001, 200_001]);
+  });
+
+  it("swaps the main torrent with an extra, moving state with the files", async () => {
+    const { library, id } = await series();
+    await library.setInspectionCache(id, {
+      hash: "a".repeat(40),
+      selectedFiles: [
+        { id: 1, path: "a.mkv", length: 1, season: 1, episode: 1 },
+      ],
+      inspectedAt: stamp,
+    });
+    const promoted = await library.promoteSource(id, 1);
+    expect(promoted).toMatchObject({
+      magnetUri: magnet("c"),
+      seasonHint: 3,
+      extraSources: [
+        { magnetUri: magnet("b"), seasonHint: 2 },
+        { magnetUri: magnet("a") },
+      ],
+      episodeOverrides: [{ id: 1, season: 3, episode: 9 }],
+    });
+    expect(promoted?.extraSources?.[1]).not.toHaveProperty("seasonHint");
+    const stateOf = (fileId: number) =>
+      promoted?.watchStates?.find((s) => s.fileId === fileId)?.state;
+    // c's in-progress file is now source 0; a's watched file moved to slot 2.
+    expect(stateOf(1)).toBe("started");
+    expect(stateOf(200_001)).toBe("watched");
+    expect(stateOf(100_001)).toBe("watched");
+    expect(promoted?.inspectionCache).toBeUndefined();
+  });
+
+  it("refuses to promote past the end or with a pinned preferred file", async () => {
+    const { library, id } = await series();
+    await expect(library.promoteSource(id, 5)).rejects.toThrow(
+      "no longer exists",
+    );
+    await library.patch(id, { preferredFileIndex: 1 });
+    await expect(library.promoteSource(id, 0)).rejects.toThrow(
+      "preferred file",
+    );
+  });
+
+  it("drops resume state whose source is gone", () => {
+    expect(
+      remapSourceFileState(
+        { playback: { positionSeconds: 5, fileId: 100_002, updatedAt: stamp } },
+        [0, undefined],
+      ).playback,
+    ).toBeUndefined();
+    expect(
+      remapSourceFileState(
+        { playback: { positionSeconds: 5, updatedAt: stamp } },
+        [undefined],
+      ).playback,
+    ).toMatchObject({ positionSeconds: 5 });
   });
 });

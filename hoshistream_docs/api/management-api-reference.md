@@ -45,12 +45,13 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `GET /api/library/{id}/thumbnails` | Generation status `{running, generated, failed, lastError?, finishedAt?}` plus `available: [{season, episode}]` |
 | `POST /api/library/{id}/thumbnails` | Queue frame grabs for every on-disk episode without a frame; `{force: true}` regrabs all. `202 {queued: true}`; `409 thumbnails_running` while a run for the entry is in flight; `400` for movies. Frames are only ever grabbed from files on disk, never from a live torrent |
 | `POST /api/library/{id}/relink` | Native Finder re-pick for a local entry (native app only) |
+| `POST /api/library/{id}/sources/promote` | `{index}` → entry. Torrent-backed series: extra source `index` becomes the main torrent and the old main takes its slot. Watched state, resume position, episode repairs and file facts follow their files; the episode list is dropped and refilled in the background. `409` for a missing index, a non-series/local entry, or a pinned `preferredFileIndex` |
 | `POST /api/player/play` | Start host playback of an entry → `{mode, title, resumedAt?}` |
 | `POST /api/player/control` | `pause`, `resume`, `seek` (with `value` in seconds), or `stop` |
 | `GET /api/player/status` | Current player state plus `available` |
 | `GET /api/clients` | Recent clients (in-memory): `{ip, device, hostname?, name?, firstSeen, lastSeen, requests, lastResource}` |
 | `POST /api/clients/name` | Assign a device name: `{ip, name}`; empty name clears it |
-| `GET /api/playback` | Live TorrServer sessions: speeds, peers/seeders, progress, plus `entryId` (when the hash maps to a library entry) and `activity` — `streaming` (a client requested this entry's stream in the last 5 min), `downloading` (the archiver is copying it), `inspecting` (metadata read in the last 2 min), or `idle`. A "working" torrent is not necessarily being watched |
+| `GET /api/playback` | Live TorrServer sessions: speeds, peers/seeders, progress, plus `entryId` (when the hash maps to a library entry) and `activity` — `streaming` (a client requested this entry's stream in the last 5 min), `downloading` (the archiver is copying it), `inspecting` (metadata read in the last 2 min), or `idle`. A "working" torrent is not necessarily being watched. `sourceLabel` tells a series' torrents apart: its season/episode hints (`Season 2 · Episode 5`), else `Main torrent` / `Extra source N`; a single-torrent entry without hints has none |
 | `GET /api/pointer/status` | Local-only setup and registration evidence: enabled, configured, suggested endpoint/operator, state/message, usable, last push, expiry and private manifest URL. Includes `drift` when the automatic start-up / LAN-change check has run this session: `{outcome, trigger, checkedAt, remoteBaseUrl?, localBaseUrl?, state, message}` with `outcome` one of `match`, `remote-mismatch`, `expired`, `remote-without-local-push`, `unreachable`. Memory only; superseded by the next manual push, check or removal |
 | `POST /api/pointer/settings` | Save `{enabled,pointerUrl}` privately; no service contact, credential input or restart |
 | `GET /api/pointer/remote` | Explicit manual service check; reachability, registration evidence, expiry, and actionable state/message |
@@ -102,7 +103,7 @@ They accept manually supplied sources and perform no indexer or website searches
 | `POST /api/imports/prepare-torrent` | Raw torrent bytes, at most 1 MB -> draft |
 | `DELETE /api/imports/drafts/{draftId}` | Discard an unused draft -> `204` |
 | `POST /api/imports/commit` | `{draftId,name,type,tags?,idempotencyKey}` -> `{entry,outcome:"created"|"existing"}` |
-| `POST /api/imports/series-preview` | `{draftId,entryId,seasonHint?}` -> `{previewId,expiresAt,entryId,entryName,addedEpisodes,replacements}` |
+| `POST /api/imports/series-preview` | `{draftId,entryId,seasonHint?,episodeHint?}` -> `{previewId,expiresAt,entryId,entryName,addedEpisodes,replacements}` |
 | `POST /api/imports/series-commit` | `{previewId,idempotencyKey,allowReplace}` -> `{entry,outcome:"appended"|"existing"}` |
 | `DELETE /api/imports/previews/{previewId}` | Discard an unused preview -> `204` |
 
@@ -212,7 +213,9 @@ Exactly one source is required: `magnetUri` (must start `magnet:?`), `torrentFil
 | `tags` | `string[]` | optional, ≤ 32; stored with the registry's spelling and unknown names are registered on the fly; `null` on PATCH clears all tags |
 | `preferredFileIndex` | int ≥ 0 | force a TorrServer file ID |
 | `fileOverrides` | `[{id, included, season?, episode?}]` | per-file include/episode mapping (primary source's own IDs) |
-| `extraSources` | `[{magnetUri?\|torrentFilePath?, seasonHint?, fileOverrides?}]` | additional torrents merged into a torrent-backed **series**; rejected on movies and local entries |
+| `seasonHint` | integer ≥ 0 | series: season for the primary source's files whose names carry no explicit `SxxEyy`; nullable on PATCH; ignored for movies |
+| `episodeHint` | integer 1–9999 | series: episode of the primary source's first file without explicit numbering (later files count up from it); nullable on PATCH; ignored for movies |
+| `extraSources` | `[{magnetUri?\|torrentFilePath?, seasonHint?, episodeHint?, fileOverrides?}]` | additional torrents merged into a torrent-backed **series**; rejected on movies and local entries |
 | `releaseInfo` | string | year or year range (`2019`, `2019-2021`); nullable on PATCH |
 | `runtime` | string ≤ 40 | as shown, e.g. `1h 52m`; movies fall back to the probe's duration when blank; nullable on PATCH |
 | `imdbRating` | string | `0`–`10`, at most one decimal, e.g. `7.8`; nullable on PATCH |
@@ -237,7 +240,7 @@ coordinator as source checks; the legacy response keeps `technical` and its erro
 shape. Plain metadata inspection allows up to 30 seconds per source. File IDs
 are TorrServer's returned one-based IDs.
 
-Multi-torrent series: every source is inspected and the episode lists merge. File IDs become composite — `sourceIndex × 100000 + torrServerFileId` (the primary source keeps raw IDs) — and files from extra sources carry their own `hash`. A file's name parsing wins over the source's `seasonHint`; on duplicate (season, episode) claims the later source wins. Changing `extraSources` (or any other source-definition field) clears the inspection cache, and the `PATCH` reply returns before the server refills it in the background; `POST …/inspect` and Stremio requests that arrive meanwhile join that run rather than starting another.
+Multi-torrent series: every source is inspected and the episode lists merge. File IDs become composite — `sourceIndex × 100000 + torrServerFileId` (the primary source keeps raw IDs) — and files from extra sources carry their own `hash`. Per file, numbering precedence is: `fileOverrides`, explicit numbering in the name (`S02E05`, `S02 E05`, `2x05`, `Season 2 Episode 5`), the source's `seasonHint` / `episodeHint` (`episodeHint + position` in the source's path-sorted file list), numbers guessed from the name or folders (`Episode 5`, `E05`, `Show - 05`, `05 - Title`, `Season 2/`, `S02`; guessed episodes are ignored when they repeat within the source), then position. `episodeOverrides` apply after merging. On duplicate (season, episode) claims the later source wins. Changing `extraSources` (or any other source-definition field) clears the inspection cache, and the `PATCH` reply returns before the server refills it in the background; `POST …/inspect` and Stremio requests that arrive meanwhile join that run rather than starting another.
 
 A successful sampled probe also returns representative `directPlay` advice.
 File-specific stream consumers use matching `mediaFacts`, not an unscoped verdict

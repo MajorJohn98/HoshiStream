@@ -5,7 +5,11 @@ import { api, fmt, notify, token } from "../api.js";
 import { closeDetailRoute } from "../entry-route.js";
 import { state, setState, useStore, load } from "../store.js";
 import { TagPicker } from "../components/tag-picker.js";
-import { editableSource } from "../import-state.js";
+import {
+  editableSource,
+  sourceHintLabel,
+  sourceHints,
+} from "../import-state.js";
 import {
   describeGaps,
   mappingIssues,
@@ -393,24 +397,60 @@ function MatchCard({ state }) {
   `;
 }
 
-function OverviewTab({ state }) {
+// Fields behind "More details": optional extras Stremio shows on the title
+// page. Counted in the disclosure summary so filled values are never hidden
+// silently.
+const MORE_DETAIL_FIELDS = [
+  "releaseInfo",
+  "runtime",
+  "imdbRating",
+  "cast",
+  "director",
+  "writer",
+  "country",
+  "language",
+  "logo",
+  "awards",
+  "trailers",
+];
+
+function filledMoreDetails(entry) {
+  return MORE_DETAIL_FIELDS.filter((field) =>
+    Array.isArray(entry[field]) ? entry[field].length : Boolean(entry[field]),
+  ).length;
+}
+
+// Everything Stremio shows about the title, in one form with one Save: the
+// essentials up top, the optional extras behind "More details".
+function DetailsTab({ state }) {
   const entry = state.selected;
   const [tags, setTags] = useState(entry.tags ?? []);
+  const [saving, setSaving] = useState(false);
   useEffect(() => setTags(entry.tags ?? []), [entry.id]);
+  const filled = filledMoreDetails(entry);
   const onSubmit = async (e) => {
     e.preventDefault();
-    const d = Object.fromEntries(new FormData(e.target));
-    ["poster", "background", "description"].forEach((k) => {
-      if (!d[k]) d[k] = null;
-    });
-    d.tags = tags.length ? tags : null;
+    const fields = Object.fromEntries(new FormData(e.target));
+    setSaving(true);
     try {
-      setState({ selected: await patch(state, d) });
-      notify("Changes saved");
+      const d = {
+        ...metadataPatch(fields),
+        name: fields.name,
+        type: fields.type,
+        description: fields.description || null,
+        poster: fields.poster || null,
+        background: fields.background || null,
+        tags: tags.length ? tags : null,
+        ...(entry.type === "series" ? { ongoing: "ongoing" in fields } : {}),
+      };
+      syncSelectedEntry(await patch(state, d));
+      notify("Details saved");
       // Tags may have been created inline; refresh the grid and registry.
       void load();
     } catch (error) {
       notify(error.message);
+    } finally {
+      setSaving(false);
     }
   };
   // Uncontrolled fields use defaultValue: the sheet re-renders on every
@@ -420,7 +460,7 @@ function OverviewTab({ state }) {
     <${Section}
       id="overview"
       title="Details"
-      note="Title, artwork, description, and tags as Stremio sees them."
+      note="How this title appears in Stremio."
     >
       <${MatchCard} state=${state} />
       <form class="form-grid" key=${entry.id} onSubmit=${onSubmit}>
@@ -457,138 +497,135 @@ function OverviewTab({ state }) {
           <${TagPicker} value=${tags} onChange=${setTags} />
         </div>
         ${
-          entry.magnetUri
-            ? html`<label class="span2">
-                Magnet link
-                <textarea name="magnetUri" required>
-${entry.magnetUri}</textarea>
+          entry.type === "series"
+            ? html`<label class="check span2">
+                <input
+                  type="checkbox"
+                  name="ongoing"
+                  defaultChecked=${Boolean(entry.ongoing)}
+                />
+                <span>
+                  Ongoing series
+                  <small class="muted block"
+                    >Still airing — Stremio keeps it on the Board.</small
+                  >
+                </span>
               </label>`
             : null
         }
-        <div class="span2 row between">
-          <span class="inline-note"
-            >Changes apply to Stremio on its next catalog refresh.</span
-          >
-          <button class="primary">Save changes</button>
-        </div>
-      </form>
-    <//>
-  `;
-}
-
-function MetadataTab({ state }) {
-  const entry = state.selected;
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const d = metadataPatch(Object.fromEntries(new FormData(e.target)));
-      syncSelectedEntry(await patch(state, d));
-      notify("Metadata saved");
-    } catch (error) {
-      notify(error.message);
-    }
-  };
-  // Uncontrolled fields, for the same reason as OverviewTab.
-  return html`
-    <${Section}
-      id="metadata"
-      title="Metadata"
-      note="Extra details Stremio shows on the title page. Everything is optional; blanks clear a field."
-    >
-      <form class="form-grid" key=${entry.id} onSubmit=${onSubmit}>
-        <label>
-          Year or range ${fetchedHint(entry, "releaseInfo")}
-          <input
-            name="releaseInfo"
-            placeholder="2019 or 2019-2021"
-            defaultValue=${entry.releaseInfo || ""}
-          />
-        </label>
-        <label>
-          Runtime ${fetchedHint(entry, "runtime")}
-          <input
-            name="runtime"
-            placeholder=${entry.type === "movie" ? "From the probe when blank" : "e.g. 45m"}
-            defaultValue=${entry.runtime || ""}
-          />
-        </label>
-        <label>
-          Rating (0–10) ${fetchedHint(entry, "imdbRating")}
-          <input
-            name="imdbRating"
-            inputmode="decimal"
-            placeholder="7.8"
-            defaultValue=${entry.imdbRating || ""}
-          />
-        </label>
-        <label>
-          Poster shape
-          <select name="posterShape">
-            ${POSTER_SHAPES.map(
-              ([value, label]) => html`
-                <option
-                  value=${value}
-                  selected=${(entry.posterShape || "poster") === value}
-                >
-                  ${label}
-                </option>
-              `,
-            )}
-          </select>
-        </label>
-        <label class="span2">
-          Cast ${fetchedHint(entry, "cast")}
-          <input
-            name="cast"
-            placeholder="Comma-separated names"
-            defaultValue=${joinNameList(entry.cast)}
-          />
-        </label>
-        <label>
-          Director ${fetchedHint(entry, "director")}
-          <input
-            name="director"
-            placeholder="Comma-separated"
-            defaultValue=${joinNameList(entry.director)}
-          />
-        </label>
-        <label>
-          Writer ${fetchedHint(entry, "writer")}
-          <input
-            name="writer"
-            placeholder="Comma-separated"
-            defaultValue=${joinNameList(entry.writer)}
-          />
-        </label>
-        <label>
-          Country ${fetchedHint(entry, "country")}
-          <input name="country" defaultValue=${entry.country || ""} />
-        </label>
-        <label>
-          Language ${fetchedHint(entry, "language")}
-          <input name="language" defaultValue=${entry.language || ""} />
-        </label>
-        <label class="span2">
-          Logo URL ${fetchedHint(entry, "logo")}
-          <input name="logo" type="url" defaultValue=${entry.logo || ""} />
-        </label>
-        <label class="span2">
-          Awards ${fetchedHint(entry, "awards")}
-          <input name="awards" defaultValue=${entry.awards || ""} />
-        </label>
-        <label class="span2">
-          Trailers ${fetchedHint(entry, "trailers")}
-          <textarea
-            name="trailers"
-            placeholder="One YouTube link or id per line"
-          >
+        <details class="span2 more-details">
+          <summary>
+            More details
+            <span class="muted">
+              ${
+                filled
+                  ? " · " +
+                    filled +
+                    " of " +
+                    MORE_DETAIL_FIELDS.length +
+                    " filled"
+                  : " · year, runtime, cast, trailers…"
+              }
+            </span>
+          </summary>
+          <div class="form-grid">
+            <label>
+              Year or range ${fetchedHint(entry, "releaseInfo")}
+              <input
+                name="releaseInfo"
+                placeholder="2019 or 2019-2021"
+                defaultValue=${entry.releaseInfo || ""}
+              />
+            </label>
+            <label>
+              Runtime ${fetchedHint(entry, "runtime")}
+              <input
+                name="runtime"
+                placeholder=${entry.type === "movie" ? "From the probe when blank" : "e.g. 45m"}
+                defaultValue=${entry.runtime || ""}
+              />
+            </label>
+            <label>
+              Rating (0–10) ${fetchedHint(entry, "imdbRating")}
+              <input
+                name="imdbRating"
+                inputmode="decimal"
+                placeholder="7.8"
+                defaultValue=${entry.imdbRating || ""}
+              />
+            </label>
+            <label>
+              Poster shape
+              <select name="posterShape">
+                ${POSTER_SHAPES.map(
+                  ([value, label]) => html`
+                    <option
+                      value=${value}
+                      selected=${(entry.posterShape || "poster") === value}
+                    >
+                      ${label}
+                    </option>
+                  `,
+                )}
+              </select>
+            </label>
+            <label class="span2">
+              Cast ${fetchedHint(entry, "cast")}
+              <input
+                name="cast"
+                placeholder="Comma-separated names"
+                defaultValue=${joinNameList(entry.cast)}
+              />
+            </label>
+            <label>
+              Director ${fetchedHint(entry, "director")}
+              <input
+                name="director"
+                placeholder="Comma-separated"
+                defaultValue=${joinNameList(entry.director)}
+              />
+            </label>
+            <label>
+              Writer ${fetchedHint(entry, "writer")}
+              <input
+                name="writer"
+                placeholder="Comma-separated"
+                defaultValue=${joinNameList(entry.writer)}
+              />
+            </label>
+            <label>
+              Country ${fetchedHint(entry, "country")}
+              <input name="country" defaultValue=${entry.country || ""} />
+            </label>
+            <label>
+              Language ${fetchedHint(entry, "language")}
+              <input name="language" defaultValue=${entry.language || ""} />
+            </label>
+            <label class="span2">
+              Logo URL ${fetchedHint(entry, "logo")}
+              <input name="logo" type="url" defaultValue=${entry.logo || ""} />
+            </label>
+            <label class="span2">
+              Awards ${fetchedHint(entry, "awards")}
+              <input name="awards" defaultValue=${entry.awards || ""} />
+            </label>
+            <label class="span2">
+              Trailers ${fetchedHint(entry, "trailers")}
+              <textarea
+                name="trailers"
+                placeholder="One YouTube link or id per line"
+              >
 ${joinTrailers(entry.trailers)}</textarea>
-        </label>
+            </label>
+          </div>
+        </details>
         <div class="span2 row between">
           <span class="inline-note"
-            >Cast and tags become tappable search links in Stremio.</span
+            >Stremio picks up changes on its next catalog refresh.</span
           >
-          <button class="primary">Save metadata</button>
+          <button class="primary" disabled=${saving}>
+            ${saving ? "Saving…" : "Save details"}
+          </button>
         </div>
       </form>
     <//>
@@ -602,25 +639,264 @@ function shortMagnet(magnetUri) {
     : magnetUri.slice(0, 40) + "…";
 }
 
-// Extra torrents merged into a series entry. Any change clears the inspection
-// cache server-side; the server refills it in the background, and Inspect
-// joins that run rather than starting another.
-function ExtraSourcesPanel({ state }) {
+function HintFields({ season, episode, onSeason, onEpisode, disabled }) {
+  return html`
+    <input
+      class="input-narrow"
+      type="number"
+      min="0"
+      step="1"
+      placeholder="Season"
+      aria-label="Season"
+      title="Season for files without SxxEyy in their names"
+      disabled=${disabled}
+      value=${season}
+      onInput=${(e) => onSeason(e.target.value)}
+    />
+    <input
+      class="input-narrow"
+      type="number"
+      min="1"
+      max="9999"
+      step="1"
+      placeholder="Episode"
+      aria-label="Episode"
+      title="Episode number of a single-episode torrent, or the first episode of a partial pack"
+      disabled=${disabled}
+      value=${episode}
+      onInput=${(e) => onEpisode(e.target.value)}
+    />
+  `;
+}
+
+// One source with editable numbering hints. Local edits reset whenever the
+// saved hints change, so a refreshed entry never shows stale values.
+function SourceRow({ label, source, saving, onSave, onRemove, onPromote }) {
+  const savedSeason = String(source.seasonHint ?? "");
+  const savedEpisode = String(source.episodeHint ?? "");
+  const [season, setSeason] = useState(savedSeason);
+  const [episode, setEpisode] = useState(savedEpisode);
+  useEffect(() => {
+    setSeason(savedSeason);
+    setEpisode(savedEpisode);
+  }, [savedSeason, savedEpisode]);
+  const dirty = season !== savedSeason || episode !== savedEpisode;
+  const save = () => {
+    try {
+      onSave(sourceHints(season, episode));
+    } catch (error) {
+      notify(error.message);
+    }
+  };
+  return html`
+    <li class="rowitem no-lead">
+      <span class="main">
+        <strong class="mono">${label}</strong>
+        <span class="meta">${sourceHintLabel(source)}</span>
+      </span>
+      <span class="trail source-hints">
+        <${HintFields}
+          season=${season}
+          episode=${episode}
+          onSeason=${setSeason}
+          onEpisode=${setEpisode}
+          disabled=${saving}
+        />
+        <button class="secondary" disabled=${saving || !dirty} onClick=${save}>
+          Save
+        </button>
+        ${
+          onPromote
+            ? html`<button
+                class="secondary"
+                disabled=${saving}
+                title="Swap with the main torrent. Watched state stays with each episode."
+                onClick=${onPromote}
+              >
+                Make main
+              </button>`
+            : null
+        }
+        ${
+          onRemove
+            ? html`<button
+                class="secondary"
+                disabled=${saving}
+                onClick=${onRemove}
+              >
+                Remove
+              </button>`
+            : null
+        }
+      </span>
+    </li>
+  `;
+}
+
+function sourceLocator(source) {
+  return source.magnetUri
+    ? shortMagnet(source.magnetUri)
+    : source.localFolderPath || source.torrentFilePath || "Source";
+}
+
+// Every source of a series with its season/episode numbering, plus extra
+// torrents merged into a torrent-backed series. Any change clears the
+// inspection cache server-side; the server refills it in the background, and
+// Inspect joins that run rather than starting another.
+function SeriesSourcesPanel({ state }) {
   const entry = state.selected;
+  const torrentBacked = Boolean(entry.magnetUri || entry.torrentFilePath);
   const [magnet, setMagnet] = useState("");
   const [season, setSeason] = useState("");
+  const [episode, setEpisode] = useState("");
   const [saving, setSaving] = useState(false);
   const extras = entry.extraSources || [];
-  const save = async (extraSources) => {
+  const save = async (
+    changes,
+    message,
+    request = () => patch(state, changes),
+  ) => {
     setSaving(true);
     try {
-      const selected = await patch(state, {
-        extraSources: extraSources.map(editableSource),
-      });
+      const selected = await request();
       setState({ selected, inspection: null });
+      notify(message);
+      return true;
+    } catch (error) {
+      notify(error.message);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+  const refreshing = " — episodes are refreshing in the background";
+  const promote = (index) =>
+    save(null, "Main torrent changed" + refreshing, () =>
+      api("library/" + encodeURIComponent(entry.id) + "/sources/promote", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ index }),
+      }),
+    );
+  const saveExtras = (extraSources) =>
+    save(
+      { extraSources: extraSources.map(editableSource) },
+      "Sources updated" + refreshing,
+    );
+  const withHints = (source, hints) => {
+    const { seasonHint, episodeHint, ...rest } = source;
+    return { ...rest, ...hints };
+  };
+  const add = async () => {
+    let hints;
+    try {
+      hints = sourceHints(season, episode);
+    } catch (error) {
+      notify(error.message);
+      return;
+    }
+    if (await saveExtras([...extras, { magnetUri: magnet.trim(), ...hints }])) {
       setMagnet("");
       setSeason("");
-      notify("Sources updated — episodes are refreshing in the background");
+      setEpisode("");
+    }
+  };
+  return html`
+    <div class="stacked">
+      <span class="field-label">
+        ${torrentBacked ? "Torrents and numbering" : "Numbering"}
+      </span>
+      <p class="muted">
+        Season and Episode number files whose names carry no SxxEyy numbering: a
+        single-episode torrent becomes exactly that episode, and a pack is
+        numbered upward from it.
+        ${
+          torrentBacked
+            ? " Additional torrents merge into this series; on episode conflicts the newest source wins."
+            : ""
+        }
+      </p>
+      <ul class="rows compact">
+        <${SourceRow}
+          key="primary"
+          label=${(torrentBacked ? "Main torrent · " : "") + sourceLocator(entry)}
+          source=${entry}
+          saving=${saving}
+          onSave=${(hints) =>
+            save(
+              {
+                seasonHint: hints.seasonHint ?? null,
+                episodeHint: hints.episodeHint ?? null,
+              },
+              "Numbering updated" + refreshing,
+            )}
+        />
+        ${extras.map(
+          (extra, index) => html`
+            <${SourceRow}
+              key=${extra.magnetUri || extra.torrentFilePath || index}
+              label=${sourceLocator(extra)}
+              source=${extra}
+              saving=${saving}
+              onSave=${(hints) =>
+                saveExtras(
+                  extras.map((item, i) =>
+                    i === index ? withHints(item, hints) : item,
+                  ),
+                )}
+              onPromote=${() => promote(index)}
+              onRemove=${() => saveExtras(extras.filter((_, i) => i !== index))}
+            />
+          `,
+        )}
+      </ul>
+      ${
+        torrentBacked
+          ? html`<div class="picker-row stacked-sm">
+              <input
+                class="grow"
+                placeholder="magnet:?xt=urn:btih:…"
+                aria-label="Additional magnet link"
+                value=${magnet}
+                onInput=${(e) => setMagnet(e.target.value)}
+              />
+              <${HintFields}
+                season=${season}
+                episode=${episode}
+                onSeason=${setSeason}
+                onEpisode=${setEpisode}
+                disabled=${saving}
+              />
+              <button
+                class="secondary"
+                disabled=${saving || !magnet.trim().startsWith("magnet:?")}
+                onClick=${add}
+              >
+                Add torrent
+              </button>
+            </div>`
+          : null
+      }
+    </div>
+  `;
+}
+
+// The magnet itself is a source field: edited here, behind a disclosure so
+// the long URI never dominates the tab.
+function MagnetEditor({ state }) {
+  const entry = state.selected;
+  const [saving, setSaving] = useState(false);
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    const magnetUri = new FormData(e.target).get("magnetUri").trim();
+    if (magnetUri === entry.magnetUri) return;
+    setSaving(true);
+    try {
+      setState({
+        selected: await patch(state, { magnetUri }),
+        inspection: null,
+      });
+      notify("Magnet link saved — the source is re-inspected");
     } catch (error) {
       notify(error.message);
     } finally {
@@ -628,96 +904,29 @@ function ExtraSourcesPanel({ state }) {
     }
   };
   return html`
-    <div class="stacked">
-      <span class="field-label">Additional torrents</span>
-      <p class="muted">
-        Merged into this series' episode list. Season applies to files whose
-        names carry no SxxEyy numbering; on episode conflicts the newest source
-        wins.
-      </p>
-      ${
-        extras.length
-          ? html`<ul class="rows compact">
-              ${extras.map(
-                (extra, index) => html`
-                  <li class="rowitem no-lead" key=${index}>
-                    <span class="main">
-                      <strong class="mono">
-                        ${
-                          extra.magnetUri
-                            ? shortMagnet(extra.magnetUri)
-                            : extra.torrentFilePath
-                        }
-                      </strong>
-                      <span class="meta">
-                        ${
-                          extra.seasonHint !== undefined
-                            ? "Season " + extra.seasonHint
-                            : "Season from file names"
-                        }
-                      </span>
-                    </span>
-                    <span class="trail">
-                      <button
-                        class="secondary"
-                        disabled=${saving}
-                        onClick=${() =>
-                          save(extras.filter((_, i) => i !== index))}
-                      >
-                        Remove
-                      </button>
-                    </span>
-                  </li>
-                `,
-              )}
-            </ul>`
-          : null
-      }
-      <div class="picker-row stacked-sm">
-        <input
-          class="grow"
-          placeholder="magnet:?xt=urn:btih:…"
-          value=${magnet}
-          onInput=${(e) => setMagnet(e.target.value)}
-        />
-        <input
-          class="input-narrow"
-          type="number"
-          min="0"
-          placeholder="Season"
-          value=${season}
-          onInput=${(e) => setSeason(e.target.value)}
-        />
-        <button
-          class="secondary"
-          disabled=${saving || !magnet.trim().startsWith("magnet:?")}
-          onClick=${() =>
-            save([
-              ...extras,
-              {
-                magnetUri: magnet.trim(),
-                ...(season === "" ? {} : { seasonHint: Number(season) }),
-              },
-            ])}
-        >
-          Add
-        </button>
-      </div>
-    </div>
+    <details class="more-details">
+      <summary>Change magnet link</summary>
+      <form class="stacked-sm" key=${entry.magnetUri} onSubmit=${onSubmit}>
+        <textarea name="magnetUri" required>${entry.magnetUri}</textarea>
+        <div class="row between">
+          <span class="inline-note"
+            >Complete magnet URIs are visible only on this tokenized page and
+            are never written to logs.</span
+          >
+          <button class="secondary" disabled=${saving}>
+            ${saving ? "Saving…" : "Save magnet link"}
+          </button>
+        </div>
+      </form>
+    </details>
   `;
 }
 
 function SourceTab({ state }) {
   const entry = state.selected;
-  const [busy, run] = useInspect(state);
   const [relinking, setRelinking] = useState(false);
-  const check = entry.sourceCheck;
-  const path =
-    entry.localFolderPath || entry.localFilePath || entry.torrentFilePath;
-  const relinkable =
-    Boolean(entry.localFilePath || entry.localFolderPath) &&
-    Boolean(state.status.nativePicker);
-  const cache = entry.inspectionCache;
+  const local = Boolean(entry.localFilePath || entry.localFolderPath);
+  const relinkable = local && Boolean(state.status.nativePicker);
   const relink = async () => {
     setRelinking(true);
     try {
@@ -740,27 +949,25 @@ function SourceTab({ state }) {
       : entry.localFilePath
         ? "Linked local file"
         : ".torrent file";
+  const location = entry.magnetUri
+    ? shortMagnet(entry.magnetUri)
+    : entry.localFolderPath || entry.localFilePath || entry.torrentFilePath;
   return html`
     <${Section}
       id="source"
       title="Source"
       note="Where this title's media comes from."
-      action=${html`
-        <button class="secondary" disabled=${busy} onClick=${() => run(false)}>
-          ${busy ? "Inspecting…" : "Inspect again"}
-        </button>
-        ${
-          relinkable
-            ? html`<button
-                class="secondary"
-                disabled=${relinking}
-                onClick=${relink}
-              >
-                ${relinking ? "Waiting for selection…" : "Relink on this computer"}
-              </button>`
-            : null
-        }
-      `}
+      action=${
+        relinkable
+          ? html`<button
+              class="secondary"
+              disabled=${relinking}
+              onClick=${relink}
+            >
+              ${relinking ? "Waiting for selection…" : "Relink on this computer"}
+            </button>`
+          : null
+      }
     >
       <dl class="kv">
         <div>
@@ -769,43 +976,17 @@ function SourceTab({ state }) {
         </div>
         <div>
           <dt>Location</dt>
-          <dd>${path || "Editable in Details"}</dd>
-        </div>
-        ${
-          cache
-            ? html`<div>
-                <dt>Last inspected</dt>
-                <dd>
-                  ${agoLabel(cache.inspectedAt)} · ${cache.selectedFiles.length}
-                  ${" file" + (cache.selectedFiles.length === 1 ? "" : "s")}
-                  ${" selected"}
-                </dd>
-              </div>`
-            : null
-        }
-        <div>
-          <dt>Source check</dt>
-          <dd>${sourceCheckBadge(check).label}</dd>
+          <dd class=${entry.magnetUri ? "mono" : ""}>${location}</dd>
         </div>
       </dl>
+      ${entry.magnetUri ? html`<${MagnetEditor} state=${state} />` : null}
       ${
-        state.inspectionError
-          ? html`<p class="danger">${state.inspectionError}</p>`
-          : null
-      }
-      <p class="inline-note stacked-sm">
-        Complete magnet URIs are visible only on this tokenized page and are
-        never written to logs.
-      </p>
-      ${
-        entry.type === "series" &&
-        (entry.magnetUri || entry.torrentFilePath) &&
-        !entry.localFilePath &&
-        !entry.localFolderPath
-          ? html`<${ExtraSourcesPanel} state=${state} />`
+        entry.type === "series" && !entry.localFilePath
+          ? html`<${SeriesSourcesPanel} state=${state} />`
           : null
       }
     <//>
+    <${FilesSection} state=${state} />
   `;
 }
 
@@ -887,7 +1068,7 @@ function watchStateOf(entry, fileId) {
   return entry.watchStates?.find((w) => w.fileId === fileId)?.state;
 }
 
-function WatchCell({ state, fileId, pending, toggle }) {
+function WatchCell({ state, fileId, pending, toggle, children }) {
   const current = watchStateOf(state.selected, fileId);
   const watched = current === "watched";
   const label = watched
@@ -897,23 +1078,43 @@ function WatchCell({ state, fileId, pending, toggle }) {
       : "Unwatched";
   return html`
     <td class="watch">
-      <button
-        class=${"watch-toggle " + (current ?? "unwatched")}
-        title=${watched ? "Mark unwatched" : "Mark watched"}
-        aria-label=${label + " — " + (watched ? "mark unwatched" : "mark watched")}
-        disabled=${pending === fileId}
-        onClick=${() => toggle(fileId, watched)}
-      >
-        <span class="watch-dot" aria-hidden="true"></span>
-        ${label}
-      </button>
+      <span class="watch-actions">
+        <button
+          type="button"
+          class=${"watch-toggle " + (current ?? "unwatched")}
+          title=${watched ? "Mark unwatched" : "Mark watched"}
+          aria-label=${label + " — " + (watched ? "mark unwatched" : "mark watched")}
+          disabled=${pending === fileId}
+          onClick=${() => toggle(fileId, watched)}
+        >
+          <span class="watch-dot" aria-hidden="true"></span>
+          ${label}
+        </button>
+        ${children}
+      </span>
     </td>
+  `;
+}
+
+function PlayButton({ state, fileId, label = "Play this file" }) {
+  return html`
+    <button
+      type="button"
+      class="secondary"
+      title=${label}
+      aria-label=${label}
+      onClick=${() => goWatch(state.selected.id, fileId)}
+    >
+      ▶
+    </button>
   `;
 }
 
 function CachedFilesTable({ state, cache }) {
   const [busy, run] = useInspect(state);
   const [pending, toggle] = useWatchToggle(state);
+  // Series track watching and play per episode on the Episodes tab.
+  const playable = state.selected.type !== "series";
   const n = cache.selectedFiles.length;
   const tabs = useSeasonTabs(cache.selectedFiles, (f) => f.season);
   const shown = cache.selectedFiles.filter(tabs.visible);
@@ -927,7 +1128,9 @@ function CachedFilesTable({ state, cache }) {
         (n === 1 ? "" : "s") +
         " selected from the last inspection, " +
         agoLabel(cache.inspectedAt) +
-        ". Inspect again to change the selection or remap episodes."
+        (state.selected.type === "series"
+          ? ". Inspect to change the selection or remap episodes."
+          : ". Inspect to choose a different file.")
       }
       action=${html`<button
         class="secondary"
@@ -955,10 +1158,12 @@ function CachedFilesTable({ state, cache }) {
             <tr>
               <th>File</th>
               <th>Size</th>
-              ${tabs.seasons.length < 2 ? html`<th>Season</th>` : null}
-              <th>Episode</th>
-              <th>Watched</th>
-              <th></th>
+              ${
+                !playable && tabs.seasons.length < 2
+                  ? html`<th>Season</th>`
+                  : null
+              }
+              ${playable ? html`<th>Watched</th>` : html`<th>Episode</th>`}
             </tr>
           </thead>
           <tbody>
@@ -968,26 +1173,22 @@ function CachedFilesTable({ state, cache }) {
                   <td class="filename" title=${f.path}>${baseName(f.path)}</td>
                   <td class="num">${fmt(f.length)}</td>
                   ${
-                    tabs.seasons.length < 2
+                    !playable && tabs.seasons.length < 2
                       ? html`<td class="num">${f.season ?? "—"}</td>`
                       : null
                   }
-                  <td class="num">${f.episode ?? "—"}</td>
-                  <${WatchCell}
-                    state=${state}
-                    fileId=${f.id}
-                    pending=${pending}
-                    toggle=${toggle}
-                  />
-                  <td>
-                    <button
-                      class="secondary"
-                      title="Play this file"
-                      onClick=${() => goWatch(state.selected.id, f.id)}
-                    >
-                      ▶
-                    </button>
-                  </td>
+                  ${
+                    playable
+                      ? html`<${WatchCell}
+                          state=${state}
+                          fileId=${f.id}
+                          pending=${pending}
+                          toggle=${toggle}
+                        >
+                          <${PlayButton} state=${state} fileId=${f.id} />
+                        <//>`
+                      : html`<td class="num">${f.episode ?? "—"}</td>`
+                  }
                 </tr>
               `,
             )}
@@ -1177,7 +1378,10 @@ function MappingTable({ state }) {
   `;
 }
 
-function FilesTab({ state }) {
+// Which files play and, for a series, which episode each one is. The one
+// place that inspects the source: the cached selection shows instantly, and
+// inspecting loads every file for editing.
+function FilesSection({ state }) {
   if (state.inspection) return html`<${MappingTable} state=${state} />`;
   const cache = state.selected.inspectionCache;
   if (cache) return html`<${CachedFilesTable} state=${state} cache=${cache} />`;
@@ -1185,7 +1389,11 @@ function FilesTab({ state }) {
     <${Section}
       id="files"
       title="Files"
-      note="Which files play, and how they map to seasons and episodes."
+      note=${
+        state.selected.type === "series"
+          ? "Which files play, and which episode each one is."
+          : "Which file plays."
+      }
       action=${html`<${InspectButton} state=${state} technical=${false} />`}
     >
       <${NotYet} state=${state}>
@@ -1239,6 +1447,7 @@ async function openDirectStream(state) {
 // series look the same here.
 function EpisodesTab({ state }) {
   const entry = state.selected;
+  const [pending, toggle] = useWatchToggle(state);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1266,19 +1475,10 @@ function EpisodesTab({ state }) {
   const tabs = useSeasonTabs(episodes, (e) => e.season);
   const shown = episodes.filter(tabs.visible);
   const generated = episodes.filter((e) => e.onDisk && e.thumbnail).length;
+  // A column of placeholder dots is noise: show frames once one exists or an
+  // episode is on disk and could get one.
+  const showFrames = episodes.some((e) => e.thumbnail || e.onDisk);
 
-  const onOngoing = async (e) => {
-    try {
-      syncSelectedEntry(await patch(state, { ongoing: e.target.checked }));
-      notify(
-        e.target.checked
-          ? "Marked ongoing — Stremio keeps it on the Board"
-          : "No longer marked ongoing",
-      );
-    } catch (err) {
-      notify(err.message);
-    }
-  };
   const onGenerate = async (force) => {
     try {
       await api("library/" + encodeURIComponent(entry.id) + "/thumbnails", {
@@ -1312,43 +1512,38 @@ function EpisodesTab({ state }) {
     <${Section}
       id="episodes"
       title="Episodes"
-      note="How each episode reads in Stremio. Blank fields fall back to a title cleaned from the filename."
-      action=${html`<label class="check">
-        <input
-          type="checkbox"
-          checked=${Boolean(entry.ongoing)}
-          onChange=${onOngoing}
-        />
-        Ongoing series
-      </label>`}
+      note="How each episode reads in Stremio, and what you've watched. Blank titles fall back to one cleaned from the filename."
+      action=${html`
+        <button
+          type="button"
+          class="secondary"
+          disabled=${!data?.eligible || data?.thumbnails?.running}
+          title=${thumbnailSummary(
+            data?.thumbnails,
+            data?.eligible ?? 0,
+            generated,
+          )}
+          onClick=${() => onGenerate(false)}
+        >
+          Generate thumbnails
+        </button>
+        ${
+          generated
+            ? html`<button
+                type="button"
+                class="secondary"
+                disabled=${data?.thumbnails?.running}
+                onClick=${() => onGenerate(true)}
+              >
+                Regenerate all
+              </button>`
+            : null
+        }
+      `}
     >
-      <div class="section-head stacked-xs">
-        <p class="muted">
-          ${thumbnailSummary(data?.thumbnails, data?.eligible ?? 0, generated)}
-        </p>
-        <div class="row">
-          <button
-            type="button"
-            class="secondary"
-            disabled=${!data?.eligible || data?.thumbnails?.running}
-            onClick=${() => onGenerate(false)}
-          >
-            Generate thumbnails
-          </button>
-          ${
-            generated
-              ? html`<button
-                  type="button"
-                  class="secondary"
-                  disabled=${data?.thumbnails?.running}
-                  onClick=${() => onGenerate(true)}
-                >
-                  Regenerate all
-                </button>`
-              : null
-          }
-        </div>
-      </div>
+      <p class="muted section-note">
+        ${thumbnailSummary(data?.thumbnails, data?.eligible ?? 0, generated)}
+      </p>
       ${error ? html`<p class="danger">${error}</p>` : null}
       ${
         data && !data.inspected
@@ -1361,7 +1556,7 @@ function EpisodesTab({ state }) {
         data?.inspected && !episodes.length
           ? html`<p class="empty quiet">
               No file is mapped to a season and episode yet. Repair the mapping
-              under Files first.
+              under Source → Files first.
             </p>`
           : null
       }
@@ -1381,10 +1576,11 @@ function EpisodesTab({ state }) {
                     <thead>
                       <tr>
                         <th>#</th>
-                        <th>Frame</th>
+                        ${showFrames ? html`<th>Frame</th>` : null}
                         <th>Title</th>
                         <th>Overview</th>
                         <th>Air date</th>
+                        <th>Watched</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1395,26 +1591,30 @@ function EpisodesTab({ state }) {
                             <td class="num" title=${row.path}>
                               ${row.season}×${row.episode}
                             </td>
-                            <td>
-                              ${
-                                row.thumbnail
-                                  ? html`<img
-                                      class="episode-thumb"
-                                      src=${row.thumbnail}
-                                      alt=""
-                                      loading="lazy"
-                                    />`
-                                  : html`<span
-                                      class="muted"
-                                      title=${
-                                        row.onDisk
-                                          ? "On disk — generate to grab a frame"
-                                          : "Not on disk"
-                                      }
-                                      >${row.onDisk ? "—" : "·"}</span
-                                    >`
-                              }
-                            </td>
+                            ${
+                              showFrames
+                                ? html` <td>
+                                    ${
+                                      row.thumbnail
+                                        ? html`<img
+                                            class="episode-thumb"
+                                            src=${row.thumbnail}
+                                            alt=""
+                                            loading="lazy"
+                                          />`
+                                        : html`<span
+                                            class="muted"
+                                            title=${
+                                              row.onDisk
+                                                ? "On disk — generate to grab a frame"
+                                                : "Not on disk"
+                                            }
+                                            >${row.onDisk ? "—" : "·"}</span
+                                          >`
+                                    }
+                                  </td>`
+                                : null
+                            }
                             <td>
                               <input
                                 name=${"title:" + key}
@@ -1439,6 +1639,18 @@ function EpisodesTab({ state }) {
                                 defaultValue=${dateFromReleased(row.released)}
                               />
                             </td>
+                            <${WatchCell}
+                              state=${state}
+                              fileId=${row.fileId}
+                              pending=${pending}
+                              toggle=${toggle}
+                            >
+                              <${PlayButton}
+                                state=${state}
+                                fileId=${row.fileId}
+                                label=${"Play " + row.season + "×" + row.episode}
+                              />
+                            <//>
                           </tr>
                         `;
                       })}
@@ -1467,85 +1679,63 @@ function EpisodesTab({ state }) {
 }
 
 function PlaybackTab({ state }) {
-  const f =
-    state.selected.inspectionCache?.selectedFiles?.find(
-      (file) => file.id === pickSourceCheckFileId(state.selected),
-    ) ?? state.selected.inspectionCache?.selectedFiles?.[0];
+  const entry = state.selected;
+  const fileId = pickSourceCheckFileId(entry);
   return html`
     <${Section}
       id="playback"
       title="Playback check"
-      note="Keep metadata, sampled-media evidence, and browser support separate. Each check covers only the named file."
+      note="Whether this source is likely to play. Each check covers only the file it names."
+      action=${html`<button
+        class="secondary"
+        title="Opens the raw media URL in a new tab. It does not run a check."
+        onClick=${() =>
+          openDirectStream(state).catch((error) => notify(error.message))}
+      >
+        Open direct stream
+      </button>`}
     >
       <${SourceCheckPanel}
-        entry=${state.selected}
+        entry=${entry}
         onEntry=${syncSelectedEntry}
-        startOptions=${{
-          probe: true,
-          ...(pickSourceCheckFileId(state.selected)
-            ? { fileId: pickSourceCheckFileId(state.selected) }
-            : {}),
-        }}
+        startOptions=${{ probe: true, ...(fileId ? { fileId } : {}) }}
       />
-      <div class="actions">
-        <button
-          class="primary"
-          onClick=${() => goWatch(state.selected.id, f?.id)}
-        >
-          ▶ Play this file
-        </button>
-        <button
-          class="secondary"
-          onClick=${() =>
-            openDirectStream(state).catch((error) => notify(error.message))}
-        >
-          Open direct stream
-        </button>
-      </div>
-      <div class="stacked-sm">
-        <p class="inline-note">
-          Path: HoshiStream →
-          ${
-            state.selected.localFilePath || state.selected.localFolderPath
-              ? "Local file"
-              : "TorrServer"
-          }
-          → Player. Direct playback depends on the player's container and codec
-          support. When stream repair is enabled, a "Compatible" stream may also
-          be offered; the direct option stays available.
-        </p>
-        <p class="muted stacked-xs">
-          Open direct stream opens the raw media URL in a new tab. It does not
-          run a check or automatically assess playback.
-        </p>
+      <p class="inline-note stacked-sm">
+        Path: HoshiStream →
+        ${entry.localFilePath || entry.localFolderPath ? "Local file" : "TorrServer"}
+        → Player. Direct playback depends on the player's container and codec
+        support.
         ${
           state.status.transcode?.enabled
-            ? html`<label class="check stacked-xs">
-                <input
-                  type="checkbox"
-                  checked=${Boolean(state.selected.forceTranscode)}
-                  onChange=${async (e) => {
-                    try {
-                      setState({
-                        selected: await patch(state, {
-                          forceTranscode: e.target.checked,
-                        }),
-                      });
-                      notify(
-                        e.target.checked
-                          ? "Compatible stream always offered"
-                          : "Compatible stream offered when file metadata suggests repair",
-                      );
-                    } catch (error) {
-                      notify(error.message);
-                    }
-                  }}
-                />
-                <span class="muted">Always offer the Compatible stream</span>
-              </label>`
-            : null
+            ? " When stream repair is on, a “Compatible” stream may be offered alongside the direct one."
+            : ""
         }
-      </div>
+      </p>
+      ${
+        state.status.transcode?.enabled
+          ? html`<label class="check stacked-xs">
+              <input
+                type="checkbox"
+                checked=${Boolean(entry.forceTranscode)}
+                onChange=${async (e) => {
+                  try {
+                    syncSelectedEntry(
+                      await patch(state, { forceTranscode: e.target.checked }),
+                    );
+                    notify(
+                      e.target.checked
+                        ? "Compatible stream always offered"
+                        : "Compatible stream offered when file metadata suggests repair",
+                    );
+                  } catch (error) {
+                    notify(error.message);
+                  }
+                }}
+              />
+              <span class="muted">Always offer the Compatible stream</span>
+            </label>`
+          : null
+      }
     <//>
   `;
 }
@@ -2006,14 +2196,15 @@ function PolicyBlock({ entry, diskCopy }) {
 // the unmistakable primary action; admin work lives behind tabs so the sheet
 // stays short. state.tab (also set by Storage deep links) picks the tab.
 const SECTIONS = [
-  ["overview", "Details", OverviewTab],
-  ["metadata", "Metadata", MetadataTab],
-  ["source", "Source", SourceTab],
-  ["files", "Files", FilesTab],
+  ["overview", "Details", DetailsTab],
   ["episodes", "Episodes", EpisodesTab, "series"],
-  ["playback", "Playback check", PlaybackTab],
-  ["storage", "Keep on disk", StorageTab],
+  ["source", "Source", SourceTab],
+  ["playback", "Playback", PlaybackTab],
+  ["storage", "Storage", StorageTab],
 ];
+// Tabs folded into others by the 2026-09-28 consolidation; old deep links
+// land on their new home.
+const TAB_ALIASES = { metadata: "overview", files: "source" };
 
 // Series-only tabs carry their type in the fourth slot.
 function sectionsFor(entry) {
@@ -2047,7 +2238,8 @@ export function DetailSheet() {
   const check = sourceCheckBadge(entry.sourceCheck);
   const disk = diskBadge(entry);
   const sections = sectionsFor(entry);
-  const active = sections.find(([key]) => key === state.tab) ?? sections[0];
+  const tab = TAB_ALIASES[state.tab] ?? state.tab;
+  const active = sections.find(([key]) => key === tab) ?? sections[0];
   const [, , Tab] = active;
   // Arrow keys move between tabs, as the tablist pattern expects.
   const onTabKey = (event) => {

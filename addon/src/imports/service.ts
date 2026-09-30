@@ -5,6 +5,8 @@ import { entryTagsSchema, type Tags } from "../tags.ts";
 import type { TorrServerClient } from "../torrserver-client.ts";
 import {
   createEntrySchema,
+  episodeHintSchema,
+  seasonHintSchema,
   type LibraryEntry,
   type SearchReceipt,
   type SeriesSource,
@@ -42,7 +44,8 @@ export const seriesPreviewInputSchema = z
   .object({
     draftId: z.string().uuid(),
     entryId: z.string().min(1),
-    seasonHint: z.number().int().nonnegative().optional(),
+    seasonHint: seasonHintSchema.optional(),
+    episodeHint: episodeHintSchema.optional(),
   })
   .strict();
 export const seriesCommitInputSchema = z
@@ -312,6 +315,9 @@ export class ImportService {
             ...(input.seasonHint === undefined
               ? {}
               : { seasonHint: input.seasonHint }),
+            ...(input.episodeHint === undefined
+              ? {}
+              : { episodeHint: input.episodeHint }),
           },
           input.entryId,
           bounded,

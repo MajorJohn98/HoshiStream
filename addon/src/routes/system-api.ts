@@ -142,16 +142,32 @@ export const handlePlaybackSessions: RouteHandler = async (
       list.push(entry.id);
       owners.set(hash, list);
     }
-    entry.extraSources?.forEach((source, index) => {
-      const label =
-        source.seasonHint !== undefined
-          ? `Season ${source.seasonHint}`
-          : `Extra source ${index + 1}`;
-      for (const hash of [source.sourceHash, magnetHash(source.magnetUri)])
-        if (hash) sourceLabels.set(`${entry.id}:${hash.toLowerCase()}`, label);
+    const extras = entry.extraSources ?? [];
+    const hintLabel = (source: { seasonHint?: number; episodeHint?: number }) =>
+      [
+        source.seasonHint !== undefined && `Season ${source.seasonHint}`,
+        source.episodeHint !== undefined && `Episode ${source.episodeHint}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    const label = (hash: string | undefined, text: string) => {
+      if (hash) sourceLabels.set(`${entry.id}:${hash.toLowerCase()}`, text);
+    };
+    // The main torrent is labeled once there is anything to tell it apart
+    // from: other torrents, or its own numbering.
+    const mainLabel = hintLabel(entry) || (extras.length ? "Main torrent" : "");
+    if (mainLabel) {
+      label(entry.sourceHash, mainLabel);
+      label(magnetHash(entry.magnetUri), mainLabel);
+      label(entry.inspectionCache?.hash, mainLabel);
+    }
+    extras.forEach((source, index) => {
+      const text = hintLabel(source) || `Extra source ${index + 1}`;
+      label(source.sourceHash, text);
+      label(magnetHash(source.magnetUri), text);
       for (const file of entry.inspectionCache?.selectedFiles ?? [])
         if (file.hash && fileSourceIndex(file.id) === index + 1)
-          sourceLabels.set(`${entry.id}:${file.hash.toLowerCase()}`, label);
+          label(file.hash, text);
     });
   }
   const copying = archiver?.activeEntryId();

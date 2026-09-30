@@ -28,6 +28,8 @@ export function torrentSources(entry: LibraryEntry): SeriesSource[] {
       torrentFilePath: entry.torrentFilePath,
       sourceHash: entry.sourceHash,
       fileOverrides: entry.fileOverrides,
+      seasonHint: entry.seasonHint,
+      episodeHint: entry.episodeHint,
       searchImport: entry.searchImport,
     },
     ...(entry.extraSources ?? []),
@@ -80,7 +82,7 @@ export function selectReviewedMediaFiles(
     selectable,
     preferredFileIndex,
     source.fileOverrides,
-    source.seasonHint,
+    { seasonHint: source.seasonHint, episodeHint: source.episodeHint },
   );
 }
 

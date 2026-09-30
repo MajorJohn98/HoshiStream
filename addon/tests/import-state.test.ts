@@ -8,6 +8,8 @@ const {
   createRequestGate,
   editableSource,
   manualSubmission,
+  sourceHintLabel,
+  sourceHints,
   stripServerMetadata,
 } = importState;
 
@@ -179,5 +181,39 @@ describe("ordinary JSON metadata", () => {
     });
     expect(source.sourceHash).toBe("server-source-hash");
     expect(source.managedMedia).toBe(true);
+  });
+});
+
+describe("series numbering hints", () => {
+  it("turns form fields into hints and omits blanks", () => {
+    expect(sourceHints("", "")).toEqual({});
+    expect(sourceHints("0", " 7 ")).toEqual({ seasonHint: 0, episodeHint: 7 });
+    expect(sourceHints(2, undefined)).toEqual({ seasonHint: 2 });
+    expect(() => sourceHints("-1", "")).toThrow("Season");
+    expect(() => sourceHints("", "0")).toThrow("Episode");
+    expect(() => sourceHints("", "1.5")).toThrow("Episode");
+  });
+
+  it("describes a source's numbering", () => {
+    expect(sourceHintLabel({})).toBe("Numbered from file names");
+    expect(sourceHintLabel({ seasonHint: 2 })).toBe("Season 2");
+    expect(sourceHintLabel({ episodeHint: 5 })).toBe("Episode 5");
+    expect(sourceHintLabel({ seasonHint: 2, episodeHint: 5 })).toBe(
+      "Season 2, episode 5",
+    );
+  });
+
+  it("keeps episode hints when editing extra sources", () => {
+    expect(
+      editableSource({
+        magnetUri: "magnet:authorized",
+        seasonHint: 1,
+        episodeHint: 13,
+      }),
+    ).toEqual({
+      magnetUri: "magnet:authorized",
+      seasonHint: 1,
+      episodeHint: 13,
+    });
   });
 });

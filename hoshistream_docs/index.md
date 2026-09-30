@@ -69,6 +69,9 @@
 
 ## Plans
 
+- [plans/2026-09-28-main-torrent-and-activity-groups-plan.md](plans/2026-09-28-main-torrent-and-activity-groups-plan.md) — Make an extra torrent the main one, file-id remapping so watched state survives source edits, main-torrent Activity label, collapsible Activity groups (implemented).
+- [plans/2026-09-28-entry-sheet-consolidation-plan.md](plans/2026-09-28-entry-sheet-consolidation-plan.md) — Entry sheet from seven tabs to five: merged Details/Metadata, one Episodes list with watch/play, Files under Source with a single Inspect, trimmed Playback, Storage (implemented).
+- [plans/2026-09-28-series-season-episode-hints-plan.md](plans/2026-09-28-series-season-episode-hints-plan.md) — Per-torrent season and episode hints (main and extra sources), explicit/loose filename numbering with collision-safe guesses, editable source numbering in the Source tab and Chrome companion (implemented).
 - [plans/2026-09-27-state-durability-and-failure-handling-plan.md](plans/2026-09-27-state-durability-and-failure-handling-plan.md) — Reliability scan follow-up: durable `fsync` writes and corrupt-file quarantine for every JSON store, serialized small-store writers, 503 (not 404) on transient TorrServer failures, and process-level crash handlers (implemented).
 - [plans/2026-09-21-windows-ci-portability-plan.md](plans/2026-09-21-windows-ci-portability-plan.md) — Green `shared (windows-2025)` job (#14): `PSModulePath` leak into Windows PowerShell 5.1 fixed in `restrictAccess`, registry and mount enumeration; Windows-aware test branches for mode bits, path flavour, NTFS directory mtime and named-pipe accept ordering (implemented).
 - [plans/2026-09-13-cinemeta-metadata-enrichment-plan.md](plans/2026-09-13-cinemeta-metadata-enrichment-plan.md) — Opt-in Cinemeta enrichment: verified API contract, ownership rule, title-query cleaning, artwork cache + `/artwork` route, auto/manual/backfill triggers, Match card UI, tests (done).
@@ -153,5 +156,8 @@
 - [changelog/0.8.1-portable-macos-build.md](changelog/0.8.1-portable-macos-build.md) — Runtime state-directory resolution, first-run `.env` and token generation, and `.dmg` packaging.
 - [changelog/0.9.0-remote-pointer.md](changelog/0.9.0-remote-pointer.md) — Permanent add-on URL: Vercel pointer server, manual push API, and the "Update Remote Pointer" menu item.
 - [changelog/0.10.0-multi-torrent-series.md](changelog/0.10.0-multi-torrent-series.md) — One series entry backed by several torrents: extra sources, composite file IDs, merged episodes.
+- [changelog/main-torrent-and-activity-groups.md](changelog/main-torrent-and-activity-groups.md) — Make main, watched state that survives source edits, labeled main torrent, grouped collapsible Activity torrents.
+- [changelog/entry-sheet-consolidation.md](changelog/entry-sheet-consolidation.md) — Entry sheet consolidated to five tabs, plus the fix that stops a Details save from dropping the inspection cache.
+- [changelog/series-season-episode-hints.md](changelog/series-season-episode-hints.md) — Season and episode hints per torrent, smarter filename numbering, sample folders, and editable source numbering.
 - [changelog/0.11.0-multi-tenant-pointer-and-devices.md](changelog/0.11.0-multi-tenant-pointer-and-devices.md) — Multi-tenant pointer server (claim-on-first-push, hardening) and the local Devices dashboard.
 - [changelog/0.8.2-shutdown-and-bundle-size.md](changelog/0.8.2-shutdown-and-bundle-size.md) — Fixes the server outliving its supervisor (leaked mDNS socket) and prunes devDependencies from the shipped bundle.

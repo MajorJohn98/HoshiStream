@@ -231,6 +231,13 @@ export const searchReceiptSchema = z.object({
 export type SearchImport = z.infer<typeof searchImportSchema>;
 export type SearchReceipt = z.infer<typeof searchReceiptSchema>;
 
+// Numbering for a source's files whose names carry no explicit SxxEyy: the
+// season they belong to, and the episode the first of them is (a single-
+// episode torrent, or a pack that continues a season). See
+// plans/2026-09-28-series-season-episode-hints-plan.md.
+export const seasonHintSchema = z.number().int().nonnegative();
+export const episodeHintSchema = z.number().int().positive().max(9_999);
+
 // File override ids here are the source's own TorrServer file indexes.
 export const seriesSourceSchema = z
   .object({
@@ -240,7 +247,8 @@ export const seriesSourceSchema = z
       .string()
       .regex(/^[0-9a-f]{40}$/)
       .optional(),
-    seasonHint: z.number().int().nonnegative().optional(),
+    seasonHint: seasonHintSchema.optional(),
+    episodeHint: episodeHintSchema.optional(),
     fileOverrides: z.array(fileOverrideSchema).optional(),
     managedMedia: z.boolean().optional(),
     searchImport: searchImportSchema.optional(),
@@ -368,6 +376,10 @@ export const libraryEntrySchema = z
       .optional(),
     preferredFileIndex: z.number().int().nonnegative().optional(),
     fileOverrides: z.array(fileOverrideSchema).optional(),
+    // Numbering hints for the primary source (series only; see
+    // seasonHintSchema). Ignored for movies.
+    seasonHint: seasonHintSchema.optional(),
+    episodeHint: episodeHintSchema.optional(),
     // Additional torrents merged into this series' episode list. Torrent-
     // backed series only; validated by entrySourceRules below.
     extraSources: z.array(seriesSourceSchema).optional(),
@@ -480,6 +492,9 @@ export const patchEntrySchema = createEntrySchema.partial().extend({
   background: z.string().url().nullable().optional(),
   // null clears every episode override.
   episodes: episodesSchema.nullable().optional(),
+  // null clears the primary source's numbering hints.
+  seasonHint: seasonHintSchema.nullable().optional(),
+  episodeHint: episodeHintSchema.nullable().optional(),
   ...nullableMetadata,
 });
 

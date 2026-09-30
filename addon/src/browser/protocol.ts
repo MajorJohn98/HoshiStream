@@ -60,6 +60,7 @@ export const nativeRequestSchema = z.discriminatedUnion("command", [
         draftId: uuid,
         entryId,
         seasonHint: z.number().int().nonnegative().optional(),
+        episodeHint: z.number().int().positive().max(9_999).optional(),
       })
       .strict(),
   ),

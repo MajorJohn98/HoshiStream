@@ -245,6 +245,19 @@ describe("chrome companion save workflow", () => {
     expect(buildSeriesPreviewPayload(series)).toMatchObject({
       entryId: "entry-1",
     });
+    series.form.seasonHint = "2";
+    series.form.episodeHint = "5";
+    expect(buildSeriesPreviewPayload(series)).toMatchObject({
+      entryId: "entry-1",
+      seasonHint: 2,
+      episodeHint: 5,
+    });
+    series.form.episodeHint = "0";
+    expect(() => buildSeriesPreviewPayload(series)).toThrow(
+      "Episode hint must be a whole number from 1 to 9999.",
+    );
+    series.form.seasonHint = "";
+    series.form.episodeHint = "";
     series.preview = {
       status: "ready",
       previewId: randomUUID(),

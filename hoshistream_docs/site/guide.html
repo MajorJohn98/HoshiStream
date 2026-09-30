@@ -260,7 +260,7 @@ shasum -a 256 -c 'HoshiStream-BUILD-ID-darwin-arm64.dmg.sha256'</code></pre>
     </li>
     <li>
       Open the title and choose <strong>Play</strong> to watch in the browser,
-      or choose a file from its <strong>Files</strong> tab. A source check is
+      or play a specific episode from its <strong>Episodes</strong> tab. A source check is
       separate from saving and playback.
     </li>
     <li>
@@ -489,22 +489,26 @@ shasum -a 256 -c 'HoshiStream-BUILD-ID-darwin-arm64.dmg.sha256'</code></pre>
       otherwise files become season 1 in filename order.
     </li>
     <li>
-      Use the entry's <strong>Files</strong> tab to review the actual episode or
-      video before playback. Correct selection or episode overrides if automatic
+      Use the entry's <strong>Source</strong> tab (its <strong>Files</strong>
+      section) to review the actual episode or video before playback. Correct selection or episode overrides if automatic
       identification chooses a sample, extra, or wrong episode.
     </li>
     <li>
       A torrent-backed series can have several sources. Use
       <strong>+ Add another torrent</strong> when adding magnets, or its
-      <strong>Source</strong> tab afterward, then re-inspect. Filename numbering
-      takes precedence over a season hint. The newest source wins overlapping
+      <strong>Source</strong> tab afterward. Each torrent can carry a Season
+      and an Episode number for files without <code>SxxEyy</code> in their
+      names: a single-episode torrent becomes exactly that episode, and a pack
+      that continues a season is numbered upward from it. Explicit filename
+      numbering takes precedence over both. The newest source wins overlapping
       episodes, so review before replacing coverage.
     </li>
     <li>
-      A series entry's <strong>Episodes</strong> tab shows each episode with a
-      title cleaned from its filename; you can type your own title, a short
-      overview and an air date, and mark the show <strong>Ongoing</strong> so
-      Stremio keeps it on the Board. <strong>Generate thumbnails</strong> grabs
+      A series entry's <strong>Episodes</strong> tab lists each episode with a
+      title cleaned from its filename; type your own title, a short overview
+      and an air date, mark episodes watched, or play one. Mark the show
+      <strong>Ongoing</strong> on its <strong>Details</strong> tab so Stremio
+      keeps it on the Board. <strong>Generate thumbnails</strong> grabs
       one frame per episode whose file is already on disk (a linked folder or a
       completed disk copy) with the bundled FFmpeg; nothing is ever fetched from
       a live torrent for a thumbnail.
@@ -545,8 +549,8 @@ shasum -a 256 -c 'HoshiStream-BUILD-ID-darwin-arm64.dmg.sha256'</code></pre>
   </h2>
   <h3>In the management browser</h3>
   <p>
-    Open a title and choose <strong>Play</strong>, or choose a file from
-    <strong>Files</strong>. This opens HoshiStream's browser player, not mpv.
+    Open a title and choose <strong>Play</strong>, or play an episode from
+    <strong>Episodes</strong>. This opens HoshiStream's browser player, not mpv.
     Start with authorized H.264/AAC MP4 media. Browser codec/container support,
     source reachability, and available bandwidth remain separate questions.
   </p>
@@ -1424,7 +1428,7 @@ TRANSCODE_ENABLED=false</code></pre>
       marker in that storage root. Keep it with the copied media.
     </li>
     <li>
-      Open a torrent-backed title's <strong>Keep on disk</strong> tab, select
+      Open a torrent-backed title's <strong>Storage</strong> tab, select
       the registered volume, and choose <strong>Keep on disk</strong>.
       Inspection may be needed first. Local-file/folder entries are not eligible
       for this torrent archiving feature.
@@ -1441,7 +1445,7 @@ TRANSCODE_ENABLED=false</code></pre>
     </li>
     <li>
       Optionally give a series a rolling window in its
-      <strong>Keep on disk</strong> tab: <strong>Keep N ahead</strong> archives
+      <strong>Storage</strong> tab: <strong>Keep N ahead</strong> archives
       the next unwatched episodes after the one you last played, and
       <strong>Remove watched copies</strong> deletes copies you have finished
       once that window is on disk. Both are off by default; nothing that is
@@ -1758,8 +1762,9 @@ TRANSCODE_ENABLED=false</code></pre>
     Choose <strong>Add to existing series</strong>, select an inspected
     torrent-backed series, and request an episode preview. That explicit preview
     can contact peers but does not add the source yet. Review new episodes and
-    overlaps, then approve replacements before confirming. Filename numbering
-    overrides an optional season hint; the newly appended source wins approved
+    overlaps, then approve replacements before confirming. Explicit filename
+    numbering overrides the optional season and episode hints; an episode hint
+    places a single-episode torrent on that episode. The newly appended source wins approved
     overlaps. Local-file/folder series are not eligible. An expired preview or
     changed target requires fresh review.
   </p>
