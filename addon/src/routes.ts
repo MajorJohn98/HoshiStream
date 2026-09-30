@@ -76,7 +76,9 @@ import {
 import { handleTags } from "./routes/tags-api.ts";
 import type { Tags } from "./tags.ts";
 import { handleSourceCheck } from "./routes/source-check-api.ts";
+import { handleStreamTests } from "./routes/stream-tests-api.ts";
 import type { SourceChecks } from "./source-checks.ts";
+import type { StreamTests } from "./stream-tests.ts";
 import type { Onboarding } from "./onboarding.ts";
 import type { IdentityStore } from "./identity.ts";
 import type { ThumbnailService } from "./thumbnail-service.ts";
@@ -123,6 +125,7 @@ export interface HandlerOptions {
   artwork?: ArtworkCache;
   imports?: ImportService;
   sourceChecks?: SourceChecks;
+  streamTests?: StreamTests;
   onboarding?: Onboarding;
   diagnostics?: DiagnosticsOptions;
   shippedSettingsUrl?: URL;
@@ -146,6 +149,7 @@ const OPEN_ROUTES: RouteHandler[] = [
 const API_ROUTES: RouteHandler[] = [
   handleOnboarding,
   handleSourceCheck,
+  handleStreamTests,
   handleImports,
   handleVolumes,
   handleDiskCopy,

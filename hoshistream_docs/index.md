@@ -39,7 +39,7 @@
 
 ## Plans
 
-- [plans/2026-09-30-pre-add-stream-test-plan.md](plans/2026-09-30-pre-add-stream-test-plan.md) — Owner-triggered "Test streaming" before Add: measures the file's bitrate against the sustained swarm rate through TorrServer, names the bottleneck (swarm, line or TorrServer limit), and suggests a wait, a disk copy or a release size; advice only (decision 0029; planned).
+- [plans/2026-09-30-pre-add-stream-test-plan.md](plans/2026-09-30-pre-add-stream-test-plan.md) — Owner-triggered "Test streaming" before Add: measures the file's bitrate against the sustained swarm rate through TorrServer, names the bottleneck (swarm, line or TorrServer limit), and suggests a wait, a disk copy or a release size; advice only (decision 0029; phase 1 implemented, companion and search phases planned).
 - [plans/2026-09-28-main-torrent-and-activity-groups-plan.md](plans/2026-09-28-main-torrent-and-activity-groups-plan.md) — Make an extra torrent the main one, file-id remapping so watched state survives source edits, main-torrent Activity label, collapsible Activity groups (implemented).
 - [plans/2026-09-28-entry-sheet-consolidation-plan.md](plans/2026-09-28-entry-sheet-consolidation-plan.md) — Entry sheet from seven tabs to five: merged Details/Metadata, one Episodes list with watch/play, Files under Source with a single Inspect, trimmed Playback, Storage (implemented).
 - [plans/2026-09-28-series-season-episode-hints-plan.md](plans/2026-09-28-series-season-episode-hints-plan.md) — Per-torrent season and episode hints (main and extra sources), explicit/loose filename numbering with collision-safe guesses, editable source numbering in the Source tab and Chrome companion (implemented).
@@ -82,6 +82,7 @@
 
 ## Changelog
 
+- [changelog/pre-add-stream-test.md](changelog/pre-add-stream-test.md) — **Test streaming** on Add Media: before you save a magnet or `.torrent`, a bounded TorrServer read measures the file's bitrate against the sustained swarm rate, names the bottleneck (swarm, line or TorrServer limit) and suggests a wait, a disk copy or a smaller release; advice only, in memory, one test at a time (decision 0029, phase 1).
 - [changelog/state-durability-and-crash-handling.md](changelog/state-durability-and-crash-handling.md) — JSON state survives power loss and corruption (no more silent tag reseeding), overlapping settings saves no longer lose updates, transient TorrServer failures answer 503, stray exceptions shut down cleanly instead of orphaning TorrServer, and Quit stops TorrServer via `/shutdown` instead of racing a SIGKILL.
 - [changelog/windows-ci-portability.md](changelog/windows-ci-portability.md) — `PSModulePath` no longer leaks into Windows PowerShell 5.1 (ACL, registry and mount enumeration worked only when not launched from pwsh 7); Windows-aware test branches make the `windows-2025` CI job green (#14).
 - [changelog/series-meta-from-cache.md](changelog/series-meta-from-cache.md) — Series meta answers from the inspection cache without waiting on TorrServer, source edits refill the cache in the background, one shared inspection per entry revision, and no `defaultVideoId` on series meta (it hid the episode list).

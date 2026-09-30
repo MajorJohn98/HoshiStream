@@ -409,8 +409,9 @@ chooses what to add. The companion, manual import and magnet handler stay.
 
 ### 0029 — Owner-triggered stream test before Add
 
-Accepted 2026-09-30. Not yet implemented. Changes 0028's "No peer contact
-before Add". Plan: `plans/2026-09-30-pre-add-stream-test-plan.md`.
+Accepted 2026-09-30. Phase 1 (server and Add Media) implemented 2026-09-30;
+phases 2 (Chrome companion) and 3 (0028 search) are not. Changes 0028's "No
+peer contact before Add". Plan: `plans/2026-09-30-pre-add-stream-test-plan.md`.
 
 Before saving a torrent, the owner may test whether it streams smoothly on
 this connection. The test is advice only: it never blocks or delays Add,
@@ -444,6 +445,15 @@ never marks a source unviable and never feeds source-check outcomes (0019,
 - **Privacy.** Like playback, a test joins the swarm: peers and trackers
   see the public IP, and TorrServer may upload pieces it holds. Logs record
   the test ID, outcome and rates only.
+
+Changed: 2026-09-30, phase 1 built. "Streaming" means a stream in the last
+10 s, checked at start and again when a queued test begins. A finished test
+keeps its torrent until its record expires or is deleted; failed and
+no-metadata tests release it at once. Cleanup also spares torrents that
+another test, an episode preview or a save in flight uses. Line speed is the
+median of the last three speed tests; the card's **Measure line** is a
+separate owner action. Playback telemetry ignores tested hashes, and disk
+copies yield to a running test.
 
 ## Retired decisions
 

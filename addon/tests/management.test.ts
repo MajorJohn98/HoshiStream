@@ -163,6 +163,21 @@ describe("management assets", () => {
     expect(addJs).not.toContain("SearchMedia");
   });
 
+  it("add modal offers a pre-add stream test for torrent sources", async () => {
+    const [addJs, streamTestJs] = await Promise.all([
+      asset("views/add.js"),
+      asset("components/stream-test.js"),
+    ]);
+    expect(addJs).toContain("<${StreamTestPanel}");
+    expect(addJs).toContain('source === "torrent" || source === "torrentFile"');
+    expect(addJs).toContain("prepare=${prepareStreamTest}");
+    expect(streamTestJs).toContain('api("stream-tests", {');
+    expect(streamTestJs).toContain('addEventListener("pagehide", onHide)');
+    expect(streamTestJs).toContain(
+      "releaseStreamTest(testRef.current?.testId, { keepalive: true })",
+    );
+  });
+
   it("scraps search import UI while keeping manual add and source-check flows", async () => {
     const [addJs, storeJs, detailJs, sourceCheckJs] = await Promise.all([
       asset("views/add.js"),

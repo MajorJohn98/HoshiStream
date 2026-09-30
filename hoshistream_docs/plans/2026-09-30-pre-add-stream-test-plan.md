@@ -1,6 +1,7 @@
 # 2026-09-30 — Stream test before Add
 
-Status: planned. Decision: entry 0029 in
+Status: phase 1 implemented 2026-09-30 (see "Phase 1 as built" at the end);
+phases 2 and 3 planned. Decision: entry 0029 in
 [decision-log.md](../decisions/decision-log.md).
 
 ## Problem
@@ -293,3 +294,56 @@ Run from `addon/`: `npm run typecheck`, `npm test`, `npm run lint` and
   longer?
 - Should the verdict carry over to the saved entry's health card? The
   default is no, memory only.
+
+## Phase 1 as built (2026-09-30)
+
+Summary: [changelog/pre-add-stream-test.md](../changelog/pre-add-stream-test.md).
+The open questions keep their defaults. Differences from the plan above:
+
+- **Timing and bytes.**
+  - Test longer also allows the probe 60 s (basic: 20 s).
+  - The byte cap counts the larger of `/cache` growth and the bytes the
+    test's reader received.
+  - A test that reads the whole file stops as `complete`.
+  - If the probe finds no duration, it is estimated as size × 8 ÷ bitrate.
+  - Inconclusive results suggest Test longer unless a stream stopped the
+    test.
+- **Queue.**
+  - `streaming_active` is also reported when a queued test reaches the
+    front.
+  - A test left queued past its TTL is cancelled with `expired`.
+  - A source check queued behind a test keeps its own deadline running.
+- **API.**
+  - `POST` returns the full test state, not only `{testId, phase,
+    expiresAt}`.
+  - The state carries a live `progress` field while measuring.
+  - `fileId` accepts any nonnegative integer.
+  - Without the service, the API answers `409 stream_test_unavailable`.
+  - `DELETE` also removes the record. A test cancelled because its draft
+    was dropped stays visible until it expires.
+  - File names are paths inside the torrent. The torrent is registered
+    without a title, and logs leave out hashes as well.
+- **Cleanup and activity.**
+  - Failed and no-metadata tests release their torrent at once. A finished
+    test holds it until its record goes.
+  - Queued tests also count as users of their hash, so Test longer and
+    Test this file keep the torrent between tests.
+  - Cleanup spares a hash used by a save in flight (`ImportService`
+    `committing`). It matches saved entries by `.torrent` path as well as
+    hash.
+  - A 60 s sweep prunes records and re-checks the torrents tests
+    registered.
+  - `activity.ts` tracks tests, and playback telemetry skips tested hashes.
+- **Add Media.**
+  - A `.torrent` is tested by its staged upload path, not through a draft.
+    A tested upload that is never saved stays in managed uploads (at most
+    1 MB).
+  - Test longer and Test this file start the new test before deleting the
+    old one.
+  - Editing a tested field marks the result out of date instead of
+    cancelling it.
+  - Closing the browser tab sends a keepalive `DELETE`.
+  - The file picker is a select plus **Test this file**, and the client
+    checks the `magnet:?` prefix.
+  - Durations round to the minute, and the remedy wording differs from the
+    examples above.

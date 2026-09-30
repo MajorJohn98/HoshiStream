@@ -10,6 +10,11 @@ import {
   SourceCheckPanel,
   pickSourceCheckFileId,
 } from "../components/source-check.js";
+import {
+  StreamTestPanel,
+  magnetTestSource,
+  streamTestFields,
+} from "../components/stream-test.js";
 import { manualSubmission, sourceHints } from "../import-state.js";
 import { clearMagnetLinkRoute, magnetLinkPrefill } from "../magnet-link.js";
 
@@ -224,7 +229,7 @@ const SOURCES = [
 const SOURCE_HELP = {
   torrent: "Paste a magnet link you are authorized to use.",
   torrentFile:
-    "Upload a .torrent file. Inspect it after adding to your library.",
+    "Upload a .torrent file. Test streaming before you add it, or inspect it after.",
   local: "Link a video on this Mac in place, or upload a copy.",
   folder: "Link a folder of episodes in place, or upload a copy.",
 };
@@ -264,7 +269,7 @@ function SourceField({
   if (source === "torrentFile")
     return html`<div class="drop">
       <b>Drop a .torrent file here</b>
-      <p class="muted">Inspect it after adding to your library.</p>
+      <p class="muted">Test streaming below, or inspect it after adding.</p>
       <input name="torrent" type="file" accept=".torrent" required />
     </div>`;
   if (source === "local")
@@ -576,6 +581,27 @@ export function AddSheet() {
       inspection: null,
       inspectionError: "",
     });
+  };
+  // A stream test reads the same fields Save does. A .torrent is uploaded
+  // once, and Save reuses that upload.
+  const prepareStreamTest = async (form) => {
+    const snapshot = Object.fromEntries(new FormData(form));
+    const fields = streamTestFields(snapshot);
+    if (source === "torrent")
+      return { source: magnetTestSource(snapshot.magnetUri), ...fields };
+    preparedRef.current = await prepareSource(
+      form,
+      source,
+      picked,
+      preparedRef.current,
+      (prepared) => {
+        preparedRef.current = prepared;
+      },
+    );
+    return {
+      source: { torrentFilePath: preparedRef.current.fields.torrentFilePath },
+      ...fields,
+    };
   };
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -889,6 +915,13 @@ export function AddSheet() {
                             ? html`<${ExtraTorrents}
                                 extras=${extras}
                                 setExtras=${setExtras}
+                              />`
+                            : null
+                        }
+                        ${
+                          source === "torrent" || source === "torrentFile"
+                            ? html`<${StreamTestPanel}
+                                prepare=${prepareStreamTest}
                               />`
                             : null
                         }

@@ -189,6 +189,102 @@ invalidate evidence; stale jobs
 cannot overwrite new source state. Unfinished checks are marked interrupted on
 restart rather than automatically resumed.
 
+### Stream tests
+
+An owner-triggered test, before saving, of whether a torrent downloads faster
+than it plays on this connection (decision 0029). It is advice only: it never
+blocks or delays Add, never marks a source unviable and never feeds
+source-check outcomes. Same bearer-token gate and `Cache-Control: no-store`.
+
+| Method & path | Contract |
+|---|---|
+| `POST /api/stream-tests` | Start a test (body below) → `202` with its state, phase `queued` |
+| `GET /api/stream-tests/{testId}` | The test's current state |
+| `DELETE /api/stream-tests/{testId}` | Cancel a queued or running test, forget it and clean up → `204` |
+
+The body is strict JSON:
+
+- `source`, exactly one of:
+  - `{magnetUri}`: starts with `magnet:?` and names one BTv1 identity.
+  - `{torrentFilePath}`: a `.torrent` of at most 1 MB staged under the managed
+    upload root, such as the path `POST /api/torrent-upload` returned.
+  - `{draftId}`: an import draft from `POST /api/imports/prepare*`.
+- `type` (`movie` by default, or `series`), `seasonHint` and `episodeHint`
+  pick the file as inspection does: the movie file, or the first episode.
+- `fileId`: test this one-based TorrServer file ID instead.
+- `mode`: `basic` (default) or `extended` (the UI's "Test longer").
+
+The state contains:
+
+- `testId`, `phase` (`queued`, `metadata`, `measuring`, then `done`,
+  `cancelled` or `failed`), `code` on failures and some cancellations,
+  `message`, `mode` and `hash`.
+- `elapsedSeconds`, `budgetSeconds` (90 or 180) and `expiresAt`.
+- `file`, and `files` (playable files only, at most 200), each
+  `{id, name, size, season?, episode?}`. `name` is the path inside the
+  torrent.
+- `progress` while measuring: `{downloadMbps?, peers?, seeders?, bytes}`.
+- `bitrate` `{mbps, durationSeconds?}`; `swarm` `{sustainedMbps?, peakMbps?,
+  atLeast, stillSpeedingUp, peers?, seeders?, samples, bytes}`; `line`
+  `{mbps, source: "measured" | "configured", measuredAt?}`; `limitMbps`
+  (TorrServer's `DownloadRateLimit`, when set) and `cacheWindowBytes`
+  (`CacheSize` × `ReaderReadAHead` %).
+- `verdict`:
+  - `level`: `smooth`, `tight`, `too_slow` or `inconclusive`.
+  - `reason`, for inconclusive results: `no_metadata`, `no_peers`,
+    `few_samples`, `unknown_bitrate` or `stream_started`.
+  - `bottleneck`: `swarm`, `line` or `limit`.
+  - `lineStale`: peers beat the last line reading.
+  - `remedies`: `waitSeconds`, `bufferBytes`, `fitsCache?`, `copySeconds?`,
+    `targetMbps?`, `targetBytes?` and `betterSeeded`.
+  - `flags` (`atLeast`, `stillSpeedingUp`, `sharedWithDiskCopy`) and
+    `suggestTestLonger`.
+- `stoppedBy`: `time`, `cap`, `stream` (playback started), `complete` (the
+  whole file arrived) or `cancel`.
+
+The state never contains a magnet, a local path or a token. Errors are
+`{error, code}`:
+
+| Status | `code` | When |
+|---|---|---|
+| `400` | — | The body fails validation (generic `Invalid request`) |
+| `400` | `invalid_source` | The magnet, `.torrent` or draft can't be tested |
+| `404` | `not_found` | The test expired or the server restarted |
+| `409` | `streaming_active` | A client streamed in the last 10 seconds |
+| `409` | `stream_test_unavailable` | This server runs without stream tests |
+| `410` | `draft_expired` | The draft is missing or expired |
+| `429` | `stream_test_busy` | Three tests are already queued |
+| `503` | `stream_test_unavailable` | The server is shutting down |
+
+A test that starts can still end `failed` with `torrserver_unavailable`,
+`source_mismatch`, `no_playable_file`, `invalid_file`, `read_failed`,
+`streaming_active` (playback began before it left the queue) or
+`stream_test_failed`. It ends `cancelled` with `draft_discarded` when its
+draft is dropped, `expired` when it waits in the queue past its expiry, or
+`stream_test_unavailable` at shutdown. Metadata that doesn't arrive in time
+gives a `done` test with an inconclusive `no_metadata` verdict.
+
+Limits:
+
+- One test runs at a time. Tests and source checks take turns through one
+  shared FIFO work slot; at most three tests wait, and a waiting test's
+  message says what it waits for.
+- A basic test has 90 seconds in all, 30 of them for metadata, a 20-second
+  bitrate probe and a 256 MiB data cap. Extended allows 180 seconds, 60 for
+  metadata, a 60-second probe and 1 GiB.
+- Records stay in memory for 10 minutes after they finish, at most eight;
+  the oldest finished records go first. Nothing is persisted.
+- The test registers the torrent with `save_to_db: false`. A `done` test
+  that got metadata keeps it registered until its record goes, so playing
+  soon after may start from cache. The torrent is removed only if the test
+  registered it and no other test, draft, episode preview or library entry
+  uses it.
+- A stream that starts mid-test stops the test with the figures so far.
+  Playback telemetry ignores torrents under test, and the disk-copy
+  archiver yields to a running test as it does to playback.
+- Logs record the test ID, mode, phase, outcome, rates and durations; never
+  a magnet, hash, path, file name or token.
+
 ### Tags
 
 Genre-style labels kept in a registry (`tags.json`, seeded with the TMDB/IMDb genre set on first run). Entries store tag **names**; renames and deletions cascade to every entry. Names are trimmed, ≤ 40 characters, and unique case-insensitively.

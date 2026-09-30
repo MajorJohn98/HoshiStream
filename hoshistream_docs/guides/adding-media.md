@@ -55,6 +55,67 @@ and decoding errors. Slow startup alone does not switch formats. Use retry/wait
 or explicitly choose another offered quality when needed. **Open direct stream**
 opens the raw media URL; it is not an automated playback test.
 
+### Test streaming before you save
+
+A torrent plays smoothly only if its peers deliver data faster than the file
+plays. Two limits decide that: the **swarm** (how fast its peers send) and
+your **line** (your Internet download speed). The **Stream test** card on
+the Magnet link and `.torrent` tabs of Add Media checks this before you
+save.
+
+Press **Test streaming**. The test asks peers for the file list, then reads
+the movie file, or the first episode for a series (after **Series
+numbering**), for up to 90 seconds and about 256 MB. It shows the time, the
+current speed, peers and data downloaded as it goes. The result compares:
+
+- **Needs**: the file's average bitrate.
+- **Peers deliver**: the sustained download rate after a 10-second warm-up.
+- **Your line**: the median of your last three speed tests, or
+  `HOME_SPEED_MBPS` until one runs.
+
+| Result | Meaning |
+| --- | --- |
+| **Smooth** | Peers deliver at least 1.2 × what the file needs. |
+| **Tight** | It plays, with little room for slow peers or busy scenes. |
+| **Won't keep up** | Peers deliver less than the file needs. |
+| **Inconclusive** | No file list, no data, too few readings, an unknown bitrate, or playback started. The figures still show. |
+
+Tight and Won't keep up name the limit: the swarm, your line, or TorrServer's
+download limit (System → Status). They also list options:
+
+- **Start it, then pause to buffer**, with the wait and the data it builds
+  up. If that data won't fit TorrServer's read-ahead cache, the card says
+  pausing won't help.
+- **Save it, then make a disk copy before watching**, with the copy time
+  at the measured rate.
+- **Pick a smaller release**: when your line or the limit is the
+  bottleneck, the card gives a bitrate and size that should fit.
+- **Pick a release with more seeders**, when the swarm is the bottleneck.
+
+Notes can follow. "At least" means the test hit its data limit early, so
+peers may be faster than shown. "Still speeding up" means more peers were
+joining as it ended. A note also says when a disk copy shared your line
+during the test. "Test longer for a firmer result" appears when a longer
+test could change the answer; **Test longer** runs for up to 3 minutes and
+about 1 GB. If peers beat your last line reading, **Measure line** runs the
+speed test; then test again to use it.
+
+For a torrent with several videos, pick another file under the result and
+press **Test this file**. Changing the magnet, the `.torrent` file, the type
+or the series numbering after a test marks it out of date; **Test again**
+uses the new values. Only the main torrent is tested, not **Additional
+torrents**.
+
+The test is advice only: **Add to library** stays available throughout, and
+saving, switching tabs or closing the sheet cancels a running test. Tests
+run one at a time, taking turns with source checks. A test won't start
+while something is streaming, and it stops early if playback starts.
+Results stay in memory for 10 minutes and are never saved.
+
+Like playback, a test joins the swarm: peers and trackers see your public
+IP, and TorrServer may upload pieces it holds ([privacy](privacy-and-network.md)).
+Playing soon after a test may start from the data it already downloaded.
+
 ### Open magnet links directly on macOS
 
 Install the current HoshiStream app in Applications and choose **Use HoshiStream

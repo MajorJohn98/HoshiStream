@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { markStreamActivity, recentEntryActivity } from "../src/activity.ts";
+import {
+  beginStreamTest,
+  lastStreamActivityAt,
+  markStreamActivity,
+  recentEntryActivity,
+} from "../src/activity.ts";
 import {
   activeStreamTargets,
   bytesAhead,
@@ -454,6 +459,69 @@ describe("PlaybackTelemetry", () => {
     await telemetry.sample(clock);
     expect(cacheState).toHaveBeenCalledTimes(3);
     expect(entries).toHaveBeenCalledTimes(1);
+  });
+
+  it("never credits a stream test's reader as playback or watch progress", async () => {
+    const hash = "7".repeat(40);
+    const entry = libraryEntrySchema.parse({
+      id: "hoshi:tested",
+      type: "movie",
+      name: "Tested",
+      sourceHash: hash,
+      magnetUri: `magnet:?xt=urn:btih:${hash}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      inspectionCache: {
+        hash,
+        inspectedAt: new Date().toISOString(),
+        selectedFiles: [{ id: 0, path: "Tested.mkv", length: 10 * PIECE }],
+      },
+    });
+    const torrent: TorrentStatus = {
+      title: "Tested",
+      hash,
+      stat: 3,
+      stat_string: "Torrent working",
+      file_stats: [{ id: 0, path: "Tested.mkv", length: 10 * PIECE }],
+    };
+    const reader = { startPiece: 0, endPiece: 9, readerPiece: 4 };
+    const list = vi.fn<TorrServerClient["list"]>().mockResolvedValue([torrent]);
+    const cacheState = vi
+      .fn<TorrServerClient["cacheState"]>()
+      .mockResolvedValue(cache([4, 5], [reader], { hash }));
+    const observe = vi.fn();
+    const clock = 80_000_000;
+    const telemetry = new PlaybackTelemetry(
+      { list, cacheState } as unknown as TorrServerClient,
+      {
+        now: () => clock,
+        entries: vi.fn().mockResolvedValue([entry]),
+        progress: { observe },
+      },
+    );
+    const end = beginStreamTest(hash.toUpperCase());
+    try {
+      await telemetry.sample(clock);
+      expect(recentEntryActivity("hoshi:tested", clock)).toBeUndefined();
+      expect(activeStreamTargets(clock)).toEqual([]);
+      expect(cacheState).not.toHaveBeenCalled();
+      // A target left over from playback a minute ago is not sampled either,
+      // so the test's reader neither extends it nor records progress.
+      markStreamActivity(clock - 60_000, "hoshi:tested");
+      noteStreamTarget({
+        entryId: "hoshi:tested",
+        hash,
+        fileId: 0,
+        title: "T",
+      });
+      await telemetry.sample(clock);
+      expect(activeStreamTargets(clock)).toHaveLength(1);
+      expect(cacheState).not.toHaveBeenCalled();
+      expect(observe).not.toHaveBeenCalled();
+      expect(lastStreamActivityAt()).toBe(clock - 60_000);
+    } finally {
+      end();
+    }
   });
 
   it("credits a shared torrent to the owner already streaming, else the analyzed one", async () => {

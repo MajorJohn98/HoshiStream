@@ -33,7 +33,9 @@ import { DiskCleanup } from "./disk-copy.ts";
 import { Archiver } from "./archiver.ts";
 import { ArchiveSchedule } from "./archive-schedule.ts";
 import { defaultAnalyzer, LibraryAnalysis } from "./library-analysis.ts";
+import { AnalysisSlot } from "./analysis-slot.ts";
 import { SourceChecks } from "./source-checks.ts";
+import { StreamTests } from "./stream-tests.ts";
 import { Onboarding } from "./onboarding.ts";
 import { WatchProgress, WatchStates } from "./watch-state.ts";
 import { installConsoleTap, LogRing, redactText } from "./diagnostics.ts";
@@ -68,7 +70,11 @@ export async function startHoshiStream(settings = config) {
   const torrServer = new TorrServerClient(settings.TORRSERVER_INTERNAL_URL);
   const nativePicker = new NativePicker(settings.NATIVE_PICKER_SOCKET);
   const tags = new Tags(settings.TAGS_PATH);
-  const sourceChecks = new SourceChecks(library, torrServer);
+  // Source checks and stream tests take turns on TorrServer, one at a time.
+  const analysisSlot = new AnalysisSlot();
+  const sourceChecks = new SourceChecks(library, torrServer, {
+    slot: analysisSlot,
+  });
   await sourceChecks.initialize();
   const imports = new ImportService({
     library,
@@ -106,6 +112,13 @@ export async function startHoshiStream(settings = config) {
     onEntryArchived: (entryId) => {
       thumbnails.generate(entryId);
     },
+  });
+  const streamTests = new StreamTests({
+    library,
+    torrServer,
+    slot: analysisSlot,
+    drafts: imports,
+    diskCopyActive: () => archiver.activeEntryId() !== undefined,
   });
   let transcode: TranscodeManager | undefined;
   if (settings.TRANSCODE_ENABLED) {
@@ -198,6 +211,7 @@ export async function startHoshiStream(settings = config) {
       artwork,
       imports,
       sourceChecks,
+      streamTests,
       volumes,
       diskCleanup: new DiskCleanup(settings.DISK_CLEANUP_PATH),
       archiver,
@@ -231,6 +245,7 @@ export async function startHoshiStream(settings = config) {
         const results = await Promise.allSettled([
           httpClosed,
           stopSpeedTest(),
+          streamTests.close(),
           imports.close(),
           sourceChecks.close(),
           analysisStopped,

@@ -97,6 +97,10 @@ export class ImportService {
   private readonly magnetLinks: MagnetLinks;
   private readonly drafts = new Map<string, DraftRecord>();
   private readonly previews = new Map<string, PreviewRecord>();
+  // Commits take their draft or preview out of the maps before the library
+  // write lands; this keeps their hash in use until it does.
+  private readonly committing = new Set<string>();
+  private readonly draftListeners = new Set<(draftId: string) => void>();
   private cleanupTimer?: ReturnType<typeof setInterval>;
   private commands: Promise<void> = Promise.resolve();
   private closing = false;
@@ -240,6 +244,42 @@ export class ImportService {
     return this.command(() => this.dropDraft(draftId));
   }
 
+  /** The source behind a live draft, for a stream test before Add. */
+  draftSource(draftId: string) {
+    this.ensureAvailable();
+    const draft = this.requireDraft(draftId);
+    if (draft.expires <= this.now())
+      throw new ImportError(
+        "draft_expired",
+        "This import draft expired. Prepare the source again.",
+        410,
+      );
+    return { source: { ...draft.source }, hash: draft.hash };
+  }
+
+  /** A live draft, episode preview or commit in flight refers to this hash. */
+  hashInUse(hash: string): boolean {
+    const wanted = hash.toLowerCase();
+    if (this.committing.has(wanted)) return true;
+    for (const draft of this.drafts.values())
+      if (draft.hash.toLowerCase() === wanted) return true;
+    for (const preview of this.previews.values())
+      if (preview.plan.hash.toLowerCase() === wanted) return true;
+    return false;
+  }
+
+  /**
+   * Calls the listener after a draft is discarded, expires or is dropped at
+   * shutdown. Saving a draft, or turning it into an episode preview, is not
+   * a drop. Returns an unsubscribe function.
+   */
+  onDraftDropped(listener: (draftId: string) => void): () => void {
+    this.draftListeners.add(listener);
+    return () => {
+      this.draftListeners.delete(listener);
+    };
+  }
+
   commit(input: z.infer<typeof importCommitInputSchema>) {
     return this.command(async () => {
       const receipt: SearchReceipt = {
@@ -257,6 +297,7 @@ export class ImportService {
       await this.prune();
       const draft = this.requireDraft(input.draftId);
       this.drafts.delete(input.draftId);
+      this.committing.add(draft.hash.toLowerCase());
       let restore = true;
       try {
         const tags = this.tags
@@ -285,6 +326,7 @@ export class ImportService {
         return result;
       } finally {
         if (restore) this.drafts.set(input.draftId, draft);
+        this.committing.delete(draft.hash.toLowerCase());
       }
     });
   }
@@ -381,6 +423,8 @@ export class ImportService {
           409,
         );
       this.previews.delete(input.previewId);
+      const hash = preview.plan.hash.toLowerCase();
+      this.committing.add(hash);
       let committed = false;
       try {
         const result = await this.series.commit(
@@ -398,6 +442,8 @@ export class ImportService {
       } catch (error) {
         if (preview.staged) await this.files.discard(preview.staged);
         throw error;
+      } finally {
+        this.committing.delete(hash);
       }
     });
   }
@@ -408,6 +454,7 @@ export class ImportService {
     for (const [draftId, draft] of [...this.drafts]) {
       if (draft.expires > now) continue;
       this.drafts.delete(draftId);
+      this.notifyDraftDropped(draftId);
       if (draft.staged) await this.files.discard(draft.staged);
     }
     for (const [previewId, preview] of [...this.previews]) {
@@ -442,7 +489,23 @@ export class ImportService {
   private async dropDraft(draftId: string) {
     const draft = this.drafts.get(draftId);
     this.drafts.delete(draftId);
+    if (draft) this.notifyDraftDropped(draftId);
     if (draft?.staged) await this.files.discard(draft.staged);
+  }
+
+  private notifyDraftDropped(draftId: string) {
+    for (const listener of [...this.draftListeners]) {
+      try {
+        listener(draftId);
+      } catch {
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            event: "import_draft_listener_failed",
+          }),
+        );
+      }
+    }
   }
 
   private async dropPreview(previewId: string) {

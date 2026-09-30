@@ -2613,6 +2613,38 @@ video {
 .source-check .inline-note {
   max-width: 68ch;
 }
+/* Pre-add stream test: a field-level card inside the Add form, so no panel
+   border of its own. */
+.stream-test {
+  min-width: 0;
+}
+.stream-test-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.stream-test-head .field-label {
+  margin-bottom: 0;
+}
+.stream-test p,
+.stream-test ul {
+  max-width: 68ch;
+  overflow-wrap: anywhere;
+  margin-bottom: 0;
+}
+.stream-test .stream-test-summary {
+  margin-top: 0;
+}
+.stream-test ul {
+  padding-left: 18px;
+}
+.stream-test .picker-row select {
+  flex: 1 1 240px;
+  min-width: 0;
+}
 @media (max-width: 520px) {
   .add-modal .segmented button {
     flex-basis: 30%;

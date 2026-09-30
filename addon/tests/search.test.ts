@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import bencode from "bencode";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ImportError } from "../src/imports/errors.ts";
 import { ImportFiles } from "../src/imports/files.ts";
 import { ImportService } from "../src/imports/service.ts";
@@ -247,6 +247,132 @@ describe("manual import identities and commits", () => {
     expect(await readFile(committed.entry.torrentFilePath!)).toEqual(bytes);
     await service.close();
     expect(expiring.draftId).toBeDefined();
+  });
+
+  it("shares draft sources and drop events with stream tests", async () => {
+    const { library, tags, uploadRoot } = await temporaryLibrary(
+      "test-import-stream-hooks",
+    );
+    const { bytes, hash } = torrentFixture();
+    const magnetHashValue = "d".repeat(40);
+    let now = Date.now();
+    const service = new ImportService({
+      library,
+      tags,
+      torrServer: torrServerStub(),
+      uploadRoot,
+      now: () => now,
+    });
+    services.push(service);
+    await service.initialize();
+    const dropped: string[] = [];
+    const unsubscribe = service.onDraftDropped((id) => dropped.push(id));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    service.onDraftDropped(() => {
+      throw new Error("listener failed");
+    });
+
+    const magnet = await service.prepareMagnet({
+      magnetUri: `magnet:?xt=urn:btih:${magnetHashValue.toUpperCase()}`,
+    });
+    const torrent = await service.prepareTorrent(bytes);
+    expect(service.draftSource(magnet.draftId)).toEqual({
+      source: {
+        magnetUri: `magnet:?xt=urn:btih:${magnetHashValue.toUpperCase()}`,
+        sourceHash: magnetHashValue,
+      },
+      hash: magnetHashValue,
+    });
+    const torrentSource = service.draftSource(torrent.draftId);
+    expect(torrentSource).toMatchObject({
+      source: { managedMedia: true, sourceHash: hash },
+      hash,
+    });
+    expect(
+      resolve(torrentSource.source.torrentFilePath!).startsWith(
+        resolve(uploadRoot),
+      ),
+    ).toBe(true);
+    expect(service.hashInUse(magnetHashValue.toUpperCase())).toBe(true);
+    expect(service.hashInUse(hash)).toBe(true);
+    expect(service.hashInUse("e".repeat(40))).toBe(false);
+
+    await service.discardDraft(magnet.draftId);
+    expect(dropped).toEqual([magnet.draftId]);
+    expect(service.hashInUse(magnetHashValue)).toBe(false);
+    expect(errors).toHaveBeenCalledWith(
+      expect.stringContaining("import_draft_listener_failed"),
+    );
+    expect(() => service.draftSource(magnet.draftId)).toThrow(
+      "This import draft expired. Prepare the source again.",
+    );
+
+    await service.commit({
+      draftId: torrent.draftId,
+      name: "Saved",
+      type: "movie",
+      idempotencyKey: randomUUID(),
+    });
+    expect(dropped).toEqual([magnet.draftId]);
+    expect(service.hashInUse(hash)).toBe(false);
+
+    const expiring = await service.prepareMagnet({
+      magnetUri: `magnet:?xt=urn:btih:${"f".repeat(40)}`,
+    });
+    now += 10 * 60 * 1_000 + 1;
+    let expired: unknown;
+    try {
+      service.draftSource(expiring.draftId);
+    } catch (error) {
+      expired = error;
+    }
+    expect(expired).toMatchObject({ code: "draft_expired", status: 410 });
+    await service.prepareMagnet({
+      magnetUri: `magnet:?xt=urn:btih:${"a".repeat(40)}`,
+    });
+    expect(dropped).toEqual([magnet.draftId, expiring.draftId]);
+
+    const closing = await service.prepareMagnet({
+      magnetUri: `magnet:?xt=urn:btih:${"b".repeat(40)}`,
+    });
+    unsubscribe();
+    await service.close();
+    expect(dropped).toEqual([magnet.draftId, expiring.draftId]);
+    let unavailable: unknown;
+    try {
+      service.draftSource(closing.draftId);
+    } catch (error) {
+      unavailable = error;
+    }
+    expect(unavailable).toMatchObject({
+      code: "import_unavailable",
+      status: 503,
+    });
+    const logs = errors.mock.calls.flat().join("\n");
+    expect(logs).not.toContain(magnetHashValue);
+    expect(logs).not.toContain(hash);
+    errors.mockRestore();
+  });
+
+  it("reports drafts dropped at shutdown", async () => {
+    const { library, tags, uploadRoot } = await temporaryLibrary(
+      "test-import-stream-close",
+    );
+    const service = new ImportService({
+      library,
+      tags,
+      torrServer: torrServerStub(),
+      uploadRoot,
+    });
+    services.push(service);
+    const dropped: string[] = [];
+    service.onDraftDropped((id) => dropped.push(id));
+    const draft = await service.prepareMagnet({
+      magnetUri: `magnet:?xt=urn:btih:${"c".repeat(40)}`,
+    });
+    await service.close();
+    expect(dropped).toEqual([draft.draftId]);
+    expect(service.hashInUse("c".repeat(40))).toBe(false);
   });
 });
 
