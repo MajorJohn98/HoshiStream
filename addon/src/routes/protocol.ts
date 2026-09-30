@@ -148,16 +148,10 @@ export const handleProtocol: RouteHandler = async (
     return noStoreReply(
       response,
       200,
-      manifestForLibrary(
-        addon.manifest,
-        (await tags?.list()) ?? [],
-        (await tags?.pinned()) ?? [],
-        {
-          addonUrl: resolvePublicUrls(request.headers.host, publicUrls)
-            .addonUrl,
-          contactEmail: (await identity?.read())?.contactEmail,
-        },
-      ),
+      manifestForLibrary(addon.manifest, (await tags?.list()) ?? [], {
+        addonUrl: resolvePublicUrls(request.headers.host, publicUrls).addonUrl,
+        contactEmail: (await identity?.read())?.contactEmail,
+      }),
     );
   }
   const protocolMatch =

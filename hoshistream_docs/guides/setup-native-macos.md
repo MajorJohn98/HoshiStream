@@ -5,8 +5,8 @@ library and tokenized URLs, and supervises both services. The candidate is
 Apple Silicon, macOS 13.5+, browser-first H.264/AAC MP4 playback on a trusted LAN.
 mpv is optional and separately installed. Native deployment also supports a
 [foreground terminal stack](development.md), without a menu bar.
-See [ADR 0003](../decisions/0003-native-menu-bar-app-no-electron.md) for the
-app design and [ADR 0009](../decisions/0009-native-only-deployment.md) for why
+See [ADR 0003](../decisions/decision-log.md) for the
+app design and [ADR 0009](../decisions/decision-log.md) for why
 containers were removed.
 
 "Just the app" still means two supervised processes: the Node add-on (library, management UI, add-on protocol, local file serving) and TorrServer (the BitTorrent engine). The app starts and stops both.
@@ -140,7 +140,7 @@ tenth of your measured download speed; it is offered, never applied silently.
 
 Keep the add-on port (7000/7001) and TorrServer's web port (8090) on the trusted LAN only —
 no router forwarding, no UPnP, no public exposure. See
-[ADR 0004](../decisions/0004-token-in-path-and-bearer-security-model.md).
+[ADR 0004](../decisions/decision-log.md).
 
 TorrServer administration is not guarded by the add-on token. Startup also
 downloads speed-measurement data from Cloudflare; local-first is not offline.

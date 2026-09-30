@@ -3,7 +3,7 @@
 Implements Phase 4 of the
 [playback, pointer and library expansion plan](../plans/2026-09-12-playback-pointer-library-expansion-plan.md):
 a stale remote pointer record is no longer silent. Pushes stay strictly manual
-([ADR 0012](../decisions/0012-vercel-pointer-server.md)).
+([ADR 0012](../decisions/decision-log.md)).
 
 ## What changed
 

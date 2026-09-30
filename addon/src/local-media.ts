@@ -92,6 +92,8 @@ function selectionSignature(entry: LibraryEntry): string {
     entry.localFolderPath,
     entry.preferredFileIndex,
     entry.fileOverrides,
+    entry.seasonHint,
+    entry.episodeHint,
   ]);
 }
 
@@ -175,6 +177,7 @@ export async function inspectLocalEntry(entry: LibraryEntry) {
       files,
       entry.preferredFileIndex,
       entry.fileOverrides,
+      { seasonHint: entry.seasonHint, episodeHint: entry.episodeHint },
     ),
   };
   if (inspectionCache.size >= INSPECTION_CACHE_LIMIT) {

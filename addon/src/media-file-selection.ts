@@ -9,7 +9,7 @@ export const VIDEO_EXTENSIONS = new Set([
   ".mov",
   ".m4v",
 ]);
-const SAMPLE = /(?:^|[._\s-])(sample|trailer)(?:[._\s-]|$)/i;
+const SAMPLE = /(?:^|[/._\s-])(sample|trailer)(?:[/._\s-]|$)/i;
 // Bonus-content folders in season packs contain files whose names still match
 // the episode pattern ("Deleted Scenes/S02E05 The Mole.mkv") and would
 // otherwise shadow the real episode.
@@ -49,6 +49,16 @@ export function fileSourceIndex(id: number): number {
   return Math.floor(id / SOURCE_STRIDE);
 }
 
+// Re-homes a composite file id after sources move: `sourceMap[old]` is the
+// source's new index, or undefined when the source was removed.
+export function remapFileId(
+  id: number,
+  sourceMap: (number | undefined)[],
+): number | undefined {
+  const to = sourceMap[fileSourceIndex(id)];
+  return to === undefined ? undefined : compositeFileId(to, rawFileId(id));
+}
+
 export class MediaSelectionError extends Error {}
 
 export function isPlayablePath(path: string): boolean {
@@ -59,24 +69,80 @@ function playable(file: TorrentFile): boolean {
   return isPlayablePath(file.path);
 }
 
-function episodeNumbers(
-  path: string,
-): { season: number; episode: number } | undefined {
-  const match =
-    /s(\d{1,2})e(\d{1,3})(?!\d)|(?<!\d)(\d{1,2})x(\d{1,3})(?!\d)/i.exec(path);
-  if (!match) return undefined;
+// Season and episode together: "S01E02", "S01 E02", "S01.E02", "1x02",
+// "Season 1 Episode 2". Explicit numbering is used verbatim.
+const EXPLICIT_EPISODE = [
+  /s(\d{1,2})[ ._-]?e(\d{1,3})(?!\d)/i,
+  /(?<!\d)(\d{1,2})x(\d{1,3})(?!\d)/i,
+  /(?<![a-z0-9])season[ ._-]*(\d{1,2})[ ._-]*(?:episode|ep)[ ._-]*(\d{1,3})(?!\d)/i,
+];
+// Episode number alone, matched against the file name without extension:
+// "Episode 5", "Ep05", "E05", "[Group] Show - 05 [1080p]", "05 - Title".
+const LOOSE_EPISODE = [
+  /(?<![a-z0-9])(?:episode|ep)[ ._-]*(\d{1,3})(?!\d)/i,
+  /(?<![a-z0-9])e(\d{1,3})(?!\d)/i,
+  /(?:^|[\s_])-[\s_]+(\d{1,3})(?:v\d)?(?=$|[\s._[(])/,
+  /^(\d{1,3})(?:v\d)?(?=$|[\s._]|-(?!\d))/,
+];
+// Season alone, from the name or any folder: "Season 2", "Series 2", or a
+// standalone "S02" token ("Show.S02.1080p/…").
+const LOOSE_SEASON = [
+  /(?<![a-z0-9])(?:season|series)[ ._-]*(\d{1,2})(?!\d)/i,
+  /(?<![a-z0-9])s(\d{1,2})(?![\da-z])/i,
+];
+
+export type ParsedEpisode = {
+  season?: number;
+  episode?: number;
+  // True when season and episode were named together; hints never override
+  // explicit numbering.
+  explicit: boolean;
+};
+
+function firstMatch(patterns: RegExp[], texts: string[]) {
+  for (const text of texts)
+    for (const pattern of patterns) {
+      const match = pattern.exec(text);
+      if (match) return match;
+    }
+  return undefined;
+}
+
+export function parseEpisodeNumbers(path: string): ParsedEpisode {
+  const segments = path.replaceAll("\\", "/").split("/").filter(Boolean);
+  const base = segments.at(-1) ?? "";
+  const stem = extname(base) ? base.slice(0, -extname(base).length) : base;
+  const explicit = firstMatch(EXPLICIT_EPISODE, [stem, path]);
+  if (explicit)
+    return {
+      season: Number(explicit[1]),
+      episode: Number(explicit[2]),
+      explicit: true,
+    };
+  const episode = firstMatch(LOOSE_EPISODE, [stem]);
+  const season = firstMatch(LOOSE_SEASON, [
+    stem,
+    ...segments.slice(0, -1).reverse(),
+  ]);
   return {
-    season: Number(match[1] ?? match[3]),
-    episode: Number(match[2] ?? match[4]),
+    ...(season ? { season: Number(season[1]) } : {}),
+    ...(episode && Number(episode[1]) > 0
+      ? { episode: Number(episode[1]) }
+      : {}),
+    explicit: false,
   };
 }
+
+// Per-source numbering for files whose names carry no explicit SxxEyy: the
+// season they belong to, and the episode the first of them starts at.
+export type SourceHints = { seasonHint?: number; episodeHint?: number };
 
 export function selectMediaFiles(
   type: ContentType,
   files: TorrentFile[],
   preferredFileIndex?: number,
   overrides: FileOverride[] = [],
-  seasonHint?: number,
+  hints: SourceHints = {},
 ): SelectedFile[] {
   if (preferredFileIndex !== undefined) {
     const preferred = files.find((file) => file.id === preferredFileIndex);
@@ -114,18 +180,38 @@ export function selectMediaFiles(
     ];
   }
 
-  return candidates
-    .sort((a, b) => a.path.localeCompare(b.path))
+  // Precedence: per-file override, explicit SxxEyy, the source's hints, then
+  // numbers guessed from the name, then the file's position in the torrent.
+  // Guessed episode numbers are trusted only when they are unique within the
+  // torrent: "12 Monkeys Pilot.mkv" and "12 Monkeys Splinter.mkv" must not
+  // both become episode 12.
+  const sorted = candidates.sort((a, b) => a.path.localeCompare(b.path));
+  const parsed = sorted.map((file) => parseEpisodeNumbers(file.path));
+  const guessed = sorted.flatMap((file, index) => {
+    const override = configured.get(file.id);
+    const numbers = parsed[index]!;
+    return (override?.season !== undefined && override.episode !== undefined) ||
+      numbers.explicit ||
+      numbers.episode === undefined
+      ? []
+      : [numbers.episode];
+  });
+  const trustGuesses = new Set(guessed).size === guessed.length;
+  return sorted
     .map((file, index) => {
       const override = configured.get(file.id);
+      if (override?.season !== undefined && override.episode !== undefined)
+        return { ...file, season: override.season, episode: override.episode };
+      const numbers = parsed[index]!;
+      if (numbers.explicit)
+        return { ...file, season: numbers.season!, episode: numbers.episode! };
       return {
         ...file,
-        ...(override?.season !== undefined && override.episode !== undefined
-          ? { season: override.season, episode: override.episode }
-          : (episodeNumbers(file.path) ?? {
-              season: seasonHint ?? 1,
-              episode: index + 1,
-            })),
+        season: hints.seasonHint ?? numbers.season ?? 1,
+        episode:
+          hints.episodeHint !== undefined
+            ? hints.episodeHint + index
+            : ((trustGuesses ? numbers.episode : undefined) ?? index + 1),
       };
     })
     .sort(

@@ -1,17 +1,9 @@
 import { randomUUID } from "node:crypto";
-import {
-  copyFile,
-  mkdir,
-  readFile,
-  rename,
-  stat,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
-import { dirname } from "node:path";
+import { copyFile, readFile, rename, stat } from "node:fs/promises";
 import { z } from "zod";
 import { assessDirectPlay, type DirectPlay } from "./direct-play.ts";
 import { ImportError } from "./imports/errors.ts";
+import { writeJsonFile } from "./json-file.ts";
 import type { SeriesPreviewPlan } from "./imports/series.ts";
 import { tagKey } from "./tags.ts";
 import {
@@ -20,6 +12,7 @@ import {
   entrySourceDefinitionRevision,
 } from "./imports/source-identity.ts";
 import { sourceCheckSchema, type SourceCheck } from "./source-check-types.ts";
+import { remapFileId } from "./media-file-selection.ts";
 import {
   libraryEntrySchema,
   TITLE_METADATA_FIELDS,
@@ -46,6 +39,8 @@ const CACHE_INVALIDATING_FIELDS = [
   "localFolderPath",
   "preferredFileIndex",
   "fileOverrides",
+  "seasonHint",
+  "episodeHint",
   "extraSources",
 ] as const;
 
@@ -93,6 +88,87 @@ export function transferOwnership(
 }
 
 export class LibraryError extends Error {}
+
+// Fields that make up the primary source; an extra source carries the same
+// set, which is what lets one be promoted in place of the other.
+const PRIMARY_SOURCE_FIELDS = [
+  "magnetUri",
+  "torrentFilePath",
+  "sourceHash",
+  "fileOverrides",
+  "seasonHint",
+  "episodeHint",
+  "managedMedia",
+  "searchImport",
+] as const;
+
+// Composite file ids encode a source's position (media-file-selection.ts),
+// so moving, removing or promoting a source must move the durable state
+// keyed by those ids with it. `sourceMap[old]` is the new index, or
+// undefined for a removed source, whose state is dropped.
+export function remapSourceFileState(
+  entry: Pick<
+    LibraryEntry,
+    "watchStates" | "playback" | "episodeOverrides" | "mediaFacts"
+  >,
+  sourceMap: (number | undefined)[],
+): Record<string, unknown> {
+  const move = <T extends { fileId?: number }>(item: T): T | undefined => {
+    if (item.fileId === undefined) return item;
+    const fileId = remapFileId(item.fileId, sourceMap);
+    return fileId === undefined ? undefined : { ...item, fileId };
+  };
+  const present = <T>(value: T | undefined): value is T => value !== undefined;
+  const watchStates = entry.watchStates?.map(move).filter(present);
+  const mediaFacts = entry.mediaFacts?.map(move).filter(present);
+  const episodeOverrides = entry.episodeOverrides
+    ?.map((override) => {
+      const id = remapFileId(override.id, sourceMap);
+      return id === undefined ? undefined : { ...override, id };
+    })
+    .filter(present);
+  const playback = entry.playback && move(entry.playback);
+  return {
+    watchStates: watchStates?.length ? watchStates : undefined,
+    mediaFacts: mediaFacts?.length ? mediaFacts : undefined,
+    episodeOverrides: episodeOverrides?.length ? episodeOverrides : undefined,
+    playback,
+  };
+}
+
+function sameSource(
+  a: { magnetUri?: string; torrentFilePath?: string },
+  b: { magnetUri?: string; torrentFilePath?: string },
+): boolean {
+  return a.magnetUri === b.magnetUri && a.torrentFilePath === b.torrentFilePath;
+}
+
+// Where each of `current`'s sources lands after an edit, matched by locator.
+function editedSourceMap(
+  current: LibraryEntry,
+  primaryKept: boolean,
+  nextExtras: { magnetUri?: string; torrentFilePath?: string }[] | undefined,
+): (number | undefined)[] {
+  const extras = current.extraSources ?? [];
+  if (!nextExtras)
+    return [primaryKept ? 0 : undefined, ...extras.map((_, i) => i + 1)];
+  const claimed = new Set<number>();
+  return [
+    primaryKept ? 0 : undefined,
+    ...extras.map((source) => {
+      const next = nextExtras.findIndex(
+        (candidate, i) => !claimed.has(i) && sameSource(candidate, source),
+      );
+      if (next === -1) return undefined;
+      claimed.add(next);
+      return next + 1;
+    }),
+  ];
+}
+
+function isIdentityMap(map: (number | undefined)[]): boolean {
+  return map.every((to, from) => to === from);
+}
 
 // Runs after persistence while holding the mutation queue; use the supplied
 // snapshot for references, not library.list()/get(), which wait on that queue.
@@ -322,6 +398,8 @@ export class Library {
         )
           delete candidate.episodes;
         if (input.ongoing === false) delete candidate.ongoing;
+        if (input.seasonHint === null) delete candidate.seasonHint;
+        if (input.episodeHint === null) delete candidate.episodeHint;
         for (const field of TITLE_METADATA_FIELDS)
           if (input[field] === null) delete candidate[field];
         if ("episodeOverrides" in input) {
@@ -346,7 +424,14 @@ export class Library {
             };
           });
         }
-        if (CACHE_INVALIDATING_FIELDS.some((field) => field in input)) {
+        // The management UI sends every field on save, so only a value that
+        // actually changed makes the cached selection and probe results stale.
+        if (
+          CACHE_INVALIDATING_FIELDS.some(
+            (field) =>
+              field in input && !deepEqual(candidate[field], current[field]),
+          )
+        ) {
           delete candidate.inspectionCache;
           delete candidate.directPlay;
           delete candidate.mediaFacts;
@@ -363,10 +448,25 @@ export class Library {
         ) {
           delete candidate.searchImport;
           delete candidate.sourceHash;
-          // File ids belong to the old source.
-          delete candidate.watchStates;
           if (input.managedMedia === undefined) delete candidate.managedMedia;
         }
+        // Replacing the primary retires only its own file ids; editing the
+        // extras re-homes theirs. Either way nothing points at the wrong file.
+        const primaryKept = !(
+          [
+            "magnetUri",
+            "torrentFilePath",
+            "localFilePath",
+            "localFolderPath",
+          ] as const
+        ).some((field) => field in input && input[field] !== current[field]);
+        const sourceMap = editedSourceMap(
+          current,
+          primaryKept,
+          input.extraSources,
+        );
+        if (!isIdentityMap(sourceMap))
+          Object.assign(candidate, remapSourceFileState(candidate, sourceMap));
         const updated = libraryEntrySchema.parse(candidate);
         if (
           entrySourceDefinitionRevision(updated) !==
@@ -382,6 +482,69 @@ export class Library {
         if (updated && previous && cleanup) await cleanup(previous, remaining);
       },
     );
+  }
+
+  /**
+   * Make extra source `extraIndex` the primary; the old primary takes its
+   * slot. Watched state, resume position, repairs and file facts follow
+   * their files. The merged episode list is dropped because source order
+   * decides which torrent wins a shared episode.
+   */
+  promoteSource(
+    id: string,
+    extraIndex: number,
+  ): Promise<LibraryEntry | undefined> {
+    return this.update(async (entries) => {
+      const index = entries.findIndex((entry) => entry.id === id);
+      if (index === -1) return undefined;
+      const current = entries[index];
+      const extras = current.extraSources ?? [];
+      const promoted = extras[extraIndex];
+      if (
+        current.type !== "series" ||
+        current.localFilePath ||
+        current.localFolderPath ||
+        !(current.magnetUri || current.torrentFilePath)
+      )
+        throw new ImportError(
+          "invalid_target",
+          "Only a torrent-backed series has sources to reorder.",
+          409,
+        );
+      if (!promoted)
+        throw new ImportError(
+          "invalid_source",
+          "That additional torrent no longer exists. Refresh and try again.",
+          409,
+        );
+      if (current.preferredFileIndex !== undefined)
+        throw new ImportError(
+          "preferred_file_set",
+          "This entry pins a preferred file on its main torrent. Clear it before changing the main torrent.",
+          409,
+        );
+      const demoted: Record<string, unknown> = {};
+      const candidate: Record<string, unknown> = { ...current };
+      for (const field of PRIMARY_SOURCE_FIELDS) {
+        if (current[field] !== undefined) demoted[field] = current[field];
+        delete candidate[field];
+        if (promoted[field] !== undefined) candidate[field] = promoted[field];
+      }
+      candidate.extraSources = extras.map((source, i) =>
+        i === extraIndex ? demoted : source,
+      );
+      const sourceMap = [0, ...extras.map((_, i) => i + 1)];
+      sourceMap[0] = extraIndex + 1;
+      sourceMap[extraIndex + 1] = 0;
+      Object.assign(candidate, remapSourceFileState(current, sourceMap));
+      delete candidate.inspectionCache;
+      delete candidate.directPlay;
+      delete candidate.sourceCheck;
+      candidate.updatedAt = new Date().toISOString();
+      const updated = libraryEntrySchema.parse(candidate);
+      entries[index] = updated;
+      return updated;
+    });
   }
 
   /**
@@ -763,13 +926,8 @@ export class Library {
   }
 
   private async write(entries: LibraryEntry[]): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true });
-    const temporaryPath = `${this.path}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporaryPath, `${JSON.stringify(entries, null, 2)}\n`, {
-        mode: 0o600,
-      });
-      await rename(temporaryPath, this.path);
+      await writeJsonFile(this.path, entries);
       const info = await stat(this.path).catch(() => undefined);
       this.cache = info
         ? {
@@ -781,7 +939,6 @@ export class Library {
       await copyFile(this.path, this.backupPath).catch(() => undefined);
     } catch (error) {
       this.cache = undefined;
-      await unlink(temporaryPath).catch(() => undefined);
       throw error;
     }
   }

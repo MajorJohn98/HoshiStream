@@ -30,36 +30,18 @@ afterEach(async () => {
 });
 
 describe("manifestForLibrary", () => {
-  it("adds Board rows per type, pinned tags in pin order, and identity", () => {
-    const served = manifestForLibrary(
-      manifest,
-      ["Action", "Anime"],
-      ["Anime", "Action"],
-      { addonUrl: "https://addon.test", contactEmail: " me@example.com " },
-    );
+  it("serves only the private picker catalogs, plus identity", () => {
+    const served = manifestForLibrary(manifest, ["Action", "Anime"], {
+      addonUrl: "https://addon.test",
+      contactEmail: " me@example.com ",
+    });
     const ids = (type: string) =>
       served.catalogs
         .filter((catalog) => catalog.type === type)
         .map((catalog) => catalog.id);
-    expect(ids("movie")).toEqual([
-      "private-movies",
-      "continue-watching",
-      RECENTLY_ADDED_ID,
-      UNWATCHED_ID,
-      "tag-anime",
-      "tag-action",
-    ]);
-    expect(ids("series")).toEqual([
-      "private-series",
-      "continue-watching",
-      RECENTLY_ADDED_ID,
-      UNWATCHED_ID,
-      "tag-anime",
-      "tag-action",
-    ]);
-    const anime = served.catalogs.find((c) => c.id === "tag-anime");
-    expect(anime?.name).toBe("Anime");
-    expect(anime?.extra.map((extra) => extra.name)).toEqual(["skip"]);
+    expect(ids("movie")).toEqual(["private-movies"]);
+    expect(ids("series")).toEqual(["private-series"]);
+    expect(served.catalogs).toHaveLength(2);
     // Genre options still fill the picker catalogs.
     expect(
       served.catalogs[0].extra.find((extra) => extra.name === "genre"),
@@ -69,20 +51,14 @@ describe("manifestForLibrary", () => {
   });
 
   it("omits identity fields when unset and keeps the base untouched", () => {
-    const served = manifestForLibrary(manifest, [], []);
+    const served = manifestForLibrary(manifest, []);
     expect(served).not.toHaveProperty("logo");
     expect(served).not.toHaveProperty("contactEmail");
     expect(served.catalogs.map((c) => c.id)).toEqual([
       "private-movies",
-      "continue-watching",
-      RECENTLY_ADDED_ID,
-      UNWATCHED_ID,
       "private-series",
-      "continue-watching",
-      RECENTLY_ADDED_ID,
-      UNWATCHED_ID,
     ]);
-    expect(manifest.catalogs).toHaveLength(4);
+    expect(manifest.catalogs).toHaveLength(2);
   });
 
   it("keys tag catalogs case-insensitively", () => {
@@ -233,6 +209,28 @@ describe("IdentityStore", () => {
   });
 });
 
+describe("IdentityStore failure handling", () => {
+  it("serializes updates and never overwrites an unreadable file", async () => {
+    const path = join(stateDir, "identity.json");
+    const store = new IdentityStore(path);
+    await Promise.all([
+      store.update({ contactEmail: "a@example.com" }),
+      store.update({ contactEmail: "b@example.com" }),
+    ]);
+    expect(await new IdentityStore(path).read()).toEqual({
+      contactEmail: "b@example.com",
+    });
+
+    const blocked = join(stateDir, "blocked.json");
+    await mkdir(blocked);
+    const unreadable = new IdentityStore(blocked);
+    expect(await unreadable.read()).toEqual({ contactEmail: "" });
+    await expect(
+      unreadable.update({ contactEmail: "c@example.com" }),
+    ).rejects.toThrow();
+  });
+});
+
 describe("Board routes", () => {
   const TOKEN = "an-access-token-for-board-tests";
   const addon: AddonInterface = {
@@ -289,7 +287,7 @@ describe("Board routes", () => {
       },
     });
 
-  it("pins tags through PATCH and advertises them in the served manifest", async () => {
+  it("keeps pins through PATCH but leaves them out of the served manifest", async () => {
     const pin = await api("/api/tags/drama", {
       method: "PATCH",
       body: JSON.stringify({ pinned: true }),
@@ -314,9 +312,10 @@ describe("Board routes", () => {
     const served = await (
       await fetch(`${baseUrl}/addon/${TOKEN}/manifest.json`)
     ).json();
-    expect(
-      served.catalogs.filter((c: { id: string }) => c.id === "tag-drama"),
-    ).toHaveLength(2);
+    expect(served.catalogs.map((c: { id: string }) => c.id)).toEqual([
+      "private-movies",
+      "private-series",
+    ]);
     // The logo points at the origin the client used, not the configured one.
     expect(served.logo).toBe(`${baseUrl}/assets/hoshistream-logo.png`);
     expect(served.contactEmail).toBe("me@example.com");

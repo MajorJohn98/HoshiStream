@@ -94,6 +94,22 @@ function serveDiskFile(
     .pipe(response);
 }
 
+// Clients disconnect mid-resolution all the time (seeks, probes); writing to
+// a closed response only produces noise.
+function replyError(
+  response: ServerResponse,
+  status: number,
+  error: string,
+  headers: Record<string, string> = {},
+): void {
+  if (response.destroyed || response.headersSent) return;
+  response.writeHead(status, {
+    "content-type": "application/json",
+    ...headers,
+  });
+  response.end(JSON.stringify({ error }));
+}
+
 async function proxyTorrent(
   request: IncomingMessage,
   response: ServerResponse,
@@ -102,17 +118,25 @@ async function proxyTorrent(
   torrServer: TorrServerClient,
   library: Library,
 ): Promise<void> {
-  const source = await resolveStreamSource(entry, torrServer, library).catch(
-    () => undefined,
-  );
-  const selected = source?.selectedFiles.find(
-    (candidate) => sourceKey(source.hash, candidate) === key,
-  );
-  if (!source || !selected) {
-    response.writeHead(404, { "content-type": "application/json" });
-    response.end(JSON.stringify({ error: "Unknown media file" }));
+  let source: Awaited<ReturnType<typeof resolveStreamSource>>;
+  try {
+    source = await resolveStreamSource(entry, torrServer, library);
+  } catch {
+    // TorrServer restarting or a metadata timeout is transient; a 404 here
+    // would make the player give up on a file that exists.
+    replyError(response, 503, "Stream source temporarily unavailable", {
+      "retry-after": "5",
+    });
     return;
   }
+  const selected = source.selectedFiles.find(
+    (candidate) => sourceKey(source.hash, candidate) === key,
+  );
+  if (!selected) {
+    replyError(response, 404, "Unknown media file");
+    return;
+  }
+  if (response.destroyed) return;
   const controller = new AbortController();
   response.once("close", () => controller.abort());
   let upstream: Response;
@@ -125,8 +149,7 @@ async function proxyTorrent(
       signal: controller.signal,
     });
   } catch {
-    response.writeHead(502, { "content-type": "application/json" });
-    response.end(JSON.stringify({ error: "Stream source unavailable" }));
+    replyError(response, 502, "Stream source unavailable");
     return;
   }
   const headers: Record<string, string> = {};

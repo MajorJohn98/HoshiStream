@@ -20,6 +20,7 @@ import type { TorrServerClient } from "../torrserver-client.ts";
 import type { TranscodeManager } from "../transcode.ts";
 import type { VolumeRegistry } from "../volumes.ts";
 import type { SourceChecks } from "../source-checks.ts";
+import type { StreamTests } from "../stream-tests.ts";
 import type { Onboarding } from "../onboarding.ts";
 import type { WatchProgress, WatchStates } from "../watch-state.ts";
 import type { LogRing } from "../diagnostics.ts";
@@ -66,6 +67,8 @@ export interface HandlerContext {
   artwork?: ArtworkCache;
   imports?: ImportService;
   sourceChecks?: SourceChecks;
+  /** Pre-add stream tests; routes answer 409 when absent. */
+  streamTests?: StreamTests;
   onboarding?: Onboarding;
   diagnostics?: DiagnosticsOptions;
   /** Override for tests; defaults to packaging/torrserver-settings.json. */

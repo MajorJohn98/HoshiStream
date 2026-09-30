@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -371,6 +371,29 @@ describe("pickCandidate", () => {
   });
 });
 
+describe("MetadataSettingsStore", () => {
+  it("keeps both fields when updates overlap", async () => {
+    const path = join(stateDir, "metadata.json");
+    const store = new MetadataSettingsStore(path);
+    await Promise.all([
+      store.update({ enabled: true }),
+      store.update({ autoOnAdd: false }),
+    ]);
+    expect(await new MetadataSettingsStore(path).read()).toEqual({
+      enabled: true,
+      autoOnAdd: false,
+    });
+  });
+
+  it("reads the privacy-safe default but refuses writes when unreadable", async () => {
+    const path = join(stateDir, "metadata.json");
+    await mkdir(path);
+    const store = new MetadataSettingsStore(path);
+    expect(await store.read()).toEqual({ enabled: false, autoOnAdd: true });
+    await expect(store.update({ enabled: true })).rejects.toThrow();
+  });
+});
+
 describe("MetadataEnrichment service", () => {
   let library: Library;
   let tags: Tags;
@@ -412,6 +435,18 @@ describe("MetadataEnrichment service", () => {
     await service.settle();
     expect(stub.requests).toEqual([]);
     expect((await library.get(entry.id))?.metadata).toBeUndefined();
+  });
+
+  it("refresh without a match searches afresh instead of failing", async () => {
+    await settings.update({ enabled: true });
+    const entry = await library.create({
+      type: "series",
+      name: "The Bear S01",
+      magnetUri: MAGNET,
+    });
+    const outcome = await service.refresh(entry.id);
+    expect(outcome.status).toBe("matched");
+    expect((await library.get(entry.id))?.metadata?.imdbId).toBe("tt14452776");
   });
 
   it("auto-matches, writes fields, genres, episodes and caches artwork", async () => {
@@ -631,6 +666,79 @@ describe("metadata routes", () => {
         ...(init.headers ?? {}),
       },
     });
+
+  it("looks up again in the new catalog when an unmatched entry changes type", async () => {
+    await api("/api/metadata/settings", {
+      method: "PUT",
+      body: JSON.stringify({ enabled: true }),
+    });
+    stub.searchMetas = [
+      { id: "tt1000001", name: "The Bear Movie", releaseInfo: "2011" },
+      { id: "tt1000002", name: "Bear Hug", releaseInfo: "2005" },
+    ];
+    const created = await api("/api/library", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "movie",
+        name: "The Bear S01",
+        magnetUri: MAGNET,
+      }),
+    });
+    const { id } = await created.json();
+    await service.settle();
+    expect((await library.get(id))?.metadata?.status).toBe("needs-review");
+
+    stub.searchMetas = [{ id: "tt14452776", name: "The Bear" }];
+    const patched = await api(`/api/library/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ type: "series" }),
+    });
+    expect(patched.status).toBe(200);
+    await service.settle();
+    expect(stub.requests).toContain(
+      "/catalog/series/top/search=The%20Bear.json",
+    );
+    const stored = await library.get(id);
+    expect(stored?.metadata).toMatchObject({
+      status: "matched",
+      imdbId: "tt14452776",
+    });
+    expect(stored?.metadata?.candidates).toBeUndefined();
+  });
+
+  it("drops stale candidates on a type change when automatic lookups are off", async () => {
+    await api("/api/metadata/settings", {
+      method: "PUT",
+      body: JSON.stringify({ enabled: true, autoOnAdd: false }),
+    });
+    stub.searchMetas = [
+      { id: "tt1000001", name: "The Bear Movie" },
+      { id: "tt1000002", name: "Bear Hug" },
+    ];
+    const created = await api("/api/library", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "movie",
+        name: "The Bear S01",
+        magnetUri: MAGNET,
+      }),
+    });
+    const { id } = await created.json();
+    await service.enrich(id, "fill");
+    expect((await library.get(id))?.metadata?.candidates).toHaveLength(2);
+    const before = stub.requests.length;
+
+    await api(`/api/library/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ type: "series" }),
+    });
+    await service.settle();
+    expect(stub.requests).toHaveLength(before);
+    expect((await library.get(id))?.metadata).toMatchObject({
+      status: "unmatched",
+    });
+    expect((await library.get(id))?.metadata?.candidates).toBeUndefined();
+  });
 
   it("exposes settings and refuses everything else while disabled", async () => {
     const initial = await api("/api/metadata/settings");

@@ -93,6 +93,38 @@ afterEach(async () => {
 });
 
 describe("manual series preview and commit", () => {
+  it("places a single-episode torrent on its episode hint", async () => {
+    const { entry, incoming, service } = await fixture([
+      "Show.Finale.1080p.mkv",
+    ]);
+    const draft = await service.prepareMagnet({
+      magnetUri: magnet(incoming.hash),
+    });
+    const preview = await service.previewSeries({
+      draftId: draft.draftId,
+      entryId: entry.id,
+      seasonHint: 1,
+      episodeHint: 3,
+    });
+    expect(preview.addedEpisodes).toEqual([
+      { season: 1, episode: 3, path: "Show.Finale.1080p.mkv" },
+    ]);
+    expect(preview.replacements).toEqual([]);
+    const appended = await service.commitSeries({
+      previewId: preview.previewId,
+      idempotencyKey: randomUUID(),
+      allowReplace: false,
+    });
+    expect(appended.entry.extraSources).toEqual([
+      {
+        magnetUri: magnet(incoming.hash),
+        sourceHash: incoming.hash,
+        seasonHint: 1,
+        episodeHint: 3,
+      },
+    ]);
+  });
+
   it("requires replacement confirmation, appends once, and replays by receipt after preview cleanup", async () => {
     const { library, entry, incoming, torrServer, service } = await fixture([
       "Better S01E02.mkv",

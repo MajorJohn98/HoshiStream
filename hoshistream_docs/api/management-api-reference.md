@@ -34,7 +34,7 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `DELETE /api/library/{id}` | Remove entry (also deletes managed-upload media) → `204` |
 | `PUT /api/library/{id}/playback` | Record the resume point from the in-browser player: `{positionSeconds, fileId?}` → `200` playback state, stamped `source: "browser"`. Host mpv playback writes the same field with `source: "host"`; external Stremio clients never write it (they only touch `lastStreamedAt`) |
 | `DELETE /api/library/{id}/playback` | Clear the resume point (a finished movie) → `204` |
-| `PUT /api/library/{id}/watch` | Set per-file watch state: `{fileId, state: "started" \| "watched"}` → `200` the entry's `watchStates`. `watched` is sticky; used by the Watched toggle and the browser player. Most marks arrive without this call, from observed reads (see [ADR 0025](../decisions/0025-watched-state-from-observed-reads.md)) |
+| `PUT /api/library/{id}/watch` | Set per-file watch state: `{fileId, state: "started" \| "watched"}` → `200` the entry's `watchStates`. `watched` is sticky; used by the Watched toggle and the browser player. Most marks arrive without this call, from observed reads (see [ADR 0025](../decisions/decision-log.md)) |
 | `DELETE /api/library/{id}/watch/{fileId}` | Clear one file's watch state (and TorrServer's viewed mark) → `204` |
 | `POST /api/library/{id}/inspect` | Register with TorrServer, poll metadata, return files and selection |
 | `GET /api/library/{id}/episodes` | Series only (`400` for movies). One row per selected file with a season/episode: `{season, episode, fileId, path, defaultTitle, title?, overview?, released?, onDisk, thumbnail}` — `defaultTitle` is the cleaned filename, `title`/`overview`/`released` the viewer's overrides, `onDisk` whether the media is a local file or a completed disk copy on an online volume, `thumbnail` the frame URL or `null`. Also `eligible` (on-disk count), `inspected` (`false` with an empty list for a torrent series that has never been inspected) and `thumbnails` (generation status or `null` when the service is off) |
@@ -45,12 +45,13 @@ Entry IDs use the `hoshi:` prefix and must be URL-encoded in paths (`hoshi%3A...
 | `GET /api/library/{id}/thumbnails` | Generation status `{running, generated, failed, lastError?, finishedAt?}` plus `available: [{season, episode}]` |
 | `POST /api/library/{id}/thumbnails` | Queue frame grabs for every on-disk episode without a frame; `{force: true}` regrabs all. `202 {queued: true}`; `409 thumbnails_running` while a run for the entry is in flight; `400` for movies. Frames are only ever grabbed from files on disk, never from a live torrent |
 | `POST /api/library/{id}/relink` | Native Finder re-pick for a local entry (native app only) |
+| `POST /api/library/{id}/sources/promote` | `{index}` → entry. Torrent-backed series: extra source `index` becomes the main torrent and the old main takes its slot. Watched state, resume position, episode repairs and file facts follow their files; the episode list is dropped and refilled in the background. `409` for a missing index, a non-series/local entry, or a pinned `preferredFileIndex` |
 | `POST /api/player/play` | Start host playback of an entry → `{mode, title, resumedAt?}` |
 | `POST /api/player/control` | `pause`, `resume`, `seek` (with `value` in seconds), or `stop` |
 | `GET /api/player/status` | Current player state plus `available` |
 | `GET /api/clients` | Recent clients (in-memory): `{ip, device, hostname?, name?, firstSeen, lastSeen, requests, lastResource}` |
 | `POST /api/clients/name` | Assign a device name: `{ip, name}`; empty name clears it |
-| `GET /api/playback` | Live TorrServer sessions: speeds, peers/seeders, progress, plus `entryId` (when the hash maps to a library entry) and `activity` — `streaming` (a client requested this entry's stream in the last 5 min), `downloading` (the archiver is copying it), `inspecting` (metadata read in the last 2 min), or `idle`. A "working" torrent is not necessarily being watched |
+| `GET /api/playback` | Live TorrServer sessions: speeds, peers/seeders, progress, plus `entryId` (when the hash maps to a library entry) and `activity` — `streaming` (a client requested this entry's stream in the last 5 min), `downloading` (the archiver is copying it), `inspecting` (metadata read in the last 2 min), or `idle`. A "working" torrent is not necessarily being watched. `sourceLabel` tells a series' torrents apart: its season/episode hints (`Season 2 · Episode 5`), else `Main torrent` / `Extra source N`; a single-torrent entry without hints has none |
 | `GET /api/pointer/status` | Local-only setup and registration evidence: enabled, configured, suggested endpoint/operator, state/message, usable, last push, expiry and private manifest URL. Includes `drift` when the automatic start-up / LAN-change check has run this session: `{outcome, trigger, checkedAt, remoteBaseUrl?, localBaseUrl?, state, message}` with `outcome` one of `match`, `remote-mismatch`, `expired`, `remote-without-local-push`, `unreachable`. Memory only; superseded by the next manual push, check or removal |
 | `POST /api/pointer/settings` | Save `{enabled,pointerUrl}` privately; no service contact, credential input or restart |
 | `GET /api/pointer/remote` | Explicit manual service check; reachability, registration evidence, expiry, and actionable state/message |
@@ -102,7 +103,7 @@ They accept manually supplied sources and perform no indexer or website searches
 | `POST /api/imports/prepare-torrent` | Raw torrent bytes, at most 1 MB -> draft |
 | `DELETE /api/imports/drafts/{draftId}` | Discard an unused draft -> `204` |
 | `POST /api/imports/commit` | `{draftId,name,type,tags?,idempotencyKey}` -> `{entry,outcome:"created"|"existing"}` |
-| `POST /api/imports/series-preview` | `{draftId,entryId,seasonHint?}` -> `{previewId,expiresAt,entryId,entryName,addedEpisodes,replacements}` |
+| `POST /api/imports/series-preview` | `{draftId,entryId,seasonHint?,episodeHint?}` -> `{previewId,expiresAt,entryId,entryName,addedEpisodes,replacements}` |
 | `POST /api/imports/series-commit` | `{previewId,idempotencyKey,allowReplace}` -> `{entry,outcome:"appended"|"existing"}` |
 | `DELETE /api/imports/previews/{previewId}` | Discard an unused preview -> `204` |
 
@@ -188,6 +189,102 @@ invalidate evidence; stale jobs
 cannot overwrite new source state. Unfinished checks are marked interrupted on
 restart rather than automatically resumed.
 
+### Stream tests
+
+An owner-triggered test, before saving, of whether a torrent downloads faster
+than it plays on this connection (decision 0029). It is advice only: it never
+blocks or delays Add, never marks a source unviable and never feeds
+source-check outcomes. Same bearer-token gate and `Cache-Control: no-store`.
+
+| Method & path | Contract |
+|---|---|
+| `POST /api/stream-tests` | Start a test (body below) → `202` with its state, phase `queued` |
+| `GET /api/stream-tests/{testId}` | The test's current state |
+| `DELETE /api/stream-tests/{testId}` | Cancel a queued or running test, forget it and clean up → `204` |
+
+The body is strict JSON:
+
+- `source`, exactly one of:
+  - `{magnetUri}`: starts with `magnet:?` and names one BTv1 identity.
+  - `{torrentFilePath}`: a `.torrent` of at most 1 MB staged under the managed
+    upload root, such as the path `POST /api/torrent-upload` returned.
+  - `{draftId}`: an import draft from `POST /api/imports/prepare*`.
+- `type` (`movie` by default, or `series`), `seasonHint` and `episodeHint`
+  pick the file as inspection does: the movie file, or the first episode.
+- `fileId`: test this one-based TorrServer file ID instead.
+- `mode`: `basic` (default) or `extended` (the UI's "Test longer").
+
+The state contains:
+
+- `testId`, `phase` (`queued`, `metadata`, `measuring`, then `done`,
+  `cancelled` or `failed`), `code` on failures and some cancellations,
+  `message`, `mode` and `hash`.
+- `elapsedSeconds`, `budgetSeconds` (90 or 180) and `expiresAt`.
+- `file`, and `files` (playable files only, at most 200), each
+  `{id, name, size, season?, episode?}`. `name` is the path inside the
+  torrent.
+- `progress` while measuring: `{downloadMbps?, peers?, seeders?, bytes}`.
+- `bitrate` `{mbps, durationSeconds?}`; `swarm` `{sustainedMbps?, peakMbps?,
+  atLeast, stillSpeedingUp, peers?, seeders?, samples, bytes}`; `line`
+  `{mbps, source: "measured" | "configured", measuredAt?}`; `limitMbps`
+  (TorrServer's `DownloadRateLimit`, when set) and `cacheWindowBytes`
+  (`CacheSize` × `ReaderReadAHead` %).
+- `verdict`:
+  - `level`: `smooth`, `tight`, `too_slow` or `inconclusive`.
+  - `reason`, for inconclusive results: `no_metadata`, `no_peers`,
+    `few_samples`, `unknown_bitrate` or `stream_started`.
+  - `bottleneck`: `swarm`, `line` or `limit`.
+  - `lineStale`: peers beat the last line reading.
+  - `remedies`: `waitSeconds`, `bufferBytes`, `fitsCache?`, `copySeconds?`,
+    `targetMbps?`, `targetBytes?` and `betterSeeded`.
+  - `flags` (`atLeast`, `stillSpeedingUp`, `sharedWithDiskCopy`) and
+    `suggestTestLonger`.
+- `stoppedBy`: `time`, `cap`, `stream` (playback started), `complete` (the
+  whole file arrived) or `cancel`.
+
+The state never contains a magnet, a local path or a token. Errors are
+`{error, code}`:
+
+| Status | `code` | When |
+|---|---|---|
+| `400` | — | The body fails validation (generic `Invalid request`) |
+| `400` | `invalid_source` | The magnet, `.torrent` or draft can't be tested |
+| `404` | `not_found` | The test expired or the server restarted |
+| `409` | `streaming_active` | A client streamed in the last 10 seconds |
+| `409` | `stream_test_unavailable` | This server runs without stream tests |
+| `410` | `draft_expired` | The draft is missing or expired |
+| `429` | `stream_test_busy` | Three tests are already queued |
+| `503` | `stream_test_unavailable` | The server is shutting down |
+
+A test that starts can still end `failed` with `torrserver_unavailable`,
+`source_mismatch`, `no_playable_file`, `invalid_file`, `read_failed`,
+`streaming_active` (playback began before it left the queue) or
+`stream_test_failed`. It ends `cancelled` with `draft_discarded` when its
+draft is dropped, `expired` when it waits in the queue past its expiry, or
+`stream_test_unavailable` at shutdown. Metadata that doesn't arrive in time
+gives a `done` test with an inconclusive `no_metadata` verdict.
+
+Limits:
+
+- One test runs at a time. Tests and source checks take turns through one
+  shared FIFO work slot; at most three tests wait, and a waiting test's
+  message says what it waits for.
+- A basic test has 90 seconds in all, 30 of them for metadata, a 20-second
+  bitrate probe and a 256 MiB data cap. Extended allows 180 seconds, 60 for
+  metadata, a 60-second probe and 1 GiB.
+- Records stay in memory for 10 minutes after they finish, at most eight;
+  the oldest finished records go first. Nothing is persisted.
+- The test registers the torrent with `save_to_db: false`. A `done` test
+  that got metadata keeps it registered until its record goes, so playing
+  soon after may start from cache. The torrent is removed only if the test
+  registered it and no other test, draft, episode preview or library entry
+  uses it.
+- A stream that starts mid-test stops the test with the figures so far.
+  Playback telemetry ignores torrents under test, and the disk-copy
+  archiver yields to a running test as it does to playback.
+- Logs record the test ID, mode, phase, outcome, rates and durations; never
+  a magnet, hash, path, file name or token.
+
 ### Tags
 
 Genre-style labels kept in a registry (`tags.json`, seeded with the TMDB/IMDb genre set on first run). Entries store tag **names**; renames and deletions cascade to every entry. Names are trimmed, ≤ 40 characters, and unique case-insensitively.
@@ -196,7 +293,7 @@ Genre-style labels kept in a registry (`tags.json`, seeded with the TMDB/IMDb ge
 |---|---|
 | `GET /api/tags` | `{tags: [{name, count, pinned}], pinned: string[], pinnedLimit: 8}` — every registered tag with how many entries carry it and whether it is pinned to the Board; `pinned` lists pinned names in pin order |
 | `POST /api/tags` | `{name}` → `201 {name}`; `400` if a tag with that name (any case) exists |
-| `PATCH /api/tags/{name}` | `{name}` → rename; returns `{name, entries}` with the number of entries updated. `{pinned: boolean}` → pin or unpin the tag as a Board catalog (`tag-<key>`); returns `{name, pinned, pinnedTags}`; `400` when 8 tags are already pinned |
+| `PATCH /api/tags/{name}` | `{name}` → rename; returns `{name, entries}` with the number of entries updated. `{pinned: boolean}` → pin or unpin the tag (stored only; since 2026-09-30 pins no longer add a Board catalog); returns `{name, pinned, pinnedTags}`; `400` when 8 tags are already pinned |
 | `DELETE /api/tags/{name}` | Remove the tag and strip it from entries → `{name, entries}` |
 
 ### Entry fields (create)
@@ -212,7 +309,9 @@ Exactly one source is required: `magnetUri` (must start `magnet:?`), `torrentFil
 | `tags` | `string[]` | optional, ≤ 32; stored with the registry's spelling and unknown names are registered on the fly; `null` on PATCH clears all tags |
 | `preferredFileIndex` | int ≥ 0 | force a TorrServer file ID |
 | `fileOverrides` | `[{id, included, season?, episode?}]` | per-file include/episode mapping (primary source's own IDs) |
-| `extraSources` | `[{magnetUri?\|torrentFilePath?, seasonHint?, fileOverrides?}]` | additional torrents merged into a torrent-backed **series**; rejected on movies and local entries |
+| `seasonHint` | integer ≥ 0 | series: season for the primary source's files whose names carry no explicit `SxxEyy`; nullable on PATCH; ignored for movies |
+| `episodeHint` | integer 1–9999 | series: episode of the primary source's first file without explicit numbering (later files count up from it); nullable on PATCH; ignored for movies |
+| `extraSources` | `[{magnetUri?\|torrentFilePath?, seasonHint?, episodeHint?, fileOverrides?}]` | additional torrents merged into a torrent-backed **series**; rejected on movies and local entries |
 | `releaseInfo` | string | year or year range (`2019`, `2019-2021`); nullable on PATCH |
 | `runtime` | string ≤ 40 | as shown, e.g. `1h 52m`; movies fall back to the probe's duration when blank; nullable on PATCH |
 | `imdbRating` | string | `0`–`10`, at most one decimal, e.g. `7.8`; nullable on PATCH |
@@ -237,7 +336,7 @@ coordinator as source checks; the legacy response keeps `technical` and its erro
 shape. Plain metadata inspection allows up to 30 seconds per source. File IDs
 are TorrServer's returned one-based IDs.
 
-Multi-torrent series: every source is inspected and the episode lists merge. File IDs become composite — `sourceIndex × 100000 + torrServerFileId` (the primary source keeps raw IDs) — and files from extra sources carry their own `hash`. A file's name parsing wins over the source's `seasonHint`; on duplicate (season, episode) claims the later source wins. Changing `extraSources` (or any other source-definition field) clears the inspection cache, and the `PATCH` reply returns before the server refills it in the background; `POST …/inspect` and Stremio requests that arrive meanwhile join that run rather than starting another.
+Multi-torrent series: every source is inspected and the episode lists merge. File IDs become composite — `sourceIndex × 100000 + torrServerFileId` (the primary source keeps raw IDs) — and files from extra sources carry their own `hash`. Per file, numbering precedence is: `fileOverrides`, explicit numbering in the name (`S02E05`, `S02 E05`, `2x05`, `Season 2 Episode 5`), the source's `seasonHint` / `episodeHint` (`episodeHint + position` in the source's path-sorted file list), numbers guessed from the name or folders (`Episode 5`, `E05`, `Show - 05`, `05 - Title`, `Season 2/`, `S02`; guessed episodes are ignored when they repeat within the source), then position. `episodeOverrides` apply after merging. On duplicate (season, episode) claims the later source wins. Changing `extraSources` (or any other source-definition field) clears the inspection cache, and the `PATCH` reply returns before the server refills it in the background; `POST …/inspect` and Stremio requests that arrive meanwhile join that run rather than starting another.
 
 A successful sampled probe also returns representative `directPlay` advice.
 File-specific stream consumers use matching `mediaFacts`, not an unscoped verdict
@@ -288,7 +387,7 @@ Available only when `TRANSCODE_ENABLED=true`; the UI's "Stream Repair" view is b
 | `PUT /api/torrserver/settings` | Body: any non-empty subset of the six tunables as whole numbers (rate limits ≥ 0, connections ≥ 1, cache ≥ 32 MiB, read-ahead 5–100, timeout ≥ 1). Re-reads TorrServer's full settings struct, merges the edits and applies it with `POST /settings set`, which TorrServer answers by persisting `settings.json`, dropping every torrent and reconnecting. 409 `streaming_active` while any stream was active in the last five minutes; 400 `invalid_body`; 503 `torrserver_unavailable`. Returns `{current, shipped}`. Logs `torrserver_settings_updated` with key names only |
 | `GET /api/identity` | `{contactEmail}` — the address advertised as the manifest's `contactEmail` (empty by default) |
 | `PUT /api/identity` | Body `{contactEmail}`: a valid address or `""` to clear; returns the stored identity. 400 `invalid_body` |
-| `GET\|PUT /api/metadata/settings` | Cinemeta enrichment ([ADR 0026](../decisions/0026-opt-in-cinemeta-metadata-enrichment.md)), `no-store`: `{enabled, autoOnAdd}` (defaults `false`, `true`). `PUT` takes any subset and returns the result. Off means no request ever leaves for `strem.io` |
+| `GET\|PUT /api/metadata/settings` | Cinemeta enrichment ([ADR 0026](../decisions/decision-log.md)), `no-store`: `{enabled, autoOnAdd}` (defaults `false`, `true`). `PUT` takes any subset and returns the result. Off means no request ever leaves for `strem.io` |
 | `GET\|POST /api/metadata/backfill` | `POST` starts a one-at-a-time fetch for every entry without a match (`202`; `409 metadata-busy` while running, `409 metadata-disabled` when off); `GET` reports `{running, done, total, matched, needsReview, failed, startedAt?, finishedAt?}` |
 | `POST /api/torrserver/settings/reset` | Applies the six shipped values from `packaging/torrserver-settings.json` (not TorrServer's own `def` defaults). Same guards and response as `PUT` |
 | `GET\|POST\|DELETE /api/analysis` | Library-wide bounded analysis through the shared check coordinator. `POST {force?}` checks entries without a current-revision check attempt (`force` explicitly rechecks all, including failed/inconclusive attempts; `409` while active/draining); `DELETE` cancels active work as well as scheduling; `GET` reports `{running, total, done, current, failed[], startedAt, finishedAt, cancelled}` |
@@ -337,7 +436,7 @@ tombstone when the drive is offline.
 | `GET /manage/{token}` | Management page shell (HTML, CSP `script-src 'self'; style-src 'self'`) |
 | `GET /manage-assets/{file}` | Static UI modules and stylesheet from `addon/assets/manage/` (public, whitelisted names only, cached 5 min) |
 | `GET\|HEAD /local/{token}/{entryId}[/{fileId}]` | Range-capable local media streaming |
-| `GET\|HEAD /media/{token}/{entryId}/{sourceKey}` | Stable playback URL for disk-copy entries. Every range request independently resolves the source: a valid complete disk file on an online volume serves local bytes; anything else proxies the same range from TorrServer. Plugging or unplugging a drive switches sources on the client's next request — never mid-response |
+| `GET\|HEAD /media/{token}/{entryId}/{sourceKey}` | Stable playback URL for disk-copy entries. Every range request independently resolves the source: a valid complete disk file on an online volume serves local bytes; anything else proxies the same range from TorrServer. Plugging or unplugging a drive switches sources on the client's next request — never mid-response. `503` with `Retry-After: 5` when the torrent source cannot be resolved right now (TorrServer restarting, metadata timeout); `404` only when the resolved source has no such file |
 | `GET\|HEAD /hls/{token}/{entryId}/{fileId}/{auto\|video}/{asset}` | Stream-repair HLS session assets (`index.m3u8`, `init.mp4`, `seg-N.m4s`); the first playlist request starts the ffmpeg session lazily, and sessions are reaped 60 s after requests stop |
 | `GET\|HEAD /thumbnails/{token}/{entryId}/{season}/{episode}.jpg` | Episode frame (480 px JPEG). `ETag` from size and mtime, `cache-control: max-age=604800`, `304` on `If-None-Match`; `404` when no frame exists or the token is wrong |
 | `GET\|HEAD /artwork/{token}/{entryId}/{poster\|background\|logo}` | Locally cached Cinemeta artwork (JPEG/PNG/WebP as fetched). `ETag`, `cache-control: max-age=604800`, `304` on `If-None-Match`; `404` when nothing is cached or the token is wrong |
@@ -347,7 +446,7 @@ tombstone when the drive is offline.
 ## Host playback
 
 These endpoints play a library entry on the machine running HoshiStream, so no add-on
-client is needed to watch locally. See [ADR 0008](../decisions/0008-bundled-mpv-player-over-json-ipc.md).
+client is needed to watch locally. See [ADR 0008](../decisions/decision-log.md).
 
 `POST /api/player/play` takes `{"entryId": "hoshi:…", "fileId": 3}`; `fileId` is optional
 and defaults to the first selected file. It returns:

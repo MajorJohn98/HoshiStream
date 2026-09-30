@@ -154,11 +154,39 @@ h3 {
   height: 15px;
   margin: 0;
 }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 .input-narrow {
   width: 90px;
 }
 .repeater-row {
   margin-bottom: var(--space-2);
+}
+/* Per-source Season/Episode editor: controls stay on one line (other row
+   trails become columns below 900px) and move under the label on narrow
+   sheets. */
+.rowitem .trail.source-hints {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .rowitem.no-lead:has(.source-hints) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rowitem .trail.source-hints {
+    justify-self: start;
+    flex-wrap: wrap;
+  }
 }
 /* Standalone progress bar (analysis run); the HUD keeps its 4px variant. */
 .progress {
@@ -1475,6 +1503,11 @@ td.filename {
   white-space: nowrap;
 }
 /* Watched state per file: a dot plus label that toggles the mark. */
+.watch-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 td.watch {
   white-space: nowrap;
 }
@@ -1815,6 +1848,104 @@ table.files td.num {
 .sheet-section {
   margin-top: 30px;
   scroll-margin-top: 58px;
+}
+/* Checkbox rows inside a form grid stay horizontal, text beside the box. */
+.form-grid label.check {
+  flex-direction: row;
+  align-items: flex-start;
+  color: var(--text);
+}
+.form-grid label.check input[type="checkbox"] {
+  margin-top: 2px;
+}
+/* Progressive disclosure inside a sheet: a hairline and a quiet summary line
+   with a drawn chevron, never a card. */
+.more-details {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-3);
+  margin-top: var(--space-2);
+}
+.more-details > summary,
+.session-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--fs-control);
+  font-weight: 600;
+  color: var(--text);
+  width: fit-content;
+  border-radius: 6px;
+}
+.more-details > summary::-webkit-details-marker,
+.session-group > summary::-webkit-details-marker {
+  display: none;
+}
+.more-details > summary::before,
+.session-group > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.more-details[open] > summary::before,
+.session-group[open] > summary::before {
+  transform: rotate(45deg);
+}
+.more-details > summary .muted {
+  font-weight: 400;
+}
+.more-details > summary:hover::before,
+.session-group > summary:hover::before {
+  border-color: var(--text);
+}
+.more-details > summary:focus-visible,
+.session-group > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.more-details[open] > summary {
+  margin-bottom: var(--space-3);
+}
+/* Activity torrent groups: a hairline between groups, the count as a quiet
+   numeral, rows flush under the summary. */
+.session-group {
+  border-bottom: 1px solid var(--line);
+}
+.session-group > summary {
+  width: 100%;
+  padding: 12px 0;
+}
+.session-group > summary .count {
+  color: var(--muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.session-group > summary .session-group-rate {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+.session-group > .rows {
+  margin-bottom: var(--space-2);
+}
+.more-details textarea {
+  width: 100%;
+}
+.sheet-section .kv + .more-details,
+.sheet-section .more-details + .stacked {
+  margin-top: var(--space-4);
+}
+@media (prefers-reduced-motion: reduce) {
+  .more-details > summary::before,
+  .session-group > summary::before {
+    transition: none;
+  }
 }
 .sheet-section .section-head .muted {
   max-width: 62ch;
@@ -2482,9 +2613,49 @@ video {
 .source-check .inline-note {
   max-width: 68ch;
 }
+/* Pre-add stream test: a field-level card inside the Add form, so no panel
+   border of its own. */
+.stream-test {
+  min-width: 0;
+}
+.stream-test-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.stream-test-head .field-label {
+  margin-bottom: 0;
+}
+.stream-test p,
+.stream-test ul {
+  max-width: 68ch;
+  overflow-wrap: anywhere;
+  margin-bottom: 0;
+}
+.stream-test .stream-test-summary {
+  margin-top: 0;
+}
+.stream-test ul {
+  padding-left: 18px;
+}
+.stream-test .picker-row select {
+  flex: 1 1 240px;
+  min-width: 0;
+}
 @media (max-width: 520px) {
   .add-modal .segmented button {
     flex-basis: 30%;
     padding-inline: 8px;
+  }
+}
+
+/* Five one-word entry tabs fit a phone without scrolling. Last, so it wins
+   over the 900px sheet rules. */
+@media (max-width: 520px) {
+  .sheet-tabs {
+    gap: 14px;
   }
 }

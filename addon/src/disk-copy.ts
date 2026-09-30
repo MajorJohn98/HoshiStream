@@ -1,15 +1,8 @@
 import { createHash } from "node:crypto";
-import {
-  mkdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { realpath, rm, stat } from "node:fs/promises";
+import { resolve } from "node:path";
 import { z } from "zod";
+import { readJsonFile, writeJsonFile } from "./json-file.ts";
 import { rawFileId, type SelectedFile } from "./media-file-selection.ts";
 import { containsPath, isSafeRelativePath } from "./path-safety.ts";
 import type { DiskCopy, DiskCopyFile, LibraryEntry } from "./types.ts";
@@ -250,9 +243,11 @@ export class DiskCleanup {
     this.path = path;
   }
 
+  // An unreadable file lists nothing (the sweep retries later); writes
+  // surface the error instead of replacing tombstones they could not read.
   async list(): Promise<DiskCleanupTombstone[]> {
     await this.#queue;
-    return this.#read();
+    return this.#read().catch(() => []);
   }
 
   add(input: {
@@ -325,13 +320,7 @@ export class DiskCleanup {
   }
 
   async #read(): Promise<DiskCleanupTombstone[]> {
-    try {
-      return tombstonesSchema.parse(
-        JSON.parse(await readFile(this.path, "utf8")),
-      );
-    } catch {
-      return [];
-    }
+    return (await readJsonFile(this.path, tombstonesSchema)) ?? [];
   }
 
   #update(
@@ -340,12 +329,7 @@ export class DiskCleanup {
     const operation = this.#queue.then(async () => {
       const tombstones = await this.#read();
       await change(tombstones);
-      await mkdir(dirname(this.path), { recursive: true });
-      const temporary = `${this.path}.tmp`;
-      await writeFile(temporary, `${JSON.stringify(tombstones, null, 2)}\n`, {
-        mode: 0o600,
-      });
-      await rename(temporary, this.path);
+      await writeJsonFile(this.path, tombstones);
     });
     this.#queue = operation.then(
       () => undefined,

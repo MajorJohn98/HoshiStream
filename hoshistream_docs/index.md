@@ -5,39 +5,9 @@
 - [architecture/architecture-overview.md](architecture/architecture-overview.md) — System diagram, module map, data flow, deployment modes, and state layout.
 - [OpenCodeAnalysis.md](OpenCodeAnalysis.md) — Part-by-part codebase walkthrough: components, internals, and end-to-end request flows.
 
-## Decisions (ADRs)
+## Decisions
 
-- [decisions/0001-torrserver-matrix-141-pinning.md](decisions/0001-torrserver-matrix-141-pinning.md) — Pin TorrServer to MatriX.141.1 and use only Swagger-verified endpoints.
-- [decisions/0002-disk-cache-over-ram-tiering.md](decisions/0002-disk-cache-over-ram-tiering.md) — Single bounded 2 GiB disk cache instead of RAM + disk tiering.
-- [decisions/0003-native-menu-bar-app-no-electron.md](decisions/0003-native-menu-bar-app-no-electron.md) — Syncthing-style native supervisor app; Electron rejected.
-- [decisions/0004-token-in-path-and-bearer-security-model.md](decisions/0004-token-in-path-and-bearer-security-model.md) — Path-token add-on URLs, bearer management API, trusted-LAN boundary.
-- [decisions/0005-host-header-public-urls.md](decisions/0005-host-header-public-urls.md) — Derive public stream URLs from the request Host header with configured fallback.
-- [decisions/0006-inspection-cache-on-entries.md](decisions/0006-inspection-cache-on-entries.md) — Persist inspection results on library entries for instant stream resolution.
-- [decisions/0007-lan-detection-via-public-ip-match.md](decisions/0007-lan-detection-via-public-ip-match.md) — Return LAN stream URLs to tunnel clients sharing the server's public IP.
-- [decisions/0008-bundled-mpv-player-over-json-ipc.md](decisions/0008-bundled-mpv-player-over-json-ipc.md) — Drive mpv over its JSON IPC socket for host playback; no Electron, one implementation for macOS and Windows.
-- [decisions/0009-native-only-deployment.md](decisions/0009-native-only-deployment.md) — Remove Docker; the native app is the only deployment mode, and Windows gets a minimal launcher rather than a supervisor rewrite.
-- [decisions/0010-opt-in-realtime-transcoding.md](decisions/0010-opt-in-realtime-transcoding.md) — Proposed: opt-in tiered stream repair (remux, audio fix, hardware video transcode) via vendored ffmpeg, gated by the probe verdict.
-- [decisions/0011-mdns-lan-discovery.md](decisions/0011-mdns-lan-discovery.md) — LAN discovery via a dependency-free mDNS responder in the add-on; external rendezvous rejected.
-- [decisions/0012-vercel-pointer-server.md](decisions/0012-vercel-pointer-server.md) — Permanent manifest URL via a self-controlled Vercel pointer server with strictly manual pushes.
-- [decisions/0013-multi-tenant-pointer-server.md](decisions/0013-multi-tenant-pointer-server.md) — Multi-tenant pointer server keyed by token hash with claim-on-first-push auth, Upstash/Blob storage, and open-redirect hardening.
-- [decisions/0014-run-typescript-source-directly.md](decisions/0014-run-typescript-source-directly.md) — Run `addon/src` directly via Node type stripping: `.ts` import specifiers, erasable-only syntax, `--dev` launcher flag; `tsx` rejected.
-- [decisions/0015-keep-json-stores-sqlite-deferred.md](decisions/0015-keep-json-stores-sqlite-deferred.md) — Keep atomic JSON stores; SQLite (`node:sqlite`) deferred with explicit revisit criteria and the inspection-cache split as the first remedy.
-
-- [decisions/0016-opt-in-curated-torrent-search.md](decisions/0016-opt-in-curated-torrent-search.md) — Approved opt-in open-film search in Add Media, reviewed source pins, bounded torrent parsing, and retry-safe JSON import.
-
-- [decisions/0017-local-search-bridges-and-series-import.md](decisions/0017-local-search-bridges-and-series-import.md) — Optional loopback Prowlarr/Jackett adapters, explicit public indexers, and collision-reviewed series source imports.
-
-- [decisions/0018-bundled-direct-search-providers.md](decisions/0018-bundled-direct-search-providers.md) — Approved bundled YTS/Nyaa/1337x adapters, bounded HTML parsing, and no external search-service requirement.
-
-- [decisions/0019-post-save-source-checks.md](decisions/0019-post-save-source-checks.md) — Opt-out bounded checks after saving, persistent progress, source-revision guards, and honest playback readiness.
-
-- [decisions/0020-manual-import-chrome-companion.md](decisions/0020-manual-import-chrome-companion.md) — Retire discovery and use a least-privilege Chrome companion with a same-computer macOS native bridge.
-- [decisions/0021-native-magnet-link-handler.md](decisions/0021-native-magnet-link-handler.md) — Opt-in macOS magnet handling with private, expiring handoff tickets and explicit Add Media review.
-- [decisions/0022-windows-native-desktop-release.md](decisions/0022-windows-native-desktop-release.md) — Windows 11 tray, self-contained installer, native integration parity and preserved private/manual behavior.
-- [decisions/0023-file-scoped-readiness-evidence.md](decisions/0023-file-scoped-readiness-evidence.md) — Separate metadata, sampled media, and player support; file-scoped facts, shared checks and explicit longer retries.
-- [decisions/0024-immutable-pointer-blob-versions.md](decisions/0024-immutable-pointer-blob-versions.md) — Pointer Blob records become immutable versions located via `list`, because the public Blob CDN served in-place overwrites stale for days.
-- [decisions/0025-watched-state-from-observed-reads.md](decisions/0025-watched-state-from-observed-reads.md) — Per-file watched state derived from observed reads (`/cache` reader position, `Range` starts, browser player) stored in `library.json`; TorrServer `/viewed` mirrored best-effort.
-- [decisions/0026-opt-in-cinemeta-metadata-enrichment.md](decisions/0026-opt-in-cinemeta-metadata-enrichment.md) — Opt-in pull-and-store metadata from Stremio's Cinemeta for movies and series: title/year only leaves the machine, viewer edits win, artwork cached locally, ids stay `hoshi:`.
+- [decisions/decision-log.md](decisions/decision-log.md) — Living decision log: entries 0001–0029 as short, editable decisions grouped by area (platform, playback, security and remote access, library, adding media and search, retired). Replaced the individual ADR files on 2026-09-30; the log explains how to restore them from git.
 
 ## Guides
 
@@ -69,6 +39,11 @@
 
 ## Plans
 
+- [plans/2026-09-30-pre-add-stream-test-plan.md](plans/2026-09-30-pre-add-stream-test-plan.md) — Owner-triggered "Test streaming" before Add: measures the file's bitrate against the sustained swarm rate through TorrServer, names the bottleneck (swarm, line or TorrServer limit), and suggests a wait, a disk copy or a release size; advice only (decision 0029; phase 1 implemented, companion and search phases planned).
+- [plans/2026-09-28-main-torrent-and-activity-groups-plan.md](plans/2026-09-28-main-torrent-and-activity-groups-plan.md) — Make an extra torrent the main one, file-id remapping so watched state survives source edits, main-torrent Activity label, collapsible Activity groups (implemented).
+- [plans/2026-09-28-entry-sheet-consolidation-plan.md](plans/2026-09-28-entry-sheet-consolidation-plan.md) — Entry sheet from seven tabs to five: merged Details/Metadata, one Episodes list with watch/play, Files under Source with a single Inspect, trimmed Playback, Storage (implemented).
+- [plans/2026-09-28-series-season-episode-hints-plan.md](plans/2026-09-28-series-season-episode-hints-plan.md) — Per-torrent season and episode hints (main and extra sources), explicit/loose filename numbering with collision-safe guesses, editable source numbering in the Source tab and Chrome companion (implemented).
+- [plans/2026-09-27-state-durability-and-failure-handling-plan.md](plans/2026-09-27-state-durability-and-failure-handling-plan.md) — Reliability scan follow-up: durable `fsync` writes and corrupt-file quarantine for every JSON store, serialized small-store writers, 503 (not 404) on transient TorrServer failures, and process-level crash handlers (implemented).
 - [plans/2026-09-21-windows-ci-portability-plan.md](plans/2026-09-21-windows-ci-portability-plan.md) — Green `shared (windows-2025)` job (#14): `PSModulePath` leak into Windows PowerShell 5.1 fixed in `restrictAccess`, registry and mount enumeration; Windows-aware test branches for mode bits, path flavour, NTFS directory mtime and named-pipe accept ordering (implemented).
 - [plans/2026-09-13-cinemeta-metadata-enrichment-plan.md](plans/2026-09-13-cinemeta-metadata-enrichment-plan.md) — Opt-in Cinemeta enrichment: verified API contract, ownership rule, title-query cleaning, artwork cache + `/artwork` route, auto/manual/backfill triggers, Match card UI, tests (done).
 - [plans/2026-09-13-episode-metadata-and-thumbnails-plan.md](plans/2026-09-13-episode-metadata-and-thumbnails-plan.md) — Phase 13: per-episode title/overview/air-date overrides, cleaned filename titles, on-disk frame thumbnails via ffmpeg, and the Ongoing flag (implemented).
@@ -107,16 +82,18 @@
 
 ## Changelog
 
+- [changelog/pre-add-stream-test.md](changelog/pre-add-stream-test.md) — **Test streaming** on Add Media: before you save a magnet or `.torrent`, a bounded TorrServer read measures the file's bitrate against the sustained swarm rate, names the bottleneck (swarm, line or TorrServer limit) and suggests a wait, a disk copy or a smaller release; advice only, in memory, one test at a time (decision 0029, phase 1).
+- [changelog/state-durability-and-crash-handling.md](changelog/state-durability-and-crash-handling.md) — JSON state survives power loss and corruption (no more silent tag reseeding), overlapping settings saves no longer lose updates, transient TorrServer failures answer 503, stray exceptions shut down cleanly instead of orphaning TorrServer, and Quit stops TorrServer via `/shutdown` instead of racing a SIGKILL.
 - [changelog/windows-ci-portability.md](changelog/windows-ci-portability.md) — `PSModulePath` no longer leaks into Windows PowerShell 5.1 (ACL, registry and mount enumeration worked only when not launched from pwsh 7); Windows-aware test branches make the `windows-2025` CI job green (#14).
 - [changelog/series-meta-from-cache.md](changelog/series-meta-from-cache.md) — Series meta answers from the inspection cache without waiting on TorrServer, source edits refill the cache in the background, one shared inspection per entry revision, and no `defaultVideoId` on series meta (it hid the episode list).
 - [changelog/torrserver-settings-ui.md](changelog/torrserver-settings-ui.md) — **TorrServer tuning** on System → Status: six live knobs, confirm-before-apply, streaming guard, reset to shipped defaults, upload-cap suggestion (Phase 10 of the expansion plan).
 - [changelog/episode-metadata-and-thumbnails.md](changelog/episode-metadata-and-thumbnails.md) — **Episodes tab**: readable episode titles, overview and air-date overrides, frame thumbnails for on-disk episodes served from `/thumbnails/…`, `hasScheduledVideos` for ongoing series (Phase 13 of the expansion plan).
-- [changelog/board-rows-and-identity.md](changelog/board-rows-and-identity.md) — **Board rows**: Recently added, Unwatched and up to 8 pinned-tag catalogs per type, manifest `logo`/`contactEmail` via `identity.json`, embedded `videos[].streams` on cached series meta (Phase 15 of the expansion plan).
-- [changelog/cinemeta-metadata-enrichment.md](changelog/cinemeta-metadata-enrichment.md) — **Title details from Cinemeta** (opt-in, ADR 0026): automatic description/artwork/year/rating/people/genres/episode names for new movies and series, pick list when ambiguous, viewer edits always win, artwork cached under `artwork/` and served from `/artwork/…`, per-entry Match card, library backfill.
+- [changelog/board-rows-and-identity.md](changelog/board-rows-and-identity.md) — **Board rows**: Recently added, Unwatched and up to 8 pinned-tag catalogs per type, manifest `logo`/`contactEmail` via `identity.json`, embedded `videos[].streams` on cached series meta (Phase 15 of the expansion plan). Board rows are no longer advertised as of 2026-09-30; the manifest serves only Private Movies and Private Series ([decision 0027](decisions/decision-log.md)).
+- [changelog/cinemeta-metadata-enrichment.md](changelog/cinemeta-metadata-enrichment.md) — **Title details from Cinemeta** (opt-in, ADR 0026): automatic description/artwork/year/rating/people/genres/episode names for new movies and series, pick list when ambiguous, viewer edits always win, artwork cached under `artwork/` and served from `/artwork/…`, per-entry Match card, library backfill. 2026-09-27 fixes: series fetches no longer rejected on `director: null`, Fetch details works unmatched, type changes re-run the lookup.
 - [changelog/diagnostics-bundle.md](changelog/diagnostics-bundle.md) — `GET /api/diagnostics` redacted support bundle (release, OS, TorrServer settings, speed tests, telemetry, pointer, disk, library counts, last 300 log lines) and **Copy diagnostics** on System → Status (Phase 9 of the expansion plan).
 - [changelog/disk-copy-policies.md](changelog/disk-copy-policies.md) — Per-series rolling window on disk copies: `keepAhead` archives the next episodes after the one just played, `evictWatched` removes watched copies once the window is on disk; `PUT …/disk-copy/policy`, Storage-tab controls (Phase 8 of the expansion plan).
 - [changelog/rich-title-metadata.md](changelog/rich-title-metadata.md) — Optional presentation fields on entries (year, runtime, rating, people, trailers, poster shape), emitted in catalog/meta with search `links[]` and `defaultVideoId`; Metadata tab in the entry sheet (Phase 12 of the expansion plan).
-- [changelog/watched-state.md](changelog/watched-state.md) — Per-file watched state, Continue Watching catalogs, series resume via `defaultVideoId`, Watched column in the Files table, TorrServer `/viewed` mirror (Phase 5 of the expansion plan).
+- [changelog/watched-state.md](changelog/watched-state.md) — Per-file watched state, Continue Watching catalogs (unadvertised since 2026-09-30, ADR 0027), series resume via `defaultVideoId`, Watched column in the Files table, TorrServer `/viewed` mirror (Phase 5 of the expansion plan).
 - [changelog/stream-descriptions.md](changelog/stream-descriptions.md) — Stream picker text now names resolution, codecs, size, bitrate and the line-fit verdict; `notWebReady` for browser-hostile formats; OpenSubtitles `videoHash` for disk-resident files (Phase 14 of the expansion plan).
 - [changelog/episode-mapping-repair.md](changelog/episode-mapping-repair.md) — `episodeOverrides` on library entries, applied after automatic mapping and source merging; Files-tab editor with shift-by-N, duplicate blocking and gap hints (Phase 7 of the expansion plan).
 - [changelog/pointer-drift-detection.md](changelog/pointer-drift-detection.md) — Automatic start-up / LAN-change read of the remote pointer record, a Pointer-card row with **Update now**, and one-off macOS/Windows notifications; pushes stay manual (Phase 4 of the expansion plan).
@@ -151,5 +128,8 @@
 - [changelog/0.8.1-portable-macos-build.md](changelog/0.8.1-portable-macos-build.md) — Runtime state-directory resolution, first-run `.env` and token generation, and `.dmg` packaging.
 - [changelog/0.9.0-remote-pointer.md](changelog/0.9.0-remote-pointer.md) — Permanent add-on URL: Vercel pointer server, manual push API, and the "Update Remote Pointer" menu item.
 - [changelog/0.10.0-multi-torrent-series.md](changelog/0.10.0-multi-torrent-series.md) — One series entry backed by several torrents: extra sources, composite file IDs, merged episodes.
+- [changelog/main-torrent-and-activity-groups.md](changelog/main-torrent-and-activity-groups.md) — Make main, watched state that survives source edits, labeled main torrent, grouped collapsible Activity torrents.
+- [changelog/entry-sheet-consolidation.md](changelog/entry-sheet-consolidation.md) — Entry sheet consolidated to five tabs, plus the fix that stops a Details save from dropping the inspection cache.
+- [changelog/series-season-episode-hints.md](changelog/series-season-episode-hints.md) — Season and episode hints per torrent, smarter filename numbering, sample folders, and editable source numbering.
 - [changelog/0.11.0-multi-tenant-pointer-and-devices.md](changelog/0.11.0-multi-tenant-pointer-and-devices.md) — Multi-tenant pointer server (claim-on-first-push, hardening) and the local Devices dashboard.
 - [changelog/0.8.2-shutdown-and-bundle-size.md](changelog/0.8.2-shutdown-and-bundle-size.md) — Fixes the server outliving its supervisor (leaked mDNS socket) and prunes devDependencies from the shipped bundle.

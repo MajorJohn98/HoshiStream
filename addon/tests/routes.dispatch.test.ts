@@ -297,7 +297,63 @@ describe("createHandler dispatch", () => {
         sourceLabel: "Season 2",
       },
     ]);
-    expect(sessions[0].sourceLabel).toBeUndefined();
+    // The main torrent is labeled too once the series has other torrents.
+    expect(sessions[0].sourceLabel).toBe("Main torrent");
+  });
+
+  it("promotes an extra torrent to main and keeps watched state on its files", async () => {
+    const main = "3".repeat(40);
+    const extra = "4".repeat(40);
+    const stamp = new Date().toISOString();
+    await writeFile(
+      libraryPath,
+      JSON.stringify([
+        {
+          id: "hoshi:promote",
+          type: "series",
+          name: "Promote",
+          magnetUri: `magnet:?xt=urn:btih:${main}`,
+          seasonHint: 1,
+          extraSources: [
+            {
+              magnetUri: `magnet:?xt=urn:btih:${extra}`,
+              seasonHint: 1,
+              episodeHint: 2,
+            },
+          ],
+          watchStates: [
+            { fileId: 0, state: "watched", at: stamp },
+            { fileId: 100_000, state: "started", at: stamp },
+          ],
+          createdAt: stamp,
+          updatedAt: stamp,
+        },
+      ]),
+    );
+    const response = await api("/api/library/hoshi%3Apromote/sources/promote", {
+      method: "POST",
+      body: JSON.stringify({ index: 0 }),
+    });
+    expect(response.status).toBe(200);
+    const entry = await response.json();
+    expect(entry).toMatchObject({
+      magnetUri: `magnet:?xt=urn:btih:${extra}`,
+      seasonHint: 1,
+      episodeHint: 2,
+      extraSources: [
+        { magnetUri: `magnet:?xt=urn:btih:${main}`, seasonHint: 1 },
+      ],
+      watchStates: [
+        { fileId: 100_000, state: "watched" },
+        { fileId: 0, state: "started" },
+      ],
+    });
+    expect(entry.extraSources[0]).not.toHaveProperty("episodeHint");
+    const missing = await api("/api/library/hoshi%3Apromote/sources/promote", {
+      method: "POST",
+      body: JSON.stringify({ index: 4 }),
+    });
+    expect(missing.status).toBe(409);
   });
 
   it("reports status and falls through to 404 for unknown paths", async () => {

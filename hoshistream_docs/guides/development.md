@@ -17,7 +17,7 @@ npm run build          # tsc → dist/
 ## Fast dev loop (no app build, no tsc)
 
 The add-on runs straight from `src/` — Node strips the types at load time, so
-there is no build step in the loop ([ADR 0014](../decisions/0014-run-typescript-source-directly.md)).
+there is no build step in the loop ([ADR 0014](../decisions/decision-log.md)).
 Node 22.18 or newer is required for source mode. The independently pinned app
 runtime is currently Node v26.3.1 (`packaging/node-lock.json`); do not describe
 the shipped runtime as Node 22.
@@ -158,10 +158,10 @@ are used.
 ## Working agreement (AGENTS.md)
 
 - Implement only the requested phase.
-- Verify TorrServer behavior against its source or Swagger before adding API calls ([ADR 0001](../decisions/0001-torrserver-matrix-141-pinning.md)).
+- Verify TorrServer behavior against its source or Swagger before adding API calls ([ADR 0001](../decisions/decision-log.md)).
 - Keep media legal, local-first, direct-play, and private by default.
-- In-app discovery is retired (ADR 0020). Keep adding manual, with the Chrome companion as an explicit capture/review bridge. Do not reintroduce provider search, scraping, challenge bypass, transcoding, a database, or a dashboard without approval.
-- HoshiStream runs natively; do not reintroduce containers ([ADR 0009](../decisions/0009-native-only-deployment.md)).
+- In-app torrent search is limited to opt-in, owner-added Stremio stream add-ons ([ADR 0028](../decisions/decision-log.md), which supersedes ADR 0020's discovery retirement). Adding stays an explicit owner choice; the Chrome companion and manual import remain. Search and ranking contact no peers before Add; only an owner-triggered stream test on one chosen torrent may ([decision 0029](../decisions/decision-log.md)). Do not add bundled or suggested providers, scraping, challenge bypass, Prowlarr/Jackett bridges, generic Torznab, transcoding, a database, or a dashboard without approval.
+- HoshiStream runs natively; do not reintroduce containers ([ADR 0009](../decisions/decision-log.md)).
 - Never log access tokens, authorization headers, or complete magnet URIs.
 - Run type checks, tests, lint, and format checks before finishing.
 

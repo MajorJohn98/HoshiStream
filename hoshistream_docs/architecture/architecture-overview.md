@@ -49,6 +49,9 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 | `inspection.ts` | Torrent registration + metadata polling + file selection |
 | `media-file-selection.ts` | Playable-extension filtering, series episode mapping (`S01E02`, `1x02`) |
 | `media-probe.ts` | ffprobe-based resolution/codec/bitrate probe with speed verdict |
+| `analysis-slot.ts` | One shared FIFO work slot: source checks and stream tests take turns |
+| `stream-tests.ts`, `stream-verdict.ts`, `routes/stream-tests-api.ts` | Owner-triggered stream test before Add (decision 0029): in-memory test records and queue, `/play` reads with `/cache` sampling, pure verdict and remedy math, and `/api/stream-tests`. `activity.ts` marks hashes under test so playback telemetry skips them and the archiver yields |
+| `assets/manage/components/stream-test.js` | The Add Media **Stream test** card: start, poll, cancel, Test longer, per-file tests and the result |
 | `speedtest.ts` | Measured link speed via Cloudflare's open speed-test endpoint; startup + on-demand runs |
 | `resources.ts` | Process CPU/RSS grouping (`ps`) and cache-directory sizes for the status page |
 | `transcode.ts` | Opt-in stream repair (ADR 0010): ffmpeg HLS sessions for remux, audio fix, and hardware video re-encode |
@@ -66,9 +69,23 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 4. The internal `/play/{hash}/{id}` URL is rewritten to `PUBLIC_TORRSERVER_URL` and returned with `behaviorHints` (filename, videoSize, bingeGroup).
 5. Nuvio streams directly from TorrServer; the add-on is not in the media path.
 
+## Data flow: testing a torrent before Add
+
+1. Add Media posts the magnet or staged `.torrent`, the type and hints to
+   `POST /api/stream-tests`. The test waits for the shared analysis slot.
+2. `stream-tests.ts` registers the torrent (`save_to_db: false`), waits for
+   metadata and picks the file as inspection does.
+3. Within the time and data budgets, it reads `/play/{hash}/{id}` from byte 0,
+   samples `/cache` every 2 s and runs the bounded ffprobe for the bitrate.
+4. `stream-verdict.ts` compares the bitrate with the sustained swarm rate and
+   the line speed, and returns the level, the bottleneck and remedies. The
+   card polls `GET /api/stream-tests/{id}` every 2 s.
+5. Cancelling, expiry or a dropped draft removes the torrent, unless the test
+   didn't register it or something else uses it. The result is never saved.
+
 ## Deployment
 
-One mode: the native app. Containers were removed in 0.7.0 ([ADR 0009](../decisions/0009-native-only-deployment.md)).
+One mode: the native app. Containers were removed in 0.7.0 ([ADR 0009](../decisions/decision-log.md)).
 
 Two processes are always supervised together:
 
@@ -103,9 +120,12 @@ Two processes are always supervised together:
 
 ## Explicit non-goals
 
-No in-app torrent discovery, index scraping, challenge bypass, database, graphical
-dashboard beyond the token-gated management page, telemetry, or public exposure.
-[ADR 0020](../decisions/0020-manual-import-chrome-companion.md) replaces the earlier
+No bundled torrent providers, index scraping, challenge bypass, database,
+graphical dashboard beyond the token-gated management page, telemetry, or
+public exposure. [ADR 0020](../decisions/decision-log.md) replaced the earlier
 search-provider direction with manual imports and a Chrome capture/review
-companion. Transcoding remains opt-in repair only
-([ADR 0010](../decisions/0010-opt-in-realtime-transcoding.md)).
+companion; [ADR 0028](../decisions/decision-log.md) approves opt-in search
+through owner-added Stremio stream add-ons (not yet implemented), and
+[decision 0029](../decisions/decision-log.md) allows an owner-triggered stream
+test before Add. Transcoding
+remains opt-in repair only ([ADR 0010](../decisions/decision-log.md)).

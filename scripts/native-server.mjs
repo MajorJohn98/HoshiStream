@@ -272,19 +272,29 @@ async function stop(exitCode = 0) {
     const exited = new Promise((resolveExit) =>
       torrServer.once("exit", resolveExit),
     );
+    // --dontkill makes TorrServer ignore SIGTERM/SIGINT (so a terminal Ctrl+C
+    // reaches only this supervisor), and Windows has no graceful signal at
+    // all. Its /shutdown route closes the torrent client and settings DB,
+    // then exits 0 (MatriX.141 web/api/shutdown.go → torr.Shutdown).
+    await fetch(`http://127.0.0.1:${torrServerPort}/shutdown`, {
+      signal: AbortSignal.timeout(1_000),
+      redirect: "error",
+    }).catch(() => undefined);
     let childTimeout;
-    torrServer.kill("SIGTERM");
     try {
       await Promise.race([
         exited,
         new Promise((resolveWait) => {
-          childTimeout = setTimeout(resolveWait, 5_000);
+          childTimeout = setTimeout(resolveWait, 4_000);
         }),
       ]);
     } finally {
       clearTimeout(childTimeout);
     }
     if (torrServer.exitCode === null && torrServer.signalCode === null) {
+      console.error(
+        JSON.stringify({ level: "warn", event: "torrserver_force_killed" }),
+      );
       torrServer.kill("SIGKILL");
       await exited;
     }
@@ -345,6 +355,38 @@ function requestStop(exitCode = 0) {
 process.on("SIGINT", () => requestStop());
 process.on("SIGTERM", () => requestStop());
 process.on("SIGHUP", () => requestStop());
+
+// Without these, a stray exception or rejection kills Node without running
+// stop(), orphaning TorrServer on its port. Shut down cleanly instead so the
+// supervisor restarts a fresh process. A crash during an ongoing stop is only
+// logged: that stop is already bounded by its forced-exit timer.
+function crashMessage(error) {
+  let message = error instanceof Error ? error.message : String(error);
+  message = message.replace(/magnet:\?[^\s"'<>\\]*/gi, "magnet:[redacted]");
+  if (accessToken) message = message.replaceAll(accessToken, "[redacted]");
+  return message.slice(0, 500);
+}
+function crash(event, error) {
+  console.error(
+    JSON.stringify({
+      level: "error",
+      event,
+      errorName: error instanceof Error ? error.name : typeof error,
+      error: crashMessage(error),
+    }),
+  );
+  if (stopping) return;
+  void stop(1)
+    .catch(() => undefined)
+    .finally(() => {
+      // A leaked handle must not keep a crashed process alive.
+      setTimeout(() => process.exit(1), 1_000).unref();
+    });
+}
+process.on("uncaughtException", (error) => crash("uncaught_exception", error));
+process.on("unhandledRejection", (reason) =>
+  crash("unhandled_rejection", reason),
+);
 torrServer.once("error", () => {
   console.error(
     JSON.stringify({ level: "error", event: "torrserver_spawn_failed" }),

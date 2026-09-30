@@ -34,5 +34,5 @@ Optional env vars:
 - `PUSH_SECRET` — legacy single-tenant fallback only.
 
 See `hoshistream_docs/guides/pointer-server-vercel.md` for full deployment
-steps and `hoshistream_docs/decisions/0013-multi-tenant-pointer-server.md`
-for the rationale.
+steps and entry 0013 in `hoshistream_docs/decisions/decision-log.md` for
+the rationale.

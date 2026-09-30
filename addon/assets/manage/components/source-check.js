@@ -38,6 +38,7 @@ export function sourceCheckKey(entry) {
     torrentFilePath: value.torrentFilePath,
     fileOverrides: value.fileOverrides,
     seasonHint: value.seasonHint,
+    episodeHint: value.episodeHint,
     hash: value.sourceHash ?? value.searchImport?.hash,
     filmPath: value.searchImport?.filmPath,
   });

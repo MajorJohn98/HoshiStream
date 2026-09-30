@@ -713,7 +713,7 @@ async function updateDraftFields(payload) {
   };
   const previewInvalidated =
     Boolean(state.preview.previewId) &&
-    ["type", "seriesMode", "targetEntryId", "seasonHint"].some(
+    ["type", "seriesMode", "targetEntryId", "seasonHint", "episodeHint"].some(
       (key) => state.form[key] !== next.form[key],
     );
   if (previewInvalidated) {

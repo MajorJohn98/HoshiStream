@@ -2,7 +2,7 @@
 
 Date: 2026-09-13
 Status: **Done** — see [changelog/cinemeta-metadata-enrichment.md](../changelog/cinemeta-metadata-enrichment.md).
-Decision: [ADR 0026](../decisions/0026-opt-in-cinemeta-metadata-enrichment.md).
+Decision: [ADR 0026](../decisions/decision-log.md).
 
 Goal: when the viewer opts in, a freshly added movie or series gets its
 description, artwork, year, runtime, rating, people, trailers, genres, ongoing

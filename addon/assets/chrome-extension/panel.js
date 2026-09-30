@@ -57,6 +57,7 @@ const refs = {
   seriesTarget: document.getElementById("series-target"),
   seriesTargetCopy: document.getElementById("series-target-copy"),
   seasonHint: document.getElementById("season-hint"),
+  episodeHint: document.getElementById("episode-hint"),
   duplicateCard: document.getElementById("duplicate-card"),
   duplicateList: document.getElementById("duplicate-list"),
   previewCard: document.getElementById("preview-card"),
@@ -447,6 +448,9 @@ function renderSeriesFields() {
     isLocked() || state.form.seriesMode !== "existing";
   setInputValue(refs.seasonHint, state.form.seasonHint);
   refs.seasonHint.disabled = isLocked() || state.form.seriesMode !== "existing";
+  setInputValue(refs.episodeHint, state.form.episodeHint);
+  refs.episodeHint.disabled =
+    isLocked() || state.form.seriesMode !== "existing";
   const uninspectedCount = series.filter((entry) => !entry.inspected).length;
   setText(
     refs.seriesTargetCopy,
@@ -927,6 +931,7 @@ function persistDraftFields() {
       seriesMode: state.form.seriesMode,
       targetEntryId: state.form.targetEntryId,
       seasonHint: state.form.seasonHint,
+      episodeHint: state.form.episodeHint,
       checkAfterSave: state.form.checkAfterSave,
       replaceConsent: state.form.replaceConsent,
     },
@@ -1036,6 +1041,11 @@ refs.seriesTarget.addEventListener("change", (event) => {
 });
 refs.seasonHint.addEventListener("input", (event) => {
   state = applyFormPatch(state, { seasonHint: event.target.value });
+  render();
+  queuePersist();
+});
+refs.episodeHint.addEventListener("input", (event) => {
+  state = applyFormPatch(state, { episodeHint: event.target.value });
   render();
   queuePersist();
 });

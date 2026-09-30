@@ -22,7 +22,7 @@ entry to inspect its files, check the source, or investigate a playback problem.
 
 ## Watch in the browser
 
-Open the saved title and choose **Play**, or select a file on its **Files** tab.
+Open the saved title and choose **Play**, or play a specific episode from its **Episodes** tab.
 The management page uses an in-browser player, not mpv. The initial macOS
 candidate baseline is H.264 video and AAC audio in MP4; exact browser/version
 and sustained playback acceptance remain outstanding. No separately installed

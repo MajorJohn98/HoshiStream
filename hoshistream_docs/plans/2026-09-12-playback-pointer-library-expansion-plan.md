@@ -220,7 +220,7 @@ flag it within one launch, and one click fixes it.
 ## Phase 5 — Watched state and Continue Watching ✅
 
 Implemented 2026-09-13 — see [watched state](../changelog/watched-state.md),
-[ADR 0025](../decisions/0025-watched-state-from-observed-reads.md) and the
+[ADR 0025](../decisions/decision-log.md) and the
 [detailed plan](2026-09-13-watched-state-plan.md). Deviations: "started" is
 recorded on the first observed read rather than `stream_generated`;
 `bytes_read_useful_data` is per torrent, so the reader position from `/cache`
@@ -568,8 +568,8 @@ npm run format:check` in `addon/`, a changelog entry, and index updates.
 ## References
 
 - [2026-09-12 stale pointer reads and slow-link tuning](2026-09-12-stale-pointer-reads-and-slow-link-tuning.md)
-- [ADR 0024 — immutable pointer Blob versions](../decisions/0024-immutable-pointer-blob-versions.md)
-- [ADR 0012 — Vercel pointer server, manual pushes](../decisions/0012-vercel-pointer-server.md)
-- [ADR 0020 — manual import via the Chrome companion, discovery retired](../decisions/0020-manual-import-chrome-companion.md)
+- [ADR 0024 — immutable pointer Blob versions](../decisions/decision-log.md)
+- [ADR 0012 — Vercel pointer server, manual pushes](../decisions/decision-log.md)
+- [ADR 0020 — manual import via the Chrome companion, discovery retired](../decisions/decision-log.md)
 - [api/torrserver-endpoints-used.md](../api/torrserver-endpoints-used.md)
 - [changelog/0.6.0-performance.md](../changelog/0.6.0-performance.md) — prior tuning and the deferred preload note

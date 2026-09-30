@@ -33,10 +33,12 @@ import { DiskCleanup } from "./disk-copy.ts";
 import { Archiver } from "./archiver.ts";
 import { ArchiveSchedule } from "./archive-schedule.ts";
 import { defaultAnalyzer, LibraryAnalysis } from "./library-analysis.ts";
+import { AnalysisSlot } from "./analysis-slot.ts";
 import { SourceChecks } from "./source-checks.ts";
+import { StreamTests } from "./stream-tests.ts";
 import { Onboarding } from "./onboarding.ts";
 import { WatchProgress, WatchStates } from "./watch-state.ts";
-import { installConsoleTap, LogRing } from "./diagnostics.ts";
+import { installConsoleTap, LogRing, redactText } from "./diagnostics.ts";
 
 // How long an in-flight response — a stream in progress — may keep the server
 // open during shutdown before its socket is destroyed.
@@ -68,7 +70,11 @@ export async function startHoshiStream(settings = config) {
   const torrServer = new TorrServerClient(settings.TORRSERVER_INTERNAL_URL);
   const nativePicker = new NativePicker(settings.NATIVE_PICKER_SOCKET);
   const tags = new Tags(settings.TAGS_PATH);
-  const sourceChecks = new SourceChecks(library, torrServer);
+  // Source checks and stream tests take turns on TorrServer, one at a time.
+  const analysisSlot = new AnalysisSlot();
+  const sourceChecks = new SourceChecks(library, torrServer, {
+    slot: analysisSlot,
+  });
   await sourceChecks.initialize();
   const imports = new ImportService({
     library,
@@ -106,6 +112,13 @@ export async function startHoshiStream(settings = config) {
     onEntryArchived: (entryId) => {
       thumbnails.generate(entryId);
     },
+  });
+  const streamTests = new StreamTests({
+    library,
+    torrServer,
+    slot: analysisSlot,
+    drafts: imports,
+    diskCopyActive: () => archiver.activeEntryId() !== undefined,
   });
   let transcode: TranscodeManager | undefined;
   if (settings.TRANSCODE_ENABLED) {
@@ -198,6 +211,7 @@ export async function startHoshiStream(settings = config) {
       artwork,
       imports,
       sourceChecks,
+      streamTests,
       volumes,
       diskCleanup: new DiskCleanup(settings.DISK_CLEANUP_PATH),
       archiver,
@@ -231,6 +245,7 @@ export async function startHoshiStream(settings = config) {
         const results = await Promise.allSettled([
           httpClosed,
           stopSpeedTest(),
+          streamTests.close(),
           imports.close(),
           sourceChecks.close(),
           analysisStopped,
@@ -298,7 +313,10 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  startHoshiStream().catch((error) => {
+  // Direct runs (npm start / npm run dev) own the process: signals and stray
+  // errors must still run close() so child processes release their ports.
+  const secrets = { accessToken: process.env.ACCESS_TOKEN };
+  const running = startHoshiStream().catch((error: unknown) => {
     console.error(
       JSON.stringify({
         level: "error",
@@ -307,5 +325,43 @@ if (
       }),
     );
     process.exitCode = 1;
+    return undefined;
   });
+  let exiting = false;
+  const exit = (code: number) => {
+    if (exiting) return;
+    exiting = true;
+    process.exitCode = code;
+    setTimeout(() => process.exit(1), 10_000).unref();
+    void running
+      .then((instance) => instance?.close())
+      .catch(() => {
+        process.exitCode = 1;
+      })
+      .finally(() => {
+        setTimeout(() => process.exit(), 1_000).unref();
+      });
+  };
+  const crash = (event: string, error: unknown) => {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event,
+        errorName: error instanceof Error ? error.name : typeof error,
+        error: redactText(
+          error instanceof Error ? error.message : String(error),
+          secrets,
+        ).slice(0, 500),
+      }),
+    );
+    exit(1);
+  };
+  process.on("SIGINT", () => exit(0));
+  process.on("SIGTERM", () => exit(0));
+  process.on("uncaughtException", (error) =>
+    crash("uncaught_exception", error),
+  );
+  process.on("unhandledRejection", (reason) =>
+    crash("unhandled_rejection", reason),
+  );
 }

@@ -163,6 +163,21 @@ describe("management assets", () => {
     expect(addJs).not.toContain("SearchMedia");
   });
 
+  it("add modal offers a pre-add stream test for torrent sources", async () => {
+    const [addJs, streamTestJs] = await Promise.all([
+      asset("views/add.js"),
+      asset("components/stream-test.js"),
+    ]);
+    expect(addJs).toContain("<${StreamTestPanel}");
+    expect(addJs).toContain('source === "torrent" || source === "torrentFile"');
+    expect(addJs).toContain("prepare=${prepareStreamTest}");
+    expect(streamTestJs).toContain('api("stream-tests", {');
+    expect(streamTestJs).toContain('addEventListener("pagehide", onHide)');
+    expect(streamTestJs).toContain(
+      "releaseStreamTest(testRef.current?.testId, { keepalive: true })",
+    );
+  });
+
   it("scraps search import UI while keeping manual add and source-check flows", async () => {
     const [addJs, storeJs, detailJs, sourceCheckJs] = await Promise.all([
       asset("views/add.js"),
@@ -217,8 +232,8 @@ describe("management assets", () => {
     );
     expect(detailJs).toContain("Save mapping");
     expect(detailJs).toContain("Open direct stream");
-    expect(detailJs).toContain("Source check");
-    expect(detailJs).toContain("run a check or automatically assess playback");
+    expect(detailJs).toContain("Playback check");
+    expect(detailJs).toContain("It does not run a check.");
     expect(detailJs).toContain('from "../components/source-check.js"');
     expect(detailJs).toContain('class="kv');
     expect(detailJs).toContain("Open the entry and review its source check");
@@ -248,8 +263,32 @@ describe("management assets", () => {
     expect(detailJs).toContain("state.selected.inspectionCache");
     expect(detailJs).toContain("from the last inspection");
     expect(detailJs).toContain("Inspect to edit");
-    expect(detailJs).toContain("Last inspected");
     expect(detailJs).toContain("function agoLabel");
+  });
+
+  it("detail sheet consolidates overlapping tabs and keeps old deep links", async () => {
+    const detailJs = await asset("views/detail.js");
+    const tabs = [
+      ...detailJs.matchAll(/^ {2}\["(\w+)", "([^"]+)", (\w+)/gm),
+    ].map((match) => match.slice(1, 4));
+    expect(tabs).toEqual([
+      ["overview", "Details", "DetailsTab"],
+      ["episodes", "Episodes", "EpisodesTab"],
+      ["source", "Source", "SourceTab"],
+      ["playback", "Playback", "PlaybackTab"],
+      ["storage", "Storage", "StorageTab"],
+    ]);
+    expect(detailJs).toContain(
+      'const TAB_ALIASES = { metadata: "overview", files: "source" }',
+    );
+    // One form and one Save for everything Stremio shows about the title.
+    expect(detailJs).toContain("More details");
+    expect(detailJs).toContain("...metadataPatch(fields)");
+    expect(detailJs).not.toContain("function MetadataTab");
+    // Files live under Source; watching and play live on Episodes for series.
+    expect(detailJs).toContain("<${FilesSection} state=${state} />");
+    expect(detailJs).not.toContain("function FilesTab");
+    expect(detailJs).toContain("<${PlayButton}");
   });
 
   it("health section reports service health, mode, and sleep behavior", async () => {

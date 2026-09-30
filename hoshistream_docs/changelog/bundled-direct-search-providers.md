@@ -27,4 +27,4 @@ are visible failures, not empty results or a trigger for browser automation.
 
 Only approved metadata endpoints were probed; no media was downloaded.
 Provider definitions need maintenance if hosts, schemas, or page structure change.
-See [ADR 0018](../decisions/0018-bundled-direct-search-providers.md).
+See [ADR 0018](../decisions/decision-log.md).

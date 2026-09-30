@@ -501,6 +501,40 @@ export class MetadataEnrichment {
     while (this.#pending.size) await Promise.allSettled([...this.#pending]);
   }
 
+  /**
+   * An unmatched entry's candidates came from the other type's catalog
+   * (movie vs series), so they are wrong after a type change: look up again
+   * when automatic lookups are on, otherwise drop the stale pick list. A
+   * chosen match is the viewer's and stays.
+   */
+  typeChanged(entryId: string): void {
+    const run = this.#settings
+      .read()
+      .then(async (settings) => {
+        if (!settings.enabled) return;
+        const entry = await this.#library.get(entryId);
+        if (!entry?.metadata || entry.metadata.imdbId) return;
+        if (settings.autoOnAdd) return this.enrich(entryId, "fill");
+        await this.#setMetadata(entryId, {
+          ...this.#base(entry, {}),
+          status: "unmatched",
+          candidates: undefined,
+        });
+      })
+      .catch((error: unknown) => {
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            event: "metadata_type_change_failed",
+            entryId,
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      })
+      .finally(() => this.#pending.delete(run));
+    this.#pending.add(run);
+  }
+
   async search(entryId: string, query?: string) {
     await this.#requireEnabled();
     const entry = await this.#entry(entryId);
@@ -603,12 +637,12 @@ export class MetadataEnrichment {
     };
   }
 
+  /** Re-fetch the match, or search afresh when there is none yet. */
   async refresh(entryId: string): Promise<EnrichOutcome> {
     await this.#requireEnabled();
     const entry = await this.#entry(entryId);
     const imdbId = entry.metadata?.imdbId;
-    if (!imdbId)
-      throw new MetadataError("no-match", "This entry has no match yet");
+    if (!imdbId) return this.enrich(entryId, "replace");
     return this.apply(entryId, imdbId, "replace", { fresh: true });
   }
 

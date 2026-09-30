@@ -43,6 +43,7 @@ function blankPreview() {
     entryId: "",
     entryName: "",
     seasonHint: "",
+    episodeHint: "",
     addedEpisodes: [],
     replacements: [],
     message: "",
@@ -92,6 +93,7 @@ export function createInitialState() {
       seriesMode: "new",
       targetEntryId: "",
       seasonHint: "",
+      episodeHint: "",
       checkAfterSave: true,
       replaceConsent: false,
     },
@@ -210,6 +212,7 @@ export function applyFormPatch(state, patch) {
     nextForm.seriesMode = "new";
     nextForm.targetEntryId = "";
     nextForm.seasonHint = "";
+    nextForm.episodeHint = "";
     nextForm.replaceConsent = false;
   }
   if (nextForm.seriesMode !== "existing") {
@@ -217,6 +220,8 @@ export function applyFormPatch(state, patch) {
       nextForm.seriesMode === "existing" ? nextForm.targetEntryId : "";
     nextForm.seasonHint =
       nextForm.seriesMode === "existing" ? nextForm.seasonHint : "";
+    nextForm.episodeHint =
+      nextForm.seriesMode === "existing" ? nextForm.episodeHint : "";
     nextForm.replaceConsent = false;
   }
   const previewSensitive = [
@@ -224,6 +229,7 @@ export function applyFormPatch(state, patch) {
     "seriesMode",
     "targetEntryId",
     "seasonHint",
+    "episodeHint",
   ].some((key) => previous[key] !== nextForm[key]);
   return {
     ...state,
@@ -279,6 +285,19 @@ function seasonHintValue(value) {
   return number;
 }
 
+function episodeHintValue(value) {
+  const trimmed = cleanLabel(value, 10);
+  if (!trimmed) return undefined;
+  const number = Number(trimmed);
+  if (!Number.isInteger(number) || number < 1 || number > 9999) {
+    throw createProtocolError(
+      "invalid_episode_hint",
+      "Episode hint must be a whole number from 1 to 9999.",
+    );
+  }
+  return number;
+}
+
 export function buildSeriesPreviewPayload(state) {
   if (!needsSeriesPreview(state)) {
     throw createProtocolError(
@@ -320,10 +339,12 @@ export function buildSeriesPreviewPayload(state) {
     );
   }
   const seasonHint = seasonHintValue(state.form.seasonHint);
+  const episodeHint = episodeHintValue(state.form.episodeHint);
   return {
     draftId: state.draft.draftId,
     entryId: state.form.targetEntryId,
     ...(seasonHint === undefined ? {} : { seasonHint }),
+    ...(episodeHint === undefined ? {} : { episodeHint }),
   };
 }
 
@@ -342,6 +363,7 @@ export function applyPreviewResult(state, preview) {
       entryId: preview.entryId,
       entryName: cleanLabel(preview.entryName),
       seasonHint: cleanLabel(state.form.seasonHint, 10),
+      episodeHint: cleanLabel(state.form.episodeHint, 10),
       addedEpisodes: Array.isArray(preview.addedEpisodes)
         ? preview.addedEpisodes
         : [],
@@ -426,6 +448,7 @@ export function reviewToken(state) {
     seriesMode: state.form.seriesMode,
     targetEntryId: state.form.targetEntryId,
     seasonHint: state.form.seasonHint,
+    episodeHint: state.form.episodeHint,
     replaceConsent: state.form.replaceConsent,
     checkAfterSave: state.form.checkAfterSave,
   });

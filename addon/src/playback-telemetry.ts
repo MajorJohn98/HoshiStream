@@ -3,7 +3,11 @@
 // seconds of playback are already cached ahead of the playhead, and whether
 // the swarm is keeping up with the file's bitrate. Observation only — nothing
 // here changes what the player receives. Everything stays in memory.
-import { markStreamActivity, recentEntryActivity } from "./activity.ts";
+import {
+  isStreamTestHash,
+  markStreamActivity,
+  recentEntryActivity,
+} from "./activity.ts";
 import { entryHashes } from "./imports/source-identity.ts";
 import { directPlayForFile } from "./media-facts.ts";
 import { rawFileId } from "./media-file-selection.ts";
@@ -353,9 +357,13 @@ export class PlaybackTelemetry {
     const known = new Set(
       activeStreamTargets(now).map((target) => target.hash.toLowerCase()),
     );
-    // stat 3 = TorrentWorking (MatriX state.go).
+    // stat 3 = TorrentWorking (MatriX state.go). A stream test's reader is
+    // not a viewer, so its torrent is never credited as playback.
     const candidates = torrents.filter(
-      (torrent) => torrent.stat === 3 && !known.has(torrent.hash.toLowerCase()),
+      (torrent) =>
+        torrent.stat === 3 &&
+        !known.has(torrent.hash.toLowerCase()) &&
+        !isStreamTestHash(torrent.hash),
     );
     if (!candidates.length) return;
     const owners = await this.#ownerIndex(now);
@@ -424,6 +432,9 @@ export class PlaybackTelemetry {
   }
 
   async #sampleTarget(target: StreamTarget, now: number): Promise<void> {
+    // The test's reader would otherwise keep the entry "streaming" and record
+    // watch progress nobody made.
+    if (isStreamTestHash(target.hash)) return;
     let cache: CacheState | undefined;
     try {
       cache = await this.#torrServer.cacheState(target.hash);

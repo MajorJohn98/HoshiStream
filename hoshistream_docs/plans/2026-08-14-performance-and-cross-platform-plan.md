@@ -20,7 +20,7 @@ Two things changed from the original sequencing.
 before Phase 4 on the grounds that building the player against the Swift supervisor would
 mean writing it twice. That reasoning was wrong: the player belongs in the Node add-on,
 which is already cross-platform, so it has no dependency on the supervisor at all.
-Recorded in [ADR 0008](../decisions/0008-bundled-mpv-player-over-json-ipc.md).
+Recorded in [ADR 0008](../decisions/decision-log.md).
 
 **The path-safety module was pulled forward** out of Phase 5, because the POSIX
 assumptions it replaces were live defects rather than only Windows blockers —

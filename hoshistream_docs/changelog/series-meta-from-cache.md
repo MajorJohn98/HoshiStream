@@ -1,7 +1,7 @@
 # Series meta from the cache, background refill after source edits
 
-Date: 2026-09-13. Follows [ADR 0006](../decisions/0006-inspection-cache-on-entries.md)
-and [ADR 0025](../decisions/0025-watched-state-from-observed-reads.md).
+Date: 2026-09-13. Follows [ADR 0006](../decisions/decision-log.md)
+and [ADR 0025](../decisions/decision-log.md).
 
 ## Symptoms
 

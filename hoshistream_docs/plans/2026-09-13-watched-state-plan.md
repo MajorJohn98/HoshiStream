@@ -1,7 +1,7 @@
 # Watched state and Continue Watching (Phase 5)
 
 **Date:** 2026-09-13
-**Status:** implemented — see [changelog](../changelog/watched-state.md) and [ADR 0025](../decisions/0025-watched-state-from-observed-reads.md)
+**Status:** implemented — see [changelog](../changelog/watched-state.md) and [ADR 0025](../decisions/decision-log.md)
 **Relates to:** [playback pointer / library expansion plan](2026-09-12-playback-pointer-library-expansion-plan.md) Phase 5
 
 ## Problem

@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
-import { recentStreamActivity } from "./activity.ts";
+import { recentStreamActivity, streamTestActive } from "./activity.ts";
 import { describeWindow, type ArchiveSchedule } from "./archive-schedule.ts";
 import {
   PARTIAL_SUFFIX,
@@ -132,7 +132,8 @@ export class Archiver {
     this.playbackYieldMs = options.playbackYieldMs ?? PLAYBACK_YIELD_MS;
     this.wakeIntervalMs = options.wakeIntervalMs ?? WAKE_INTERVAL_MS;
     this.playbackActive =
-      options.playbackActive ?? (() => recentStreamActivity());
+      options.playbackActive ??
+      (() => recentStreamActivity() || streamTestActive());
     this.streamingFiles =
       options.streamingFiles ?? (() => activeStreamTargets());
     this.schedule = options.schedule;

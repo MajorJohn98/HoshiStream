@@ -265,6 +265,31 @@ describe("reviewed catalog film selection", () => {
     ).toBe(true);
   });
 
+  it("applies season and episode hints to the primary and extra sources", async () => {
+    const { entry, torrServer } = await fixture();
+    const inspected = await inspectEntry(
+      {
+        ...entry,
+        type: "series",
+        seasonHint: 3,
+        episodeHint: 4,
+        extraSources: [
+          {
+            magnetUri: `magnet:?xt=urn:btih:${hash}`,
+            seasonHint: 2,
+            episodeHint: 6,
+            searchImport: entry.searchImport,
+          },
+        ],
+      },
+      torrServer,
+    );
+    expect(inspected.selectedFiles).toMatchObject([
+      { id: 100_001, season: 2, episode: 6, hash },
+      { id: 1, season: 3, episode: 4 },
+    ]);
+  });
+
   it("honors explicit file selection rather than forcing the catalog default", async () => {
     const { entry, torrServer } = await fixture();
     const inspected = await inspectEntry(

@@ -81,4 +81,4 @@ semi-private, or ratio-enforcing tracker support is added. Public indexer status
 does not establish rights to every result. HoshiStream's library remains atomic
 JSON; the externally managed services retain their own internal storage.
 
-See [ADR 0017](../decisions/0017-local-search-bridges-and-series-import.md).
+See [ADR 0017](../decisions/decision-log.md).

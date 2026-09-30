@@ -10,7 +10,12 @@ import {
   SourceCheckPanel,
   pickSourceCheckFileId,
 } from "../components/source-check.js";
-import { manualSubmission } from "../import-state.js";
+import {
+  StreamTestPanel,
+  magnetTestSource,
+  streamTestFields,
+} from "../components/stream-test.js";
+import { manualSubmission, sourceHints } from "../import-state.js";
 import { clearMagnetLinkRoute, magnetLinkPrefill } from "../magnet-link.js";
 
 export function openAdd({ magnetLinkId = null } = {}) {
@@ -180,16 +185,24 @@ function createPayload(snapshot, prepared, extras = [], tags = []) {
   delete d.media;
   delete d.folder;
   delete d.torrent;
+  delete d.seasonHint;
+  delete d.episodeHint;
   Object.keys(d).forEach((k) => {
     if (!d[k] || d[k] instanceof File) delete d[k];
   });
+  if (d.type === "series")
+    Object.assign(d, sourceHints(snapshot.seasonHint, snapshot.episodeHint));
   const extraSources = extras
-    .map((extra) => ({
-      magnetUri: extra.magnetUri.trim(),
-      ...(extra.seasonHint !== ""
-        ? { seasonHint: Number(extra.seasonHint) }
-        : {}),
-    }))
+    .map((extra, index) => {
+      try {
+        return {
+          magnetUri: extra.magnetUri.trim(),
+          ...sourceHints(extra.seasonHint, extra.episodeHint),
+        };
+      } catch (error) {
+        throw Error("Additional torrent " + (index + 1) + ": " + error.message);
+      }
+    })
     .filter((extra) => extra.magnetUri);
   if (extraSources.length) {
     if (d.type !== "series")
@@ -216,7 +229,7 @@ const SOURCES = [
 const SOURCE_HELP = {
   torrent: "Paste a magnet link you are authorized to use.",
   torrentFile:
-    "Upload a .torrent file. Inspect it after adding to your library.",
+    "Upload a .torrent file. Test streaming before you add it, or inspect it after.",
   local: "Link a video on this Mac in place, or upload a copy.",
   folder: "Link a folder of episodes in place, or upload a copy.",
 };
@@ -256,7 +269,7 @@ function SourceField({
   if (source === "torrentFile")
     return html`<div class="drop">
       <b>Drop a .torrent file here</b>
-      <p class="muted">Inspect it after adding to your library.</p>
+      <p class="muted">Test streaming below, or inspect it after adding.</p>
       <input name="torrent" type="file" accept=".torrent" required />
     </div>`;
   if (source === "local")
@@ -291,10 +304,60 @@ function SourceField({
   `;
 }
 
+function HintInputs({ season, episode, onSeason, onEpisode, names }) {
+  return html`
+    <input
+      class="input-narrow"
+      type="number"
+      min="0"
+      step="1"
+      name=${names?.season}
+      placeholder="Season"
+      aria-label="Season"
+      title="Season for files without SxxEyy in their names"
+      value=${season}
+      onInput=${onSeason && ((e) => onSeason(e.target.value))}
+    />
+    <input
+      class="input-narrow"
+      type="number"
+      min="1"
+      max="9999"
+      step="1"
+      name=${names?.episode}
+      placeholder="Episode"
+      aria-label="Episode"
+      title="Episode number of a single-episode torrent, or the first episode of a partial pack"
+      value=${episode}
+      onInput=${onEpisode && ((e) => onEpisode(e.target.value))}
+    />
+  `;
+}
+
+// Numbering for the main torrent or folder. Uncontrolled: the values are
+// read from the form on submit, like the other main fields.
+function SeriesNumbering() {
+  return html`
+    <div class="span2">
+      <span class="field-label">Series numbering</span>
+      <p class="muted">
+        Series only, optional. For files whose names carry no SxxEyy numbering:
+        the season they belong to and, for a single episode or a pack that
+        continues a season, the episode number it starts at.
+      </p>
+      <div class="picker-row">
+        <${HintInputs}
+          names=${{ season: "seasonHint", episode: "episodeHint" }}
+        />
+      </div>
+    </div>
+  `;
+}
+
 function ExtraTorrents({ extras, setExtras }) {
   const update = (index, field, value) =>
-    setExtras(
-      extras.map((extra, i) =>
+    setExtras((current) =>
+      current.map((extra, i) =>
         i === index ? { ...extra, [field]: value } : extra,
       ),
     );
@@ -303,8 +366,8 @@ function ExtraTorrents({ extras, setExtras }) {
       <span class="field-label">Additional torrents</span>
       <p class="muted">
         Series only — merge more torrents (season packs or single episodes) into
-        one entry. Season applies to files whose names carry no SxxEyy
-        numbering.
+        one entry. Season and Episode number files whose names carry no SxxEyy
+        numbering; a single-episode torrent becomes exactly that episode.
       </p>
       ${extras.map(
         (extra, index) => html`
@@ -315,13 +378,11 @@ function ExtraTorrents({ extras, setExtras }) {
               value=${extra.magnetUri}
               onInput=${(e) => update(index, "magnetUri", e.target.value)}
             />
-            <input
-              class="input-narrow"
-              type="number"
-              min="0"
-              placeholder="Season"
-              value=${extra.seasonHint}
-              onInput=${(e) => update(index, "seasonHint", e.target.value)}
+            <${HintInputs}
+              season=${extra.seasonHint}
+              episode=${extra.episodeHint}
+              onSeason=${(value) => update(index, "seasonHint", value)}
+              onEpisode=${(value) => update(index, "episodeHint", value)}
             />
             <button
               type="button"
@@ -336,7 +397,11 @@ function ExtraTorrents({ extras, setExtras }) {
       <button
         type="button"
         class="secondary"
-        onClick=${() => setExtras([...extras, { magnetUri: "", seasonHint: "" }])}
+        onClick=${() =>
+          setExtras([
+            ...extras,
+            { magnetUri: "", seasonHint: "", episodeHint: "" },
+          ])}
       >
         + Add another torrent
       </button>
@@ -516,6 +581,27 @@ export function AddSheet() {
       inspection: null,
       inspectionError: "",
     });
+  };
+  // A stream test reads the same fields Save does. A .torrent is uploaded
+  // once, and Save reuses that upload.
+  const prepareStreamTest = async (form) => {
+    const snapshot = Object.fromEntries(new FormData(form));
+    const fields = streamTestFields(snapshot);
+    if (source === "torrent")
+      return { source: magnetTestSource(snapshot.magnetUri), ...fields };
+    preparedRef.current = await prepareSource(
+      form,
+      source,
+      picked,
+      preparedRef.current,
+      (prepared) => {
+        preparedRef.current = prepared;
+      },
+    );
+    return {
+      source: { torrentFilePath: preparedRef.current.fields.torrentFilePath },
+      ...fields,
+    };
   };
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -820,10 +906,22 @@ export function AddSheet() {
                           />
                         </div>
                         ${
+                          source !== "local"
+                            ? html`<${SeriesNumbering} />`
+                            : null
+                        }
+                        ${
                           source === "torrent"
                             ? html`<${ExtraTorrents}
                                 extras=${extras}
                                 setExtras=${setExtras}
+                              />`
+                            : null
+                        }
+                        ${
+                          source === "torrent" || source === "torrentFile"
+                            ? html`<${StreamTestPanel}
+                                prepare=${prepareStreamTest}
                               />`
                             : null
                         }

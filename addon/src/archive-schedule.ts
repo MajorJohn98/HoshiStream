@@ -1,6 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { z } from "zod";
+import { readJsonFile, writeJsonFile } from "./json-file.ts";
 
 // Global download window for the disk-copy archiver: when set, transfers only
 // run inside the window (supports overnight wrap, e.g. 23:00–06:00). Checks
@@ -59,12 +58,12 @@ export class ArchiveSchedule {
 
   async window(): Promise<ArchiveWindow | undefined> {
     if (!this.#loaded) {
+      // An unreadable file means "no window" for now, uncached so the next
+      // check retries; a corrupt one is moved aside by readJsonFile.
       try {
-        this.#window = scheduleSchema.parse(
-          JSON.parse(await readFile(this.path, "utf8")),
-        ).window;
+        this.#window = (await readJsonFile(this.path, scheduleSchema))?.window;
       } catch {
-        this.#window = undefined;
+        return undefined;
       }
       this.#loaded = true;
     }
@@ -79,14 +78,7 @@ export class ArchiveSchedule {
     const operation = this.#queue.then(async () => {
       this.#window = window ? windowSchema.parse(window) : undefined;
       this.#loaded = true;
-      await mkdir(dirname(this.path), { recursive: true });
-      const temporary = `${this.path}.tmp`;
-      await writeFile(
-        temporary,
-        `${JSON.stringify({ window: this.#window }, null, 2)}\n`,
-        { mode: 0o600 },
-      );
-      await rename(temporary, this.path);
+      await writeJsonFile(this.path, { window: this.#window });
     });
     this.#queue = operation.then(
       () => undefined,

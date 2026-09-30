@@ -49,10 +49,49 @@ export function stripServerMetadata(entry) {
 
 export function editableSource(source) {
   return Object.fromEntries(
-    ["magnetUri", "torrentFilePath", "seasonHint", "fileOverrides"]
+    [
+      "magnetUri",
+      "torrentFilePath",
+      "seasonHint",
+      "episodeHint",
+      "fileOverrides",
+    ]
       .filter((key) => source[key] !== undefined)
       .map((key) => [key, source[key]]),
   );
+}
+
+// Season/episode form fields for one torrent → numbering hints. Blank
+// fields are omitted; they only number files without SxxEyy in their names.
+export function sourceHints(season, episode) {
+  const hints = {};
+  const seasonText = String(season ?? "").trim();
+  const episodeText = String(episode ?? "").trim();
+  if (seasonText) {
+    const value = Number(seasonText);
+    if (!Number.isInteger(value) || value < 0)
+      throw Error("Season must be a whole number starting at 0.");
+    hints.seasonHint = value;
+  }
+  if (episodeText) {
+    const value = Number(episodeText);
+    if (!Number.isInteger(value) || value < 1 || value > 9999)
+      throw Error("Episode must be a whole number from 1 to 9999.");
+    hints.episodeHint = value;
+  }
+  return hints;
+}
+
+export function sourceHintLabel(source) {
+  const parts = [];
+  if (source?.seasonHint !== undefined)
+    parts.push("Season " + source.seasonHint);
+  if (source?.episodeHint !== undefined)
+    parts.push(
+      (source.seasonHint === undefined ? "Episode " : "episode ") +
+        source.episodeHint,
+    );
+  return parts.length ? parts.join(", ") : "Numbered from file names";
 }
 
 export function additionalSourceImportProblems(entry) {

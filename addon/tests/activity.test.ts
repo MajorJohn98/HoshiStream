@@ -26,3 +26,28 @@ describe("per-entry activity", () => {
     expect(recentEntryActivity("hoshi:b", t)).toBeUndefined();
   });
 });
+
+describe("stream-test marks", () => {
+  it("counts overlapping tests per hash and ends each mark once", async () => {
+    const { beginStreamTest, isStreamTestHash, streamTestActive } =
+      await import("../src/activity.ts");
+    const hash = "AB".repeat(20);
+    expect(isStreamTestHash(hash)).toBe(false);
+    const first = beginStreamTest(hash);
+    const second = beginStreamTest(hash.toLowerCase());
+    expect(isStreamTestHash(hash.toLowerCase())).toBe(true);
+    expect(streamTestActive()).toBe(true);
+    first();
+    first();
+    expect(isStreamTestHash(hash)).toBe(true);
+    second();
+    expect(isStreamTestHash(hash)).toBe(false);
+    expect(streamTestActive()).toBe(false);
+  });
+
+  it("exposes the last stream time for tests that must stop for playback", async () => {
+    const { lastStreamActivityAt } = await import("../src/activity.ts");
+    markStreamActivity(7_000_000);
+    expect(lastStreamActivityAt()).toBe(7_000_000);
+  });
+});

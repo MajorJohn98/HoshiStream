@@ -48,7 +48,7 @@
    deleted best-effort. Verified live: three successive writes each read back
    fresh; `list` was immediately consistent. Requires `@vercel/blob` 2.0.0 →
    2.8.0 (pointer package only; the addon's runtime dependencies are
-   unchanged). Recorded as [ADR 0024](../decisions/0024-immutable-pointer-blob-versions.md).
+   unchanged). Recorded as [ADR 0024](../decisions/decision-log.md).
    Deploy manually to production (ADR 0012: manual pushes only), then push once
    from the app so the record moves onto `v3`.
 2. **TorrServer tuning** — in `packaging/torrserver-settings.json` set

@@ -198,6 +198,121 @@ function Runway({ stream }) {
   `;
 }
 
+// Torrent groups on the Activity page, in reading order. "Copying to disk"
+// only appears while the archiver is working; Idle starts collapsed because
+// it is the long, quiet list (every torrent of a multi-torrent series loads
+// when one episode plays).
+const SESSION_GROUPS = [
+  ["streaming", "Streaming", true],
+  ["inspecting", "Checking", true],
+  ["downloading", "Copying to disk", true],
+  ["idle", "Idle", false],
+];
+
+function groupOf(session) {
+  return SESSION_GROUPS.some(([key]) => key === session.activity)
+    ? session.activity
+    : "idle";
+}
+
+// Open/closed survives polling (component state) and reloads (storage).
+function useGroupOpen(key, fallback) {
+  const storageKey = "hoshistream.activity.group." + key;
+  const [open, setOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved === null ? fallback : saved === "1";
+    } catch {
+      return fallback;
+    }
+  });
+  const onToggle = (event) => {
+    const next = event.currentTarget.open;
+    if (next === open) return;
+    setOpen(next);
+    try {
+      localStorage.setItem(storageKey, next ? "1" : "0");
+    } catch {
+      // Private mode: the choice lasts for this visit only.
+    }
+  };
+  return [open, onToggle];
+}
+
+// Transfer rates sit mostly below 1 MB/s, where the size formatter reads 0.
+function fmtRate(bytesPerSecond) {
+  const n = bytesPerSecond || 0;
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + " MB/s";
+  if (n >= 1e3) return Math.round(n / 1e3) + " KB/s";
+  return n ? "<1 KB/s" : "0 KB/s";
+}
+
+function SessionRow({ session, runways }) {
+  const [tone, label] = session.active
+    ? (ACTIVITY[session.activity] ?? ACTIVITY.idle)
+    : ["idle", session.statString];
+  return html`
+    <li class="rowitem">
+      <span class="lead"><i class="dot ${tone}"></i></span>
+      <span class="main">
+        <strong>
+          ${session.title}
+          ${
+            session.sourceLabel
+              ? html`<span class="muted"> · ${session.sourceLabel}</span>`
+              : null
+          }
+        </strong>
+        <span class="meta">
+          ${label} · ${session.connectedSeeders} seeders ·
+          ${fmt(session.loadedSize)} of ${fmt(session.torrentSize)}
+        </span>
+        ${
+          session.activity === "streaming"
+            ? html`<${Runway}
+                stream=${runways.get(session.hash.toLowerCase())}
+              />`
+            : null
+        }
+      </span>
+      <span class="trail">
+        <span class="value">↓ ${fmtRate(session.downloadSpeedBps)}</span>
+        <span class="muted">↑ ${fmtRate(session.uploadSpeedBps)}</span>
+      </span>
+    </li>
+  `;
+}
+
+function SessionGroup({ id, title, fallbackOpen, sessions, runways }) {
+  const [open, onToggle] = useGroupOpen(id, fallbackOpen);
+  const down = sessions.reduce((sum, s) => sum + (s.downloadSpeedBps || 0), 0);
+  return html`
+    <details class="session-group" open=${open} onToggle=${onToggle}>
+      <summary>
+        <span class="session-group-title">${title}</span>
+        <span class="count">${sessions.length}</span>
+        ${
+          down
+            ? html`<span class="muted session-group-rate"
+                >↓ ${fmtRate(down)}</span
+              >`
+            : null
+        }
+      </summary>
+      <ul class="rows">
+        ${sessions.map(
+          (session) =>
+            html`<${SessionRow}
+              key=${session.hash}
+              session=${session}
+              runways=${runways}
+            />`,
+        )}
+      </ul>
+    </details>
+  `;
+}
+
 function Playback() {
   const { activity } = useStore();
   const sessions = activity.playback;
@@ -238,60 +353,21 @@ function Playback() {
           ? html`<p class="empty quiet">
               No torrents registered with TorrServer right now.
             </p>`
-          : html`<ul class="rows">
-              ${sessions.map(
-                (session) => html`
-                  <li class="rowitem" key=${session.hash}>
-                    <span class="lead">
-                      <i
-                        class="dot ${
-                          session.active
-                            ? (ACTIVITY[session.activity] ?? ACTIVITY.idle)[0]
-                            : "idle"
-                        }"
-                      ></i>
-                    </span>
-                    <span class="main">
-                      <strong>
-                        ${session.title}
-                        ${
-                          session.sourceLabel
-                            ? html`<span class="muted">
-                                · ${session.sourceLabel}</span
-                              >`
-                            : null
-                        }
-                      </strong>
-                      <span class="meta">
-                        ${
-                          session.active
-                            ? (ACTIVITY[session.activity] ?? ACTIVITY.idle)[1]
-                            : session.statString
-                        }
-                        · ${session.connectedSeeders} seeders ·
-                        ${fmt(session.loadedSize)} of
-                        ${fmt(session.torrentSize)}
-                      </span>
-                      ${
-                        session.activity === "streaming"
-                          ? html`<${Runway}
-                              stream=${runways.get(session.hash.toLowerCase())}
-                            />`
-                          : null
-                      }
-                    </span>
-                    <span class="trail">
-                      <span class="value">
-                        ↓ ${fmt(session.downloadSpeedBps)}/s
-                      </span>
-                      <span class="muted"
-                        >↑ ${fmt(session.uploadSpeedBps)}/s</span
-                      >
-                    </span>
-                  </li>
-                `,
-              )}
-            </ul>`
+          : SESSION_GROUPS.map(([key, title, fallbackOpen]) => {
+              const members = sessions.filter(
+                (session) => groupOf(session) === key,
+              );
+              return members.length
+                ? html`<${SessionGroup}
+                    key=${key}
+                    id=${key}
+                    title=${title}
+                    fallbackOpen=${fallbackOpen}
+                    sessions=${members}
+                    runways=${runways}
+                  />`
+                : null;
+            })
       }
     </section>
   `;

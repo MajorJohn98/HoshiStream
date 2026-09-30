@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { AnalysisSlot } from "./analysis-slot.ts";
 import { browserSupport } from "./direct-play.ts";
 import { inspectEntry } from "./inspection.ts";
 import { ImportError } from "./imports/errors.ts";
@@ -41,6 +42,8 @@ type CheckDependencies = {
   probe?: typeof probeMedia;
   timeoutMs?: number;
   probeTimeoutMs?: number;
+  /** Shared with stream tests so only one analysis reads torrents at a time. */
+  slot?: AnalysisSlot;
 };
 
 function untilAbort<T>(
@@ -81,6 +84,8 @@ export class SourceChecks {
   private readonly jobs = new Map<string, Job>();
   private readonly waiting: Job[] = [];
   private readonly running = new Set<Promise<void>>();
+  private readonly slot: AnalysisSlot;
+  private slotRequest?: () => void;
   private commands: Promise<void> = Promise.resolve();
   private closing = false;
 
@@ -95,6 +100,7 @@ export class SourceChecks {
     this.probe = dependencies.probe ?? probeMedia;
     this.timeoutMs = dependencies.timeoutMs;
     this.probeTimeoutMs = dependencies.probeTimeoutMs;
+    this.slot = dependencies.slot ?? new AnalysisSlot();
   }
 
   async initialize() {
@@ -383,33 +389,53 @@ export class SourceChecks {
   }
 
   private pump() {
-    if (this.closing || this.running.size) return;
-    let job: Job | undefined;
-    while ((job = this.waiting.shift())) {
-      if (job.controller.signal.aborted || this.jobs.get(job.entryId) !== job)
-        continue;
-      const active = job;
-      active.running = true;
-      const operation = this.run(active)
-        .catch(() => {
-          console.error(
-            JSON.stringify({
-              level: "error",
-              event: "source_check_state_failed",
-              entryId: active.entryId,
-            }),
-          );
-        })
-        .finally(() => {
-          this.running.delete(operation);
-          if (this.jobs.get(active.entryId) === active)
-            this.jobs.delete(active.entryId);
-          active.drain();
-          this.pump();
-        });
-      this.running.add(operation);
+    if (
+      this.closing ||
+      this.running.size ||
+      this.slotRequest ||
+      !this.waiting.length
+    )
       return;
-    }
+    // A queued check waits for the shared analysis slot; its own time budget
+    // keeps running while a stream test holds the slot.
+    let requested = true;
+    const withdraw = this.slot.request("source-check", (release) => {
+      requested = false;
+      this.slotRequest = undefined;
+      if (this.closing) {
+        release();
+        return;
+      }
+      let job: Job | undefined;
+      while ((job = this.waiting.shift())) {
+        if (job.controller.signal.aborted || this.jobs.get(job.entryId) !== job)
+          continue;
+        const active = job;
+        active.running = true;
+        const operation = this.run(active)
+          .catch(() => {
+            console.error(
+              JSON.stringify({
+                level: "error",
+                event: "source_check_state_failed",
+                entryId: active.entryId,
+              }),
+            );
+          })
+          .finally(() => {
+            this.running.delete(operation);
+            if (this.jobs.get(active.entryId) === active)
+              this.jobs.delete(active.entryId);
+            active.drain();
+            release();
+            this.pump();
+          });
+        this.running.add(operation);
+        return;
+      }
+      release();
+    });
+    if (requested) this.slotRequest = withdraw;
   }
 
   private async progress(job: Job, patch: Partial<SourceCheck>): Promise<void> {
@@ -691,6 +717,8 @@ export class SourceChecks {
 
   async close() {
     this.closing = true;
+    this.slotRequest?.();
+    this.slotRequest = undefined;
     await this.commands;
     for (const job of this.jobs.values()) job.controller.abort();
     for (const job of this.waiting.splice(0)) {

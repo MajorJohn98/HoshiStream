@@ -38,6 +38,8 @@ const SOURCE_DEFINITION_FIELDS = [
   "localFolderPath",
   "preferredFileIndex",
   "fileOverrides",
+  "seasonHint",
+  "episodeHint",
   "extraSources",
 ] as const;
 
@@ -312,6 +314,8 @@ export const handleLibraryItem: RouteHandler = async (
         warmStreamSource(entry, torrServer, library);
     }
     if (entry) logInfo("library_updated", { entryId: entry.id });
+    if (entry && current && entry.type !== current.type)
+      metadata?.typeChanged(entry.id);
     return reply(response, entry ? 200 : 404, entry ?? { error: "Not found" });
   }
   if (method === "DELETE") {
@@ -434,6 +438,35 @@ export const handleRelink: RouteHandler = async (
     managedMedia: false,
   });
   logInfo("library_relinked", { entryId: id });
+  return reply(response, 200, entry);
+};
+
+const promoteSourceSchema = z
+  .object({ index: z.number().int().nonnegative() })
+  .strict();
+
+// Make an additional torrent the series' main one (the old main takes its
+// slot). File-keyed state follows its files; the episode list refills in the
+// background because source order decides which torrent wins an episode.
+export const handlePromoteSource: RouteHandler = async (
+  { library, torrServer, sourceChecks },
+  { request, response, url, method },
+) => {
+  const match = /^\/api\/library\/([^/]+)\/sources\/promote$/.exec(
+    url.pathname,
+  );
+  if (!match || method !== "POST") return false;
+  const id = decodeURIComponent(match[1]);
+  const { index } = promoteSourceSchema.parse(
+    jsonObjectBody(await body(request)),
+  );
+  const current = await library.get(id);
+  if (!current) return reply(response, 404, { error: "Not found" });
+  const entry = await library.promoteSource(id, index);
+  if (!entry) return reply(response, 404, { error: "Not found" });
+  await sourceChecks?.cancel(id, entrySourceDefinitionRevision(current));
+  warmStreamSource(entry, torrServer, library);
+  logInfo("library_source_promoted", { entryId: id, index });
   return reply(response, 200, entry);
 };
 

@@ -12,6 +12,15 @@ macOS AirPlay Receiver owns the port. Turn off **System Settings → General →
   `PUBLIC_ADDON_URL` and `PUBLIC_TORRSERVER_URL` directly.
 - Verify both devices are on the same non-isolated network (no AP/client isolation, no guest VLAN).
 - Open the tokenized manifest in the TV-side browser first; it must return JSON.
+- **LG webOS and Samsung Tizen apps cannot use a plain-`http://` LAN URL, and the
+  pointer URL does not help.** Those apps are the HTTPS Stremio web shell, so
+  the webview blocks `http://192.168.x.x:7001/...` as mixed content, and the
+  pointer's `307` redirect to that same LAN address is blocked for the same
+  reason. The manifest may even install (synced from the account) while every
+  catalog request silently fails. The Mac desktop app is unaffected. Use an
+  end-to-end HTTPS URL instead — see
+  [Cloudflare Tunnel](remote-access-cloudflare-tunnel.md); its LAN detection
+  still keeps video on WiFi. Android TV / Fire TV native apps accept the LAN URL.
 
 ## Works on `127.0.0.1` but not on the LAN IP (empty reply)
 
@@ -100,7 +109,7 @@ Since the drift check landed, the app reads the record itself at start-up and
 after a LAN change; a mismatch shows on the Pointer card with **Update now**
 and as a one-off notification, so this usually no longer needs `curl`.
 A pointer server deployed before
-[ADR 0024](../decisions/0024-immutable-pointer-blob-versions.md) could keep
+[ADR 0024](../decisions/decision-log.md) could keep
 serving an overwritten record for days; redeploy it, then push once.
 
 ## Corrupt library JSON
@@ -118,6 +127,14 @@ not the old `data/library.json`. A `.bak` or browser JSON export is not a full
 backup. Follow the [stopped backup and same-path restore procedure](backup-restore-updates.md).
 Do not run an older app against newer state or remove a stale lock merely to
 make backup commands proceed.
+
+Smaller state files (`tags.json`, `identity.json`, `device-names.json`,
+`metadata-settings.json`, the disk schedule and cleanup files) have no `.bak`.
+When one is malformed, HoshiStream moves it aside as `<file>.corrupt-<time>`,
+logs `state_file_quarantined`, and starts that file from defaults; copy values
+back from the quarantined file if needed. A file that exists but cannot be
+read (permissions, a vanished volume) is never overwritten: saves to it fail
+until access is restored.
 
 ## Updating, uninstalling or reporting a problem
 

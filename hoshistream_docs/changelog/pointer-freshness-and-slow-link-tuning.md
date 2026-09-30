@@ -6,7 +6,7 @@ address after a successful push, and playback on the TV buffered heavily on a
 
 ## Pointer server (`pointer/`)
 
-- **Immutable Blob versions** ([ADR 0024](../decisions/0024-immutable-pointer-blob-versions.md)).
+- **Immutable Blob versions** ([ADR 0024](../decisions/decision-log.md)).
   `lib/store.ts` no longer overwrites a record in place. Each push writes a new
   blob under `hoshistream-pointer-v3/<tokenHash[:32]>/<epoch-ms>-<nonce>.json`;
   reads `list` the prefix and open the greatest pathname, which the CDN has
