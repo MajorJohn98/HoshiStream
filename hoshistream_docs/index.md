@@ -7,7 +7,7 @@
 
 ## Decisions
 
-- [decisions/decision-log.md](decisions/decision-log.md) — Living decision log: entries 0001–0027 as short, editable decisions grouped by area (platform, playback, security and remote access, library, adding media and search, retired). Replaced the individual ADR files on 2026-09-30; the log explains how to restore them from git.
+- [decisions/decision-log.md](decisions/decision-log.md) — Living decision log: entries 0001–0029 as short, editable decisions grouped by area (platform, playback, security and remote access, library, adding media and search, retired). Replaced the individual ADR files on 2026-09-30; the log explains how to restore them from git.
 
 ## Guides
 
@@ -39,6 +39,7 @@
 
 ## Plans
 
+- [plans/2026-09-30-pre-add-stream-test-plan.md](plans/2026-09-30-pre-add-stream-test-plan.md) — Owner-triggered "Test streaming" before Add: measures the file's bitrate against the sustained swarm rate through TorrServer, names the bottleneck (swarm, line or TorrServer limit), and suggests a wait, a disk copy or a release size; advice only (decision 0029; planned).
 - [plans/2026-09-28-main-torrent-and-activity-groups-plan.md](plans/2026-09-28-main-torrent-and-activity-groups-plan.md) — Make an extra torrent the main one, file-id remapping so watched state survives source edits, main-torrent Activity label, collapsible Activity groups (implemented).
 - [plans/2026-09-28-entry-sheet-consolidation-plan.md](plans/2026-09-28-entry-sheet-consolidation-plan.md) — Entry sheet from seven tabs to five: merged Details/Metadata, one Episodes list with watch/play, Files under Source with a single Inspect, trimmed Playback, Storage (implemented).
 - [plans/2026-09-28-series-season-episode-hints-plan.md](plans/2026-09-28-series-season-episode-hints-plan.md) — Per-torrent season and episode hints (main and extra sources), explicit/loose filename numbering with collision-safe guesses, editable source numbering in the Source tab and Chrome companion (implemented).

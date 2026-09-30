@@ -8,7 +8,7 @@ quickly as the features they govern.
 
 - Entries keep their former ADR numbers, so "ADR 0020" anywhere in the docs
   means entry 0020 here. Entries are grouped by area; search for the number
-  to find one. The next new entry is 0028.
+  to find one. The next new entry is 0030.
 - When a decision changes, edit its entry in place and add a dated
   `Changed:` line with the reason. Move a dropped decision to Retired
   decisions with a one-line reason instead of deleting it.
@@ -26,7 +26,8 @@ quickly as the features they govern.
 
   Entry 0027's ADR was added in commit `ab0e3fc`, just before the removal;
   if a squash merge left that commit out of `main`, fetch it from the pull
-  request that removed the ADR files.
+  request that removed the ADR files. Entry 0028 was accepted on 2026-09-30
+  but never committed as a full ADR; its entry below is the record.
 
 ## Platform and runtime
 
@@ -299,10 +300,8 @@ silently changes an entry.
 
 ### 0020 — Manual import and the Chrome companion
 
-Accepted 2026-09-06. Windows added by 0022.
-
-In-app discovery is retired: no search providers, indexer settings or
-Search UI.
+Accepted 2026-09-06. Search retirement replaced by 0028; Windows added by
+0022.
 
 Adding needs no search service. Manual import (magnets and `.torrent` files)
 keeps torrent validation, source identity and explicit series-overlap review,
@@ -343,12 +342,116 @@ measurements stay separate: the host's Internet speed does not decide
 whether a source is viable. No library-wide rechecks and no network activity
 on restart.
 
+### 0028 — In-app search through owner-added stream add-ons
+
+Accepted 2026-09-30. Not yet implemented. Replaces 0020's search retirement.
+
+Changed: 2026-09-30. The owner may run 0029's stream test on one chosen
+candidate before Add, because only peers can show whether a torrent keeps up
+with its bitrate. Search and ranking still contact no peers.
+
+Add Media gets opt-in search whose only sources are Stremio stream add-ons
+the owner adds by manifest URL. Search finds and ranks candidates; the owner
+chooses what to add. The companion, manual import and magnet handler stay.
+
+- **Sources.** HoshiStream ships, suggests and pre-fills none. A manifest
+  must declare a `stream` resource for `movie` or `series` that accepts `tt`
+  ids and needs no further configuration. Only torrent streams are used: a
+  40-hex `infoHash`, an optional `fileIdx` (checked against metadata),
+  `tracker:` hints, `videoSize`, `filename` and display text shown as plain
+  text. `url` (including debrid), `ytId`, `externalUrl`, usenet and archive
+  streams and `proxyHeaders` are ignored and never fetched.
+- **Secrets.** A manifest URL can embed keys, so it is stored privately in
+  the state folder and never logged or returned to the UI, companion,
+  clients, pointer or feedback reports; only its name and host are shown.
+  Logs record a source id, status, size and duration only.
+- **Requests.** Off by default; nothing is sent at startup, while typing or
+  without an enabled source. Manifests are fetched only when added or
+  refreshed. Public sources need HTTPS and validated, pinned public
+  addresses; plain HTTP is allowed only for loopback or LAN sources. At most
+  three same-origin redirects. Limits: 8 sources, 4 concurrent requests, 10 s
+  per source, 15 s per search, 2 MB and 200 streams per response. Each source
+  fails on its own, and a failure never looks like "no results".
+- **Flow.** A typed title goes to Cinemeta (disclosed when enabling search,
+  even with enrichment off), or the owner pastes an IMDb id. Sources are
+  queried only after the owner picks a movie or episode; results are cached
+  in memory for up to 10 minutes, with no history, prefetching or retries.
+  Add builds a magnet (info hash, `dn`, at most 20 trackers) and uses the
+  existing import draft, commit and series-overlap review. Provenance may
+  keep the IMDb id and the add-on's name, never its URL.
+- **No peer contact before Add.** Search and ranking contact no peers,
+  trackers or DHT and register nothing with TorrServer; post-save checks
+  (0019, 0023) remain the evidence. The one exception is an owner-triggered
+  stream test on a single chosen candidate (0029).
+- **Ranking.** Deduplicate by info hash and file. Hide, with a viewable
+  reason, CAM/TS/TC/screener releases, names excluding the requested
+  episode, archives, executables, disc images and implausible sizes. Order
+  the rest by availability (reported unseeded last), player risk
+  (`direct-play.ts`), line fit (`line-fit.ts`), resolution (above the owner's
+  optional maximum last), then source tier (remux, Blu-ray, web, TV, DVD).
+  Break ties by capped, codec-adjusted bits per pixel, audio channels, then
+  seeders. Unknown values rank between known good and known bad. Browser
+  readiness is a label, not a rank key. Ranking is local, deterministic and
+  fixture-tested; results show in plain groups (Best match, Good, Check
+  player) with reasons, and any listed result can be added.
+- **Not authorized.** Bundled or suggested providers, HTML scraping,
+  Prowlarr/Jackett bridges, generic Torznab, DHT crawling, cookies,
+  challenge bypass, browser automation and remote scoring. Tracker scrapes,
+  automatic pre-save probes (0029 allows only owner-triggered tests), learned
+  or remote ranking, companion search and non-`tt` ids each need their own
+  entry.
+- **Privacy.** With search on, typed titles go to Cinemeta, and chosen IMDb
+  ids, episode numbers and the public IP go to every enabled source, which
+  can log them. The enable step and the privacy guide must say so. The
+  implementation plan must also update the README ("No torrent discovery"),
+  the backup and public setup guides, the architecture overview and
+  `search.test.ts`, which expects the removed search endpoints to return 404.
+
+### 0029 — Owner-triggered stream test before Add
+
+Accepted 2026-09-30. Not yet implemented. Changes 0028's "No peer contact
+before Add". Plan: `plans/2026-09-30-pre-add-stream-test-plan.md`.
+
+Before saving a torrent, the owner may test whether it streams smoothly on
+this connection. The test is advice only: it never blocks or delays Add,
+never marks a source unviable and never feeds source-check outcomes (0019,
+0023).
+
+- **Trigger.** Only an explicit "Test streaming" action on one torrent: an
+  Add Media magnet or `.torrent`, a companion draft, or later a 0028 search
+  result. No automatic, batch or background tests.
+- **Method.** The test registers the torrent with TorrServer
+  (`save_to_db: false`) and waits for metadata. It picks the movie file or
+  the first episode (the owner may choose another), then reads that file
+  from its start through `/play` while sampling `/cache`. The bounded
+  ffprobe gives the bitrate. Only endpoints HoshiStream already uses are
+  called. Line speed comes from the last speed test; the stream test never
+  starts one.
+- **Limits.** Tests run one at a time in the source checks' single work
+  slot (0023). A basic test takes at most 90 s and about 256 MB; "Test
+  longer" takes 180 s and about 1 GB. A test won't start while HoshiStream
+  is streaming and stops early if a stream starts. Results stay in memory
+  for 10 minutes and are never persisted or sent anywhere.
+- **Verdict.** The test compares the average bitrate with the sustained
+  swarm rate: Smooth (≥ 1.2×, as in playback telemetry), Tight (≥ 1×),
+  Won't keep up, or Inconclusive. It names the bottleneck (the swarm, the
+  owner's line, or a TorrServer download limit) and gives remedies: the
+  wait before playing, copying to disk first, or a release size to look
+  for. Swarm and line figures stay separate, as 0023 requires.
+- **Cleanup.** The test removes the torrent from TorrServer when it is
+  cancelled or expires, but only if the test registered the torrent and no
+  library entry, draft or stream uses its hash. Saving keeps it registered.
+- **Privacy.** Like playback, a test joins the swarm: peers and trackers
+  see the public IP, and TorrServer may upload pieces it holds. Logs record
+  the test ID, outcome and rates only.
+
 ## Retired decisions
 
 In-app discovery (0016–0018) was retired by 0020 on 2026-09-06 because it was
 too hard for non-technical users to set up and keep working: the bridges
 needed separate services, ports, API keys and indexer lists, and the scrapers
-needed per-site upkeep and could be blocked.
+needed per-site upkeep and could be blocked. 0028 brings search back through
+stream add-ons without restoring any of them.
 
 ### 0016 — Opt-in curated torrent search
 

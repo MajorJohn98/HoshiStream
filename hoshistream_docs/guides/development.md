@@ -160,7 +160,7 @@ are used.
 - Implement only the requested phase.
 - Verify TorrServer behavior against its source or Swagger before adding API calls ([ADR 0001](../decisions/decision-log.md)).
 - Keep media legal, local-first, direct-play, and private by default.
-- In-app discovery is retired (ADR 0020). Keep adding manual, with the Chrome companion as an explicit capture/review bridge. Do not reintroduce provider search, scraping, challenge bypass, transcoding, a database, or a dashboard without approval.
+- In-app torrent search is limited to opt-in, owner-added Stremio stream add-ons ([ADR 0028](../decisions/decision-log.md), which supersedes ADR 0020's discovery retirement). Adding stays an explicit owner choice; the Chrome companion and manual import remain. Search and ranking contact no peers before Add; only an owner-triggered stream test on one chosen torrent may ([decision 0029](../decisions/decision-log.md)). Do not add bundled or suggested providers, scraping, challenge bypass, Prowlarr/Jackett bridges, generic Torznab, transcoding, a database, or a dashboard without approval.
 - HoshiStream runs natively; do not reintroduce containers ([ADR 0009](../decisions/decision-log.md)).
 - Never log access tokens, authorization headers, or complete magnet URIs.
 - Run type checks, tests, lint, and format checks before finishing.

@@ -11,7 +11,7 @@ HoshiStream is a private, local-first Stremio-compatible add-on for Nuvio: a Nod
 - Implement only the requested phase.
 - Verify TorrServer behavior against its source or Swagger before adding API calls.
 - Keep media legal, local-first, direct-play, and private by default.
-- In-app torrent discovery is retired (ADR 0020). Keep media adding manual, with the Chrome companion as a user-triggered capture/review bridge. Do not reintroduce provider search, scraping, challenge bypass, or generic Torznab without approval. Do not add transcoding, a database, a dashboard, or containers.
+- In-app torrent search is limited to opt-in, owner-added Stremio stream add-ons (entry 0028 in `hoshistream_docs/decisions/decision-log.md`, which supersedes 0020's discovery retirement). Adding stays an explicit owner choice; the Chrome companion and manual import remain. Search and ranking contact no peers before Add; only an owner-triggered stream test on one chosen torrent may (entry 0029). Do not add bundled or suggested providers, scraping, challenge bypass, Prowlarr/Jackett bridges, or generic Torznab without approval. Do not add transcoding, a database, a dashboard, or containers.
 - Never log access tokens, authorization headers, or complete magnet URIs.
 - Run type checks, tests, lint, and format checks before finishing.
 

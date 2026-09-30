@@ -103,9 +103,12 @@ Two processes are always supervised together:
 
 ## Explicit non-goals
 
-No in-app torrent discovery, index scraping, challenge bypass, database, graphical
-dashboard beyond the token-gated management page, telemetry, or public exposure.
-[ADR 0020](../decisions/decision-log.md) replaces the earlier
+No bundled torrent providers, index scraping, challenge bypass, database,
+graphical dashboard beyond the token-gated management page, telemetry, or
+public exposure. [ADR 0020](../decisions/decision-log.md) replaced the earlier
 search-provider direction with manual imports and a Chrome capture/review
-companion. Transcoding remains opt-in repair only
-([ADR 0010](../decisions/decision-log.md)).
+companion; [ADR 0028](../decisions/decision-log.md) approves opt-in search
+through owner-added Stremio stream add-ons (not yet implemented), and
+[decision 0029](../decisions/decision-log.md) allows an owner-triggered stream
+test before Add (not yet implemented). Transcoding
+remains opt-in repair only ([ADR 0010](../decisions/decision-log.md)).
