@@ -89,6 +89,23 @@ export const nativeRequestSchema = z.discriminatedUnion("command", [
   command("getCheck", z.object({ entryId }).strict()),
   command("cancelCheck", z.object({ entryId }).strict()),
   command("openEntry", z.object({ entryId }).strict()),
+  // Stream tests run only on a prepared draft: the browser never names a
+  // magnet or a file path here.
+  command(
+    "startStreamTest",
+    z
+      .object({
+        draftId: uuid,
+        type: z.enum(["movie", "series"]).optional(),
+        seasonHint: z.number().int().nonnegative().optional(),
+        episodeHint: z.number().int().positive().max(9_999).optional(),
+        fileId: z.number().int().nonnegative().optional(),
+        mode: z.enum(["basic", "extended"]).optional(),
+      })
+      .strict(),
+  ),
+  command("getStreamTest", z.object({ testId: uuid }).strict()),
+  command("cancelStreamTest", z.object({ testId: uuid }).strict()),
 ]);
 
 export type NativeRequest = z.infer<typeof nativeRequestSchema>;

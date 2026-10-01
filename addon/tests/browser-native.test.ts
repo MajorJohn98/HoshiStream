@@ -309,3 +309,153 @@ describe("native management relay", () => {
     expect(open).not.toHaveBeenCalled();
   });
 });
+
+describe("native stream tests", () => {
+  const testId = randomUUID();
+  const report = (fields: Record<string, unknown> = {}) => ({
+    testId,
+    phase: "measuring",
+    message: "Measuring how fast peers deliver this file…",
+    mode: "basic",
+    hash: "a".repeat(40),
+    elapsedSeconds: 20,
+    budgetSeconds: 90,
+    expiresAt: "2026-09-30T12:10:00.000Z",
+    progress: { downloadMbps: 4, peers: 12, seeders: 4, bytes: 1_048_576 },
+    ...fields,
+  });
+  const reply = (value: unknown, status = 200) =>
+    new Response(status === 204 ? null : JSON.stringify(value), { status });
+
+  it("tests only a prepared draft, never a magnet, a path or another test", () => {
+    for (const input of [
+      message("startStreamTest", { draftId }),
+      message("startStreamTest", {
+        draftId,
+        type: "series",
+        seasonHint: 0,
+        episodeHint: 9999,
+        fileId: 0,
+        mode: "extended",
+      }),
+      message("getStreamTest", { testId }),
+      message("cancelStreamTest", { testId }),
+    ])
+      expect(nativeRequestSchema.safeParse(input).success).toBe(true);
+    for (const input of [
+      message("startStreamTest", {
+        draftId,
+        magnetUri: "magnet:?xt=urn:btih:abc",
+      }),
+      message("startStreamTest", {
+        draftId,
+        torrentFilePath: "/private/source.torrent",
+      }),
+      message("startStreamTest", { source: { draftId } }),
+      message("startStreamTest", { draftId: "draft-1" }),
+      message("startStreamTest", { draftId, mode: "turbo" }),
+      message("startStreamTest", { draftId, fileId: -1 }),
+      message("startStreamTest", { draftId, fileId: 1.5 }),
+      message("startStreamTest", { draftId, seasonHint: -1 }),
+      message("startStreamTest", { draftId, episodeHint: 0 }),
+      message("startStreamTest", { draftId, episodeHint: 10_000 }),
+      message("getStreamTest", { testId: "../library" }),
+      message("getStreamTest", { testId, hash: "a".repeat(40) }),
+      message("cancelStreamTest", {}),
+    ])
+      expect(nativeRequestSchema.safeParse(input).success).toBe(false);
+  });
+
+  it("starts a test of the draft and drops the infohash from its report", async () => {
+    fetcher.mockResolvedValue(reply(report({ phase: "queued" }), 202));
+    const started = await new NativeClient(config(), {
+      fetch: fetcher,
+    }).handle(
+      nativeRequestSchema.parse(
+        message("startStreamTest", {
+          draftId,
+          type: "series",
+          seasonHint: 2,
+          episodeHint: 5,
+          fileId: 4,
+          mode: "extended",
+        }),
+      ),
+    );
+    expect(started).toMatchObject({ testId, phase: "queued", mode: "basic" });
+    expect(started).not.toHaveProperty("hash");
+    const [url, options] = fetcher.mock.calls[0];
+    expect(url).toBe("http://127.0.0.1:7001/api/stream-tests");
+    expect(options?.method).toBe("POST");
+    expect(new Headers(options?.headers).get("authorization")).toBe(
+      "Bearer " + token,
+    );
+    expect(JSON.parse(String(options?.body))).toEqual({
+      source: { draftId },
+      type: "series",
+      seasonHint: 2,
+      episodeHint: 5,
+      fileId: 4,
+      mode: "extended",
+    });
+  });
+
+  it("reads and cancels a test by its id alone", async () => {
+    fetcher.mockImplementation(async (_url, options) =>
+      options?.method === "DELETE" ? reply(null, 204) : reply(report()),
+    );
+    const client = new NativeClient(config(), { fetch: fetcher });
+    const polled = await client.handle(
+      nativeRequestSchema.parse(message("getStreamTest", { testId })),
+    );
+    expect(polled).toMatchObject({
+      phase: "measuring",
+      progress: { downloadMbps: 4 },
+    });
+    expect(polled).not.toHaveProperty("hash");
+    expect(
+      await client.handle(
+        nativeRequestSchema.parse(message("cancelStreamTest", { testId })),
+      ),
+    ).toEqual({ cancelled: true });
+    const route = "http://127.0.0.1:7001/api/stream-tests/" + testId;
+    expect(
+      fetcher.mock.calls.map(([url, options]) => [url, options?.method]),
+    ).toEqual([
+      [route, "GET"],
+      [route, "DELETE"],
+    ]);
+  });
+
+  it("keeps the server's error code and refuses a malformed report", async () => {
+    fetcher.mockResolvedValueOnce(
+      reply(
+        {
+          code: "not_found",
+          error: "The test expired or the server restarted. Test again.",
+        },
+        404,
+      ),
+    );
+    const expired = message("getStreamTest", { testId });
+    const malformed = message("getStreamTest", { testId });
+    fetcher.mockResolvedValueOnce(reply(report({ phase: "exploding" })));
+    expect(
+      await host([inputFrame(expired), inputFrame(malformed)]),
+    ).toMatchObject([
+      {
+        id: expired.id,
+        ok: false,
+        error: {
+          code: "not_found",
+          message: "The test expired or the server restarted. Test again.",
+        },
+      },
+      {
+        id: malformed.id,
+        ok: false,
+        error: { code: "invalid_app_response", uncertain: true },
+      },
+    ]);
+  });
+});

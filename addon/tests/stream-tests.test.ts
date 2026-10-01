@@ -1,10 +1,13 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import bencode from "bencode";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isStreamTestHash } from "../src/activity.ts";
 import { AnalysisSlot } from "../src/analysis-slot.ts";
+import { NativeClient } from "../src/browser/client.ts";
+import { nativeRequestSchema } from "../src/browser/protocol.ts";
 import { ImportError } from "../src/imports/errors.ts";
 import { magnetHash } from "../src/imports/source-identity.ts";
 import type { TorrentFile } from "../src/media-file-selection.ts";
@@ -1071,5 +1074,66 @@ describe("stream tests", () => {
     expect(output).toContain("stream_test_failed");
     for (const secret of [HASH, "magnet:", "Secret.Movie", "tracker.example"])
       expect(output).not.toContain(secret);
+  });
+});
+
+describe("stream test reports in the Chrome companion", () => {
+  it("reach the panel whole, except the infohash", async () => {
+    const reports: StreamTestState[] = [];
+    reports.push(await run(harness({ bitrateMbps: 8 })));
+    reports.push(
+      await run(
+        harness({
+          bitrateMbps: 8,
+          torr: { settings: { DownloadRateLimit: 500 } },
+        }),
+      ),
+    );
+    reports.push(await run(harness({ fetch: { status: 500 } })));
+    const live = harness();
+    const started = await live.service.start({ source: { magnetUri: MAGNET } });
+    live.clock.at(20_000, () => {
+      reports.push(live.service.get(started.testId));
+    });
+    await finished(live, started.testId);
+    // Between them the reports carry every optional field.
+    expect(reports.map((report) => report.phase)).toEqual([
+      "done",
+      "done",
+      "failed",
+      "measuring",
+    ]);
+    expect(reports[0].verdict?.remedies?.fitsCache).toBe(false);
+    expect(reports[1]).toMatchObject({
+      limitMbps: 4.1,
+      verdict: { remedies: { targetMbps: 3.3 } },
+    });
+    expect(reports[2].code).toBeDefined();
+    expect(reports[3].progress?.bytes).toBeGreaterThan(0);
+
+    const root = await mkdtemp(join(tmpdir(), "hoshi-stream-contract-"));
+    directories.push(root);
+    await writeFile(
+      join(root, ".env"),
+      "ADDON_PORT=7001\nACCESS_TOKEN=a-private-contract-test-token\n",
+      { mode: 0o600 },
+    );
+    for (const report of reports) {
+      const client = new NativeClient(
+        { version: 1, extensionId: "a".repeat(32), projectRoot: root },
+        { fetch: async () => new Response(JSON.stringify(report)) },
+      );
+      const relayed = await client.handle(
+        nativeRequestSchema.parse({
+          version: 1,
+          id: randomUUID(),
+          command: "getStreamTest",
+          payload: { testId: report.testId },
+        }),
+      );
+      const { hash, ...shown } = report;
+      expect(hash).toBe(HASH);
+      expect(relayed).toEqual(JSON.parse(JSON.stringify(shown)));
+    }
   });
 });

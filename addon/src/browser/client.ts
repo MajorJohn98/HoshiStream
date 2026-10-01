@@ -83,6 +83,92 @@ const previewSchema = z.object({
 const configIdentity = {
   extensionId: z.string().regex(/^[a-p]{32}$/),
 };
+const mbps = z.number().nonnegative();
+const count = z.number().nonnegative();
+const testFile = z.object({
+  id: z.number().int().nonnegative(),
+  name: z.string().max(16_384),
+  size: count,
+  season: z.number().int().nonnegative().optional(),
+  episode: z.number().int().nonnegative().optional(),
+});
+// Unknown fields, such as the infohash, are dropped on the way to the panel.
+const streamTestSchema = z.object({
+  testId: z.string().uuid(),
+  phase: z.enum([
+    "queued",
+    "metadata",
+    "measuring",
+    "done",
+    "cancelled",
+    "failed",
+  ]),
+  code: z.string().max(100).optional(),
+  message: z.string().max(1000),
+  mode: z.enum(["basic", "extended"]),
+  elapsedSeconds: count,
+  budgetSeconds: count,
+  expiresAt: z.string().datetime(),
+  file: testFile.optional(),
+  files: z.array(testFile).max(200).optional(),
+  progress: z
+    .object({
+      downloadMbps: mbps.optional(),
+      peers: count.optional(),
+      seeders: count.optional(),
+      bytes: count,
+    })
+    .optional(),
+  bitrate: z.object({ mbps, durationSeconds: count.optional() }).optional(),
+  swarm: z
+    .object({
+      sustainedMbps: mbps.optional(),
+      downloadMbps: mbps.optional(),
+      peakMbps: mbps.optional(),
+      atLeast: z.boolean(),
+      stillSpeedingUp: z.boolean(),
+      peers: count.optional(),
+      seeders: count.optional(),
+      samples: count,
+      bytes: count,
+    })
+    .optional(),
+  line: z
+    .object({
+      mbps,
+      source: z.enum(["measured", "configured"]),
+      measuredAt: z.string().max(100).optional(),
+    })
+    .optional(),
+  limitMbps: mbps.optional(),
+  cacheWindowBytes: count.optional(),
+  verdict: z
+    .object({
+      level: z.enum(["smooth", "tight", "too_slow", "inconclusive"]),
+      reason: z.string().max(100).optional(),
+      bottleneck: z.enum(["limit", "line", "swarm"]).optional(),
+      lineStale: z.boolean(),
+      remedies: z
+        .object({
+          waitSeconds: count,
+          bufferBytes: count,
+          fitsCache: z.boolean().optional(),
+          copySeconds: count.optional(),
+          targetMbps: mbps.optional(),
+          targetBytes: count.optional(),
+          betterSeeded: z.boolean(),
+        })
+        .optional(),
+      flags: z.object({
+        atLeast: z.boolean(),
+        stillSpeedingUp: z.boolean(),
+        sharedWithDiskCopy: z.boolean(),
+      }),
+      suggestTestLonger: z.boolean(),
+    })
+    .optional(),
+  stoppedBy: z.string().max(100).optional(),
+});
 const localWindowsPath = z
   .string()
   .max(32_000)
@@ -677,6 +763,27 @@ export class NativeClient {
         );
         return {};
       }
+      case "startStreamTest": {
+        const { draftId, ...options } = message.payload;
+        return streamTestSchema.parse(
+          await this.api("stream-tests", "POST", {
+            source: { draftId },
+            ...options,
+          }),
+        );
+      }
+      case "getStreamTest":
+        return streamTestSchema.parse(
+          await this.api(
+            "stream-tests/" + encodeURIComponent(message.payload.testId),
+          ),
+        );
+      case "cancelStreamTest":
+        await this.api(
+          "stream-tests/" + encodeURIComponent(message.payload.testId),
+          "DELETE",
+        );
+        return { cancelled: true };
     }
   }
 }
