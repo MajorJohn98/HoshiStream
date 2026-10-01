@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 import {
   evaluateStreamTest,
@@ -123,6 +124,19 @@ const REMUX = finished({
 });
 
 describe("stream test labels", () => {
+  it("shares one wording file, copied byte for byte into the companion", async () => {
+    const [manage, companion] = await Promise.all(
+      ["manage/components", "chrome-extension/lib"].map((folder) =>
+        readFile(
+          new URL(`../assets/${folder}/stream-test-text.js`, import.meta.url),
+          "utf8",
+        ),
+      ),
+    );
+    expect(companion).toBe(manage);
+    expect(manage).not.toMatch(/^import /m);
+  });
+
   it("rounds rates and durations for reading", () => {
     expect(mbpsLabel(9.8)).toBe("9.8 Mbps");
     expect(mbpsLabel(48)).toBe("48 Mbps");
