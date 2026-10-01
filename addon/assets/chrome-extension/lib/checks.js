@@ -171,6 +171,7 @@ export function createCheckPoller(
     delayMs = 1_500,
     maxFailures = 3,
     onError = () => {},
+    isActive = isActiveCheck,
   } = {},
 ) {
   let timer = null;
@@ -188,7 +189,7 @@ export function createCheckPoller(
 
   const queue = () => {
     clearTimer();
-    if (stopped || !isActiveCheck(current)) return;
+    if (stopped || !isActive(current)) return;
     timer = schedule(
       async () => {
         if (stopped) return;

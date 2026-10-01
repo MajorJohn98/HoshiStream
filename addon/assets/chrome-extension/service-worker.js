@@ -18,18 +18,24 @@ import {
   applyDraftResult,
   applyFormPatch,
   applyPreviewResult,
+  applyStreamTestReport,
+  applyStreamTestStarted,
   buildCreateEntryPayload,
   buildSeriesCommitPayload,
   buildSeriesPreviewPayload,
+  buildStreamTestRequest,
   clearPreviewAndRequireFreshDraft,
+  clearStreamTest,
   createInitialState,
   ensurePendingCommit,
   markDraftExpired,
   markPreviewExpired,
+  markStreamTestPending,
   needsSeriesPreview,
   recoverState,
   restorePendingCommit,
   reviewToken,
+  settleStreamTest,
   sourceToken,
   selectSource,
 } from "./lib/state.js";
@@ -40,6 +46,7 @@ import {
   normalizeMagnetUri,
   parseMagnetTitle,
 } from "./lib/protocol.js";
+import { isStreamTestActive } from "./lib/stream-test-text.js";
 
 const extensionOrigin = chrome.runtime.getURL("");
 let currentState;
@@ -131,6 +138,7 @@ function copySections(state, base = createInitialState()) {
     preview: base.preview,
     save: base.save,
     capture: base.capture,
+    streamTest: base.streamTest,
     editor: base.editor,
     form: {
       ...state.form,
@@ -185,6 +193,13 @@ async function bestEffortDiscard(command, payload) {
   );
 }
 
+async function endStreamTest(testId) {
+  if (!testId) return;
+  await sendNativeRequest(chrome.runtime, "cancelStreamTest", {
+    testId,
+  }).catch(() => console.warn("HoshiStream ends unused stream tests itself."));
+}
+
 async function releaseDraftArtifacts(state) {
   if (state.preview.previewId) {
     await bestEffortDiscard("discardPreview", {
@@ -194,6 +209,9 @@ async function releaseDraftArtifacts(state) {
   if (state.draft.draftId) {
     await bestEffortDiscard("discardDraft", { draftId: state.draft.draftId });
   }
+  // Last: once no preview or draft holds the torrent, ending the test
+  // removes it from TorrServer at once rather than at the next sweep.
+  await endStreamTest(state.streamTest.test?.testId);
 }
 
 async function clearImportState({ preserveEditor = false } = {}) {
@@ -506,10 +524,10 @@ async function runCommit(command, payloadFactory) {
       pending.command,
       pending.payload,
     );
-    const saved = await saveState(
-      applyCommitSuccess(await loadState(), result),
-    );
+    const latest = await loadState();
+    const saved = await saveState(applyCommitSuccess(latest, result));
     await removePendingCommit(pending.id);
+    await endStreamTest(latest.streamTest.test?.testId);
     return saved;
   } catch (error) {
     if (error.retryable) {
@@ -590,10 +608,10 @@ async function retryPendingCommitState() {
       pending.command,
       pending.payload,
     );
-    const saved = await saveState(
-      applyCommitSuccess(await loadState(), result),
-    );
+    const latest = await loadState();
+    const saved = await saveState(applyCommitSuccess(latest, result));
     await removePendingCommit(pending.id);
+    await endStreamTest(latest.streamTest.test?.testId);
     return saved;
   } catch (error) {
     if (error.retryable) {
@@ -679,6 +697,101 @@ async function cancelCheckState() {
     entryId: entry.id,
   });
   return saveState(applyCheckResult(await loadState(), check));
+}
+
+async function startStreamTestState(options) {
+  const state = await loadState();
+  assertNoPendingConfirmation(state);
+  let request;
+  try {
+    request = buildStreamTestRequest(state, {
+      mode: options?.mode ?? "basic",
+      fileId: options?.fileId ?? undefined,
+      reuse: Boolean(options?.reuse),
+    });
+  } catch (error) {
+    if (error.code === "draft_expired")
+      return saveState(settleStreamTest(markDraftExpired(state)));
+    return saveState(settleStreamTest(state, error));
+  }
+  const previousId = state.streamTest.test?.testId;
+  await saveState(markStreamTestPending(state, "starting"));
+  let test;
+  try {
+    test = await sendNativeRequest(
+      chrome.runtime,
+      "startStreamTest",
+      request.payload,
+    );
+  } catch (error) {
+    const latest = await loadState();
+    if (error.code === "draft_expired")
+      return saveState(
+        settleStreamTest(markDraftExpired(latest, error.message)),
+      );
+    // An older app's helper rejects commands it doesn't know.
+    if (error.code === "invalid_request")
+      return saveState(
+        settleStreamTest(
+          latest,
+          createProtocolError(
+            error.code,
+            "Update the HoshiStream app to test streaming from the companion.",
+          ),
+        ),
+      );
+    return saveState(settleStreamTest(latest, error));
+  }
+  const saved = await saveState(
+    applyStreamTestStarted(await loadState(), test, request.fields),
+  );
+  // Ending the replaced test only now keeps its torrent in TorrServer for
+  // the new one.
+  if (previousId && previousId !== test.testId) await endStreamTest(previousId);
+  return saved;
+}
+
+/** Polled by the panel, which merges only the stream test section. */
+async function getStreamTestState(testId) {
+  const state = await loadState();
+  if (!testId || state.streamTest.test?.testId !== testId) return state;
+  try {
+    const test = await sendNativeRequest(chrome.runtime, "getStreamTest", {
+      testId,
+    });
+    return saveState(applyStreamTestReport(await loadState(), test), {
+      broadcast: false,
+    });
+  } catch (error) {
+    if (error.code !== "not_found") throw error;
+    return saveState(
+      clearStreamTest(await loadState(), {
+        message: error.message,
+        code: error.code,
+      }),
+      { broadcast: false },
+    );
+  }
+}
+
+async function cancelStreamTestState() {
+  const state = await loadState();
+  const test = state.streamTest.test;
+  // A finished test has nothing left to stop, so its result stays.
+  if (!isStreamTestActive(test)) return saveState(settleStreamTest(state));
+  await saveState(markStreamTestPending(state, "cancelling"));
+  try {
+    await sendNativeRequest(chrome.runtime, "cancelStreamTest", {
+      testId: test.testId,
+    });
+  } catch (error) {
+    // A test the server no longer has is as good as cancelled.
+    if (error.code !== "not_found")
+      return saveState(settleStreamTest(await loadState(), error));
+  }
+  return saveState(
+    clearStreamTest(await loadState(), { note: "Test cancelled." }),
+  );
 }
 
 async function openEntryState(entryId) {
@@ -806,6 +919,12 @@ async function handlePanelMessage(message) {
       return cancelCheckState();
     case "panel:openEntry":
       return openEntryState(message.payload?.entryId);
+    case "panel:startStreamTest":
+      return startStreamTestState(message.payload);
+    case "panel:getStreamTest":
+      return getStreamTestState(message.payload?.testId);
+    case "panel:cancelStreamTest":
+      return cancelStreamTestState();
     default:
       throw createProtocolError(
         "unknown_message",

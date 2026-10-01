@@ -253,6 +253,69 @@
           </div>
         </details>
 
+        <div id="stream-test-card" class="stacked-card" hidden>
+          <div class="section-head section-head-tight">
+            <div>
+              <h3>Stream test</h3>
+            </div>
+            <div id="stream-test-pill" class="pill"></div>
+          </div>
+          <p
+            id="stream-test-summary"
+            class="copy"
+            role="status"
+            aria-live="polite"
+          ></p>
+          <p id="stream-test-progress" class="subtle stream-test-gap"></p>
+          <p id="stream-test-figures" class="stream-test-figures"></p>
+          <ul
+            id="stream-test-remedies"
+            class="guidance-list"
+            aria-label="Options"
+            hidden
+          ></ul>
+          <div id="stream-test-notes" class="stream-test-notes"></div>
+          <p
+            id="stream-test-error"
+            class="notice notice-bad"
+            role="alert"
+            hidden
+          ></p>
+          <details id="stream-test-details" class="stream-test-more" hidden>
+            <summary>Test details</summary>
+            <dl id="stream-test-rows" class="stream-test-rows"></dl>
+          </details>
+          <p id="stream-test-hint" class="subtle stream-test-gap"></p>
+          <div class="action-row action-row-tight">
+            <button id="stream-test-start" type="button" class="secondary">
+              Test streaming
+            </button>
+            <button id="stream-test-longer" type="button" class="ghost" hidden>
+              Test longer (up to 3 min)
+            </button>
+            <button id="stream-test-cancel" type="button" class="ghost" hidden>
+              Cancel test
+            </button>
+            <button
+              id="stream-test-refresh"
+              type="button"
+              class="secondary"
+              hidden
+            >
+              Refresh status
+            </button>
+          </div>
+          <div id="stream-test-picker" class="stream-test-picker" hidden>
+            <label class="field" for="stream-test-file">
+              <span>File to test</span>
+              <select id="stream-test-file"></select>
+            </label>
+            <button id="stream-test-file-run" type="button" class="secondary">
+              Test this file
+            </button>
+          </div>
+        </div>
+
         <div id="duplicate-card" class="stacked-card" hidden>
           <h3>Possible duplicates</h3>
           <p class="subtle">

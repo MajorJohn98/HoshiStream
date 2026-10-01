@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import {
   MAX_TORRENT_BYTES,
@@ -82,6 +82,37 @@ describe("chrome companion panel shell", () => {
     expect(fileInput).toContain('aria-label="Choose a .torrent file"');
     expect(html).toContain('aria-label="Refresh connection"');
     expect(html).toMatch(/id="global-alert"[^>]*role="alert"/s);
+  });
+
+  it("imports only modules packaged inside the extension folder", async () => {
+    const root = new URL("../assets/chrome-extension/", import.meta.url);
+    const files = [
+      "service-worker.js",
+      "panel.js",
+      ...(await readdir(new URL("lib/", root)))
+        .filter((name) => name.endsWith(".js"))
+        .map((name) => `lib/${name}`),
+    ];
+    let checked = 0;
+    for (const file of files) {
+      const url = new URL(file, root);
+      const source = await readFile(url, "utf8");
+      const specifiers = [
+        ...source.matchAll(
+          /\bfrom\s+"([^"]+)"|\bimport\s*\(\s*"([^"]+)"\s*\)|^\s*import\s+"([^"]+)"/gm,
+        ),
+      ].map((match) => match[1] ?? match[2] ?? match[3]);
+      for (const specifier of specifiers) {
+        const target = new URL(specifier, url);
+        expect(specifier, file).toMatch(/^\.\.?\//);
+        expect(target.href.startsWith(root.href), `${file}: ${specifier}`).toBe(
+          true,
+        );
+        await expect(access(target)).resolves.toBeUndefined();
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });
 

@@ -16,7 +16,20 @@ import {
   sourceSummary,
   sourceToken,
   reviewToken,
+  streamTestBlocker,
+  streamTestStale,
 } from "./lib/state.js";
+import {
+  isStreamTestActive,
+  streamTestBadge,
+  streamTestFigures,
+  streamTestFileLabel,
+  streamTestNotes,
+  streamTestProgress,
+  streamTestRemedies,
+  streamTestRows,
+  streamTestSummary,
+} from "./lib/stream-test-text.js";
 import { encodeBytesBase64, stripTorrentExtension } from "./lib/protocol.js";
 let actionBusy = false;
 
@@ -58,6 +71,24 @@ const refs = {
   seriesTargetCopy: document.getElementById("series-target-copy"),
   seasonHint: document.getElementById("season-hint"),
   episodeHint: document.getElementById("episode-hint"),
+  streamTestCard: document.getElementById("stream-test-card"),
+  streamTestPill: document.getElementById("stream-test-pill"),
+  streamTestSummary: document.getElementById("stream-test-summary"),
+  streamTestProgress: document.getElementById("stream-test-progress"),
+  streamTestFigures: document.getElementById("stream-test-figures"),
+  streamTestRemedies: document.getElementById("stream-test-remedies"),
+  streamTestNotes: document.getElementById("stream-test-notes"),
+  streamTestError: document.getElementById("stream-test-error"),
+  streamTestDetails: document.getElementById("stream-test-details"),
+  streamTestRows: document.getElementById("stream-test-rows"),
+  streamTestHint: document.getElementById("stream-test-hint"),
+  streamTestStart: document.getElementById("stream-test-start"),
+  streamTestLonger: document.getElementById("stream-test-longer"),
+  streamTestCancel: document.getElementById("stream-test-cancel"),
+  streamTestRefresh: document.getElementById("stream-test-refresh"),
+  streamTestPicker: document.getElementById("stream-test-picker"),
+  streamTestFile: document.getElementById("stream-test-file"),
+  streamTestFileRun: document.getElementById("stream-test-file-run"),
   duplicateCard: document.getElementById("duplicate-card"),
   duplicateList: document.getElementById("duplicate-list"),
   previewCard: document.getElementById("preview-card"),
@@ -88,6 +119,16 @@ let localNotice = null;
 let persistTimer = null;
 let poller = null;
 let pollerKey = "";
+let streamTestPoller = null;
+let streamTestPollerKey = "";
+// The test object the poller last saw; renders that keep it don't reset the
+// poll timer.
+let streamTestSeen = null;
+let streamTestPollError = "";
+let streamTestFileChoice = "";
+
+const STREAM_TEST_LINE_ADVICE =
+  "Run the speed test on HoshiStream's Status page to update it.";
 
 function toneClass(tone) {
   return (
@@ -383,6 +424,7 @@ function renderDraft() {
 
   renderTagSuggestions();
   renderSeriesFields();
+  renderStreamTest();
   renderDuplicates();
   renderPreview();
 }
@@ -582,6 +624,119 @@ function renderPreview() {
   refs.replaceConsent.disabled = isLocked();
 }
 
+function streamTestPending() {
+  return ["starting", "cancelling"].includes(state.streamTest.status);
+}
+
+function textNodes(tag, texts, className = "") {
+  return texts.map((text) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    node.textContent = text;
+    return node;
+  });
+}
+
+function renderStreamTest() {
+  const section = state.streamTest;
+  const visible =
+    Boolean(section.test || section.note || section.message) ||
+    section.status !== "idle" ||
+    state.draft.status === "ready" ||
+    state.draft.status === "leased";
+  setHidden(refs.streamTestCard, !visible);
+  if (!visible) return;
+
+  const starting = section.status === "starting";
+  // While a new test starts, the previous result is no longer the answer.
+  const test = starting ? null : section.test;
+  const active = isStreamTestActive(test);
+  const badge = starting
+    ? { tone: "warn", label: "Starting" }
+    : streamTestBadge(test);
+  refs.streamTestPill.className = `pill ${toneClass(badge.tone)}`;
+  refs.streamTestPill.textContent = badge.label;
+  setText(
+    refs.streamTestSummary,
+    starting ? "Starting the stream test…" : streamTestSummary(test),
+  );
+  setText(refs.streamTestProgress, streamTestProgress(test));
+  setText(refs.streamTestFigures, streamTestFigures(test));
+  const remedies = streamTestRemedies(test);
+  replaceChildren(refs.streamTestRemedies, textNodes("li", remedies));
+  setHidden(refs.streamTestRemedies, remedies.length === 0);
+  const notes = [
+    ...(test && streamTestStale(state)
+      ? [
+          "The type or numbering changed after this test. Test again to check the new one.",
+        ]
+      : []),
+    ...streamTestNotes(test, { lineAdvice: STREAM_TEST_LINE_ADVICE }),
+    ...(section.note ? [section.note] : []),
+  ];
+  replaceChildren(refs.streamTestNotes, textNodes("p", notes, "subtle"));
+  const error = section.message || (active ? streamTestPollError : "");
+  setText(refs.streamTestError, error);
+  setHidden(refs.streamTestError, !error);
+
+  const rows = active ? [] : streamTestRows(test);
+  replaceChildren(
+    refs.streamTestRows,
+    rows.map(([label, value]) => {
+      const row = document.createElement("div");
+      row.className = "stream-test-row";
+      row.append(...textNodes("dt", [label]), ...textNodes("dd", [value]));
+      return row;
+    }),
+  );
+  setHidden(refs.streamTestDetails, rows.length === 0);
+
+  const blocker = streamTestBlocker(state);
+  setText(refs.streamTestHint, active ? "" : blocker);
+  const locked = isLocked() || streamTestPending();
+  setHidden(refs.streamTestStart, active);
+  refs.streamTestStart.textContent = starting
+    ? "Starting…"
+    : test
+      ? "Test again"
+      : "Test streaming";
+  refs.streamTestStart.disabled = locked || Boolean(blocker);
+  setHidden(refs.streamTestLonger, active || !test);
+  refs.streamTestLonger.disabled = locked || Boolean(blocker);
+  setHidden(refs.streamTestCancel, !active);
+  refs.streamTestCancel.textContent =
+    section.status === "cancelling" ? "Cancelling…" : "Cancel test";
+  refs.streamTestCancel.disabled = locked;
+  setHidden(refs.streamTestRefresh, !(active && streamTestPollError));
+  refs.streamTestRefresh.disabled = actionBusy;
+  renderStreamTestPicker(test, locked || Boolean(blocker));
+}
+
+function renderStreamTestPicker(test, disabled) {
+  const files =
+    test?.phase === "done" && Array.isArray(test.files) ? test.files : [];
+  setHidden(refs.streamTestPicker, files.length < 2);
+  if (files.length < 2) return;
+  if (refs.streamTestFile.dataset.testId !== test.testId) {
+    refs.streamTestFile.dataset.testId = test.testId;
+    streamTestFileChoice = "";
+    replaceChildren(
+      refs.streamTestFile,
+      files.map((file) => {
+        const option = document.createElement("option");
+        option.value = String(file.id);
+        option.textContent = streamTestFileLabel(file);
+        return option;
+      }),
+    );
+  }
+  const current = String(test.file?.id ?? "");
+  const chosen = streamTestFileChoice || current;
+  if (refs.streamTestFile.value !== chosen) refs.streamTestFile.value = chosen;
+  refs.streamTestFile.disabled = disabled;
+  refs.streamTestFileRun.disabled = disabled || !chosen || chosen === current;
+}
+
 function saveTone() {
   if (state.save.status === "retry") return "warn";
   if (state.save.status === "error") return "bad";
@@ -740,6 +895,61 @@ function syncPoller() {
   poller.update(check);
 }
 
+/**
+ * Polls the shown test and merges only its section, so a poll never replaces
+ * form fields the user is still typing.
+ */
+async function loadStreamTest(testId) {
+  const next = await sendMessage("panel:getStreamTest", { testId });
+  if (state.streamTest.test?.testId !== testId) return null;
+  state = {
+    ...state,
+    streamTest: streamTestPending()
+      ? { ...next.streamTest, status: state.streamTest.status }
+      : next.streamTest,
+  };
+  streamTestPollError = "";
+  streamTestSeen = state.streamTest.test;
+  return state.streamTest.test;
+}
+
+function syncStreamTestPoller() {
+  const test = state.streamTest.test;
+  if (!isStreamTestActive(test)) {
+    if (streamTestPoller) streamTestPoller.stop();
+    streamTestPoller = null;
+    streamTestPollerKey = "";
+    streamTestSeen = null;
+    streamTestPollError = "";
+    return;
+  }
+  if (!streamTestPoller || streamTestPollerKey !== test.testId) {
+    if (streamTestPoller) streamTestPoller.stop();
+    const testId = test.testId;
+    streamTestPollerKey = testId;
+    streamTestSeen = null;
+    streamTestPollError = "";
+    streamTestPoller = createCheckPoller(
+      () => loadStreamTest(testId),
+      () => render(),
+      {
+        delayMs: 2_000,
+        isActive: isStreamTestActive,
+        onError: (error) => {
+          streamTestPollError = `Test status is unavailable: ${error.message}`;
+          render();
+        },
+      },
+    );
+  }
+  // Re-renders keep the same test object; restarting on each would stall
+  // polling while the user types.
+  if (streamTestSeen !== test) {
+    streamTestSeen = test;
+    streamTestPoller.update(test);
+  }
+}
+
 function render() {
   renderNotice();
   renderStatus();
@@ -749,6 +959,7 @@ function render() {
   renderSave();
   renderGuidance();
   syncPoller();
+  syncStreamTestPoller();
 }
 
 async function sendMessage(type, payload) {
@@ -768,7 +979,12 @@ async function runRequest(type, payload) {
   render();
   try {
     if (
-      ["panel:primaryAction", "panel:reviewSeriesAgain"].includes(type) &&
+      [
+        "panel:primaryAction",
+        "panel:reviewSeriesAgain",
+        "panel:startStreamTest",
+        "panel:cancelStreamTest",
+      ].includes(type) &&
       state.save.status !== "retry"
     ) {
       clearTimeout(persistTimer);
@@ -776,6 +992,20 @@ async function runRequest(type, payload) {
     }
     if (type === "panel:primaryAction")
       payload = { ...payload, reviewToken: reviewToken(state) };
+    if (type === "panel:startStreamTest" || type === "panel:cancelStreamTest") {
+      state = {
+        ...state,
+        streamTest: {
+          ...state.streamTest,
+          status: type === "panel:startStreamTest" ? "starting" : "cancelling",
+          note: "",
+          message: "",
+          code: "",
+        },
+      };
+      streamTestPollError = "";
+      render();
+    }
     if (type === "panel:refreshStatus") {
       state = { ...state, status: { ...state.status, phase: "loading" } };
       render();
@@ -992,6 +1222,37 @@ refs.clearImport.addEventListener("click", () =>
 refs.primaryAction.addEventListener("click", () =>
   runRequest("panel:primaryAction"),
 );
+refs.streamTestStart.addEventListener("click", () =>
+  runRequest("panel:startStreamTest", { mode: "basic" }),
+);
+refs.streamTestLonger.addEventListener("click", () =>
+  runRequest("panel:startStreamTest", {
+    mode: "extended",
+    fileId: state.streamTest.test?.file?.id,
+    reuse: true,
+  }),
+);
+refs.streamTestCancel.addEventListener("click", () =>
+  runRequest("panel:cancelStreamTest"),
+);
+refs.streamTestRefresh.addEventListener("click", () => {
+  streamTestPollError = "";
+  streamTestSeen = null;
+  render();
+});
+refs.streamTestFile.addEventListener("change", (event) => {
+  streamTestFileChoice = event.target.value;
+  render();
+});
+refs.streamTestFileRun.addEventListener("click", () => {
+  const fileId = Number(streamTestFileChoice);
+  if (!streamTestFileChoice || !Number.isInteger(fileId)) return;
+  void runRequest("panel:startStreamTest", {
+    mode: "basic",
+    fileId,
+    reuse: true,
+  });
+});
 refs.magnetInput.addEventListener("input", (event) => {
   state = {
     ...state,
