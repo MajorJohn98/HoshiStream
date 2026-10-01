@@ -1,7 +1,8 @@
 # 2026-09-30 — Stream test before Add
 
-Status: phase 1 implemented 2026-09-30 (see "Phase 1 as built" at the end);
-phases 2 and 3 planned. Decision: entry 0029 in
+Status: phase 1 implemented 2026-09-30 (see "Phase 1 as built"); phase 2,
+the Chrome companion, implemented 2026-10-01 (see "Phase 2: Chrome
+companion" at the end); phase 3 planned. Decision: entry 0029 in
 [decision-log.md](../decisions/decision-log.md).
 
 ## Problem
@@ -240,7 +241,8 @@ DELETE /api/stream-tests/{testId}  → 204 (cancels and cleans up)
 2. **Chrome companion.** The native commands `startStreamTest`,
    `getStreamTest` and `cancelStreamTest` are added to the helper's
    allowlist, keyed by draft. The side panel's review shows the same card,
-   and `discardDraft` cancels the draft's tests.
+   and discarding the draft cancels its test. See "Phase 2: Chrome
+   companion" below.
 3. **Search (0028).** Each result can be tested through a draft. Before any
    test, results show an estimated need from `videoSize` and the Cinemeta
    runtime.
@@ -387,3 +389,69 @@ listening. Adding a torrent then fails until TorrServer restarts or the
 settings are saved again. `SetSettings` in MatriX.141 ignores the error from
 reconnecting the client. This matters here because the limit remedy leads
 the owner to raise the limit while the test still holds its torrent.
+
+## Phase 2: Chrome companion (2026-10-01)
+
+The side panel tests the prepared draft before Add, with the same card text
+as Add Media. No server change: the helper relays the phase 1 endpoints.
+
+- **Helper allowlist.** Three strict commands, each one fixed route:
+  - `startStreamTest` → `POST /api/stream-tests` with `source: {draftId}`,
+    plus the optional `type`, `seasonHint`, `episodeHint`, `fileId` and
+    `mode`. A magnet or a `.torrent` path is never accepted from the
+    browser.
+  - `getStreamTest {testId}` → `GET /api/stream-tests/{testId}`.
+  - `cancelStreamTest {testId}` → `DELETE`, answered `{cancelled: true}`.
+  - The helper validates the state it relays and drops what the panel
+    doesn't need (the infohash).
+- **Shared text.** The card's wording helpers move to a dependency-free
+  `stream-test-text.js`. The extension can't import from the management
+  page, so it keeps a byte-identical copy in `lib/`, and a test fails if
+  the two differ. The companion has no Measure line button, so the stale
+  line note points at the speed test on the app's Status page instead.
+- **Panel state.** A `streamTest` section in session storage holds the
+  last test, the type and numbering it ran with, and any error. Selecting
+  another source, a fresh draft and a save clear it. A test result survives
+  a series preview (which consumes the draft), but a new test needs a live
+  draft. Editing the type or numbering after a test marks it out of date.
+- **Lifecycle.** The panel polls every 2 s while a test runs, through a
+  second check poller. Closing the panel doesn't cancel the test: it keeps
+  running and the panel picks it up again. Discarding the draft (another
+  source, Clear source) cancels it, as does a save. Test again and Test
+  this file end the previous test only after the new one starts, so the
+  torrent stays registered.
+- **As built.** Details settled during the build:
+  - Polls merge only the `streamTest` section and don't broadcast, so a
+    poll never overwrites fields the owner is typing.
+  - While a new test starts, the card hides the previous result; a failed
+    start shows it again with the error.
+  - Test longer and Test this file reuse the shown test's type and
+    numbering.
+  - Cancel treats `not_found` as cancelled. A finished test has nothing to
+    stop, so its result stays.
+  - A poll's `not_found` clears the card with the server's "Test again"
+    message.
+  - An older app's helper rejects the new commands with `invalid_request`;
+    the card then asks the owner to update HoshiStream.
+  - The card stays visible after a series preview reserves the draft,
+    with a hint to cancel the preview and prepare the source again.
+  - Ending a test is the last step of releasing a draft (preview, then
+    draft, then test). With nothing else holding the torrent, TorrServer
+    drops it at once instead of at the next sweep.
+  - The extension version is 0.2.0.
+- **Card.** Between the details and the duplicate warning: a badge, the
+  summary, live progress, the figures, the remedies, the notes, a details
+  list, Test streaming / Test again / Cancel test / Test longer (up to
+  3 min), Refresh status after poll errors, and a file picker for
+  multi-file torrents.
+- **Out of scope.** Measuring the line from the companion (the speed test
+  takes longer than the helper's 15 s request limit), and testing after a
+  series preview consumed the draft.
+- **Tests.** Protocol accept/reject, helper routes and field stripping,
+  the identical copies, panel state (reset, staleness, payload, recovery),
+  the poller's `isActive` option, and the panel's element IDs. A contract
+  test relays real `StreamTests` reports through the helper client. A
+  service-worker harness with a fake `chrome` and native port covers
+  start, replace, poll, cancel and release order. A packaging guard checks
+  that every extension import stays inside the extension folder. Full
+  suite: 1313 passed, 2 skipped.

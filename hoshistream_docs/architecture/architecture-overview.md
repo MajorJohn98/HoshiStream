@@ -44,14 +44,14 @@ Torrent-backed streams are served directly by TorrServer; the add-on rewrites To
 | `types.ts` | Zod schemas for library entries (create/patch) and fetched-metadata provenance |
 | `cinemeta.ts`, `title-query.ts`, `metadata-enrichment.ts`, `metadata-settings.ts`, `artwork-cache.ts`, `routes/metadata-api.ts` | Opt-in Cinemeta enrichment (ADR 0026): bounded client, name cleaning, fill/replace merge with viewer-edit ownership, settings, local artwork cache and `/api/metadata*` routes |
 | `imports/`, `routes/imports-api.ts` | Provider-neutral manual drafts, identity validation, retry-safe import, and episode-preview/series append (ADR 0020) |
-| `browser/`, `assets/chrome-extension/` | Chrome MV3 companion and narrow macOS/Windows native-messaging relays; master token remains local |
+| `browser/`, `assets/chrome-extension/` | Chrome MV3 companion and narrow macOS/Windows native-messaging relays; master token remains local. The side panel can run a stream test on its prepared draft through three allowlisted helper commands |
 | `torrserver-client.ts` | Verified TorrServer API subset with timeouts and Zod parsing |
 | `inspection.ts` | Torrent registration + metadata polling + file selection |
 | `media-file-selection.ts` | Playable-extension filtering, series episode mapping (`S01E02`, `1x02`) |
 | `media-probe.ts` | ffprobe-based resolution/codec/bitrate probe with speed verdict |
 | `analysis-slot.ts` | One shared FIFO work slot: source checks and stream tests take turns |
 | `stream-tests.ts`, `stream-verdict.ts`, `routes/stream-tests-api.ts` | Owner-triggered stream test before Add (decision 0029): in-memory test records and queue, `/play` reads with `/cache` sampling, pure verdict and remedy math, and `/api/stream-tests`. `activity.ts` marks hashes under test so playback telemetry skips them and the archiver yields |
-| `assets/manage/components/stream-test.js` | The Add Media **Stream test** card: start, poll, cancel, Test longer, per-file tests and the result |
+| `assets/manage/components/stream-test.js` | The Add Media **Stream test** card: start, poll, cancel, Test longer, per-file tests and the result. Its wording lives in `stream-test-text.js`, kept byte-identical in the companion's `lib/` |
 | `speedtest.ts` | Measured link speed via Cloudflare's open speed-test endpoint; startup + on-demand runs |
 | `resources.ts` | Process CPU/RSS grouping (`ps`) and cache-directory sizes for the status page |
 | `transcode.ts` | Opt-in stream repair (ADR 0010): ffmpeg HLS sessions for remux, audio fix, and hardware video re-encode |

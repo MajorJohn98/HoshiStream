@@ -1,12 +1,13 @@
 # Pre-add stream test
 
-Phase 1 of [decision 0029](../decisions/decision-log.md) and the
+Phases 1 and 2 of [decision 0029](../decisions/decision-log.md) and the
 [pre-add stream test plan](../plans/2026-09-30-pre-add-stream-test-plan.md).
 A torrent could look fine, be saved, and only then turn out to download more
-slowly than it plays. Add Media can now check that before you save: **Test
-streaming** measures the file's bitrate against the rate its peers sustain
-through TorrServer, names the bottleneck, and suggests what to do. It is
-advice only and never blocks **Add to library**.
+slowly than it plays. Add Media, and since phase 2 the Chrome companion, can
+now check that before you save: **Test streaming** measures the file's
+bitrate against the rate its peers sustain through TorrServer, names the
+bottleneck, and suggests what to do. It is advice only and never blocks
+**Add to library**.
 
 ## Server
 
@@ -78,7 +79,8 @@ advice only and never blocks **Add to library**.
 
 ## Not in this change
 
-- Phase 2: a test button in the Chrome companion's review step.
+- Phase 2: a test button in the Chrome companion's review step (added
+  2026-10-01; see "Chrome companion" below).
 - Phase 3: ranking in-app search results by the test
   ([decision 0028](../decisions/decision-log.md), not yet implemented).
 - Testing **Additional torrents**; only the main torrent is tested.
@@ -106,3 +108,50 @@ Known issue, not fixed: changing TorrServer settings while a torrent is
 connected (for example one a finished test holds) can leave TorrServer
 without a BitTorrent client until it restarts or the settings are saved
 again.
+
+## Chrome companion (2026-10-01)
+
+Phase 2. The companion's side panel (extension 0.2.0) tests the prepared
+source before **Add to HoshiStream**, with the same card and wording as Add
+Media. There is no server change.
+
+- **Native helper.** New allowlisted commands relay the phase 1 endpoints
+  for a prepared draft only. `startStreamTest` takes a draft ID with the
+  form's type, numbering, file and mode. `getStreamTest` and
+  `cancelStreamTest` take a test ID. A magnet or file path is never
+  accepted from the browser. The helper validates each report and drops
+  the infohash.
+- **Side panel.** A **Stream test** card in the review step offers:
+  - **Test streaming** / **Test again**;
+  - live progress and **Cancel test**;
+  - the result with its figures, remedies, notes and details;
+  - **Test longer (up to 3 min)**;
+  - a file picker with **Test this file**;
+  - **Refresh status** after a polling error.
+
+  Changing the type or series numbering marks a result out of date.
+- **Lifecycle.** Closing the panel doesn't stop a test; reopening it picks
+  the test up again. Choosing another source, **Clear source**, saving, or a
+  replacement test ends it. A replacement ends the old test only after the
+  new one starts.
+- **Line speed.** The companion can't measure the line, so its note
+  points to the speed test on HoshiStream's Status page.
+- **Older app.** If the app's helper predates these commands, the card
+  asks you to update HoshiStream.
+- **Shared wording.** The card text helpers moved to a dependency-free
+  `stream-test-text.js`. The extension keeps a byte-identical copy in
+  `lib/`.
+
+Tests:
+
+- New: `chrome-extension-stream-test` (panel state, polling, and a service
+  worker harness with a fake `chrome` and native port).
+- Extended:
+  - `browser-native`: protocol, routes, and error relay;
+  - `stream-tests`: real reports relayed through the helper client;
+  - `stream-test-ui`: the identical text copies;
+  - `chrome-extension-core`: imports stay inside the extension folder.
+- Full suite: 1313 passed, 2 skipped.
+
+Docs: [Chrome companion](../guides/chrome-companion.md) ("Test streaming
+before you add") and the plan's "Phase 2: Chrome companion" section.

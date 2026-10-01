@@ -9,7 +9,9 @@ It does not search torrent indexes or require a server address/access token.
 2. Install and pin the Chrome companion.
 3. Right-click a magnet link and choose **Add to HoshiStream**, or open the
    companion's side panel from the toolbar.
-4. Review the name, type and optional tags/destination, then add.
+4. Review the name, type and optional tags/destination. Optionally press
+   **Test streaming** to check the source plays smoothly first (see below),
+   then add.
 5. Follow the separate source check, or open the saved entry in HoshiStream.
 
 The page-link chooser reads only the active page after an explicit action.
@@ -20,6 +22,31 @@ choose/drop the file in the companion. Browser cookies are never exported.
 Adding to an existing series requires an inspected target and explicit approval
 of overlapping episodes. A saved/check-failed result is still saved; retry the
 check rather than creating the entry again.
+
+### Test streaming before you add
+
+Once the source is prepared, the review shows a **Stream test** card. Press
+**Test streaming** to check whether peers deliver the file faster than it
+plays, before you add it. It is the same test, result and options as in Add
+Media; see [Test streaming before you save](adding-media.md#test-streaming-before-you-save)
+for what the result means.
+
+- The test uses the type and series numbering in the review. Changing them
+  afterwards marks the result out of date; **Test again** uses the new
+  values.
+- **Test longer (up to 3 min)** gives a firmer result. For a torrent with
+  several videos, pick another file and press **Test this file**.
+- The companion can't measure your line. When a note says peers beat your
+  last line reading, run the speed test on HoshiStream's Status page, then
+  test again.
+- Closing the side panel doesn't stop a running test; reopen it to see the
+  result. **Cancel test**, choosing another source, **Clear source** or
+  adding the source ends it. Results stay for 10 minutes.
+- After a series preview the draft is reserved for that preview. To test
+  it, cancel the preview and prepare the source again.
+
+The test is advice only and never blocks adding. Like playback, it joins
+the torrent's swarm ([privacy](privacy-and-network.md)).
 
 ## Current local-development installation
 
@@ -125,6 +152,11 @@ roots instead. See [app-only uninstall](backup-restore-updates.md#uninstall-with
 - **Connection interrupted:** retry the original confirmation; its idempotency key
   prevents a duplicate save.
 - **Draft expired:** preserve the selected source and prepare it again explicitly.
+- **"Update the HoshiStream app to test streaming from the companion":** the
+  app's helper predates stream tests. Install the current app and open it.
+- **Test status is unavailable:** press **Refresh status**. "The test expired
+  or the server restarted" means the result is gone; press **Test streaming**
+  again.
 - **Check failed:** the entry is retained. Open it to retry, select files, or use
   the existing compatible/native playback options.
 

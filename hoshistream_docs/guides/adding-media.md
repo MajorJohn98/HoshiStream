@@ -141,6 +141,7 @@ Browse normally, then use **Add to HoshiStream** on a magnet link or open the
 companion's side panel. Review the suggested name, type and tags before adding.
 You can also paste a magnet or choose/drop a `.torrent` file already downloaded
 through the browser. No indexer, API key or local server address is needed.
+The review also offers the same **Test streaming** check as Add Media.
 
 The native helper transfers only the selected source and approved metadata to
 the local app. It does not export browser cookies or browsing history. A duplicate
