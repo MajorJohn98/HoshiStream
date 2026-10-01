@@ -17,10 +17,12 @@ import {
   sourceToken,
   reviewToken,
   streamTestBlocker,
+  streamTestRetryOptions,
   streamTestStale,
 } from "./lib/state.js";
 import {
   isStreamTestActive,
+  STREAM_TEST_ANYWAY_HINT,
   streamTestBadge,
   streamTestFigures,
   streamTestFileLabel,
@@ -28,6 +30,7 @@ import {
   streamTestProgress,
   streamTestRemedies,
   streamTestRows,
+  streamTestStoppedByPlayback,
   streamTestSummary,
 } from "./lib/stream-test-text.js";
 import { encodeBytesBase64, stripTorrentExtension } from "./lib/protocol.js";
@@ -84,6 +87,7 @@ const refs = {
   streamTestHint: document.getElementById("stream-test-hint"),
   streamTestStart: document.getElementById("stream-test-start"),
   streamTestLonger: document.getElementById("stream-test-longer"),
+  streamTestAnyway: document.getElementById("stream-test-anyway"),
   streamTestCancel: document.getElementById("stream-test-cancel"),
   streamTestRefresh: document.getElementById("stream-test-refresh"),
   streamTestPicker: document.getElementById("stream-test-picker"),
@@ -126,6 +130,10 @@ let streamTestPollerKey = "";
 let streamTestSeen = null;
 let streamTestPollError = "";
 let streamTestFileChoice = "";
+// For Test anyway: the options of the last start, and of the start that
+// produced the shown test (by its id).
+let streamTestLastStart = null;
+let streamTestShownStart = null;
 
 const STREAM_TEST_LINE_ADVICE =
   "Run the speed test on HoshiStream's Status page to update it.";
@@ -692,7 +700,14 @@ function renderStreamTest() {
   setHidden(refs.streamTestDetails, rows.length === 0);
 
   const blocker = streamTestBlocker(state);
-  setText(refs.streamTestHint, active ? "" : blocker);
+  const playbackBlocked =
+    !active &&
+    !starting &&
+    (section.code === "streaming_active" || streamTestStoppedByPlayback(test));
+  setText(
+    refs.streamTestHint,
+    active ? "" : blocker || (playbackBlocked ? STREAM_TEST_ANYWAY_HINT : ""),
+  );
   const locked = isLocked() || streamTestPending();
   setHidden(refs.streamTestStart, active);
   refs.streamTestStart.textContent = starting
@@ -703,6 +718,8 @@ function renderStreamTest() {
   refs.streamTestStart.disabled = locked || Boolean(blocker);
   setHidden(refs.streamTestLonger, active || !test);
   refs.streamTestLonger.disabled = locked || Boolean(blocker);
+  setHidden(refs.streamTestAnyway, !playbackBlocked);
+  refs.streamTestAnyway.disabled = locked || Boolean(blocker);
   setHidden(refs.streamTestCancel, !active);
   refs.streamTestCancel.textContent =
     section.status === "cancelling" ? "Cancelling…" : "Cancel test";
@@ -1222,15 +1239,37 @@ refs.clearImport.addEventListener("click", () =>
 refs.primaryAction.addEventListener("click", () =>
   runRequest("panel:primaryAction"),
 );
+async function startStreamTest(options) {
+  if (actionBusy) return null;
+  streamTestLastStart = options;
+  const previousId = state.streamTest.test?.testId;
+  const next = await runRequest("panel:startStreamTest", options);
+  const started = next?.streamTest;
+  if (started?.test && !started.code && started.test.testId !== previousId)
+    streamTestShownStart = {
+      testId: started.test.testId,
+      fileId: options.fileId,
+    };
+  return next;
+}
+
 refs.streamTestStart.addEventListener("click", () =>
-  runRequest("panel:startStreamTest", { mode: "basic" }),
+  startStreamTest({ mode: "basic" }),
 );
 refs.streamTestLonger.addEventListener("click", () =>
-  runRequest("panel:startStreamTest", {
+  startStreamTest({
     mode: "extended",
     fileId: state.streamTest.test?.file?.id,
     reuse: true,
   }),
+);
+refs.streamTestAnyway.addEventListener("click", () =>
+  startStreamTest(
+    streamTestRetryOptions(state, {
+      last: streamTestLastStart,
+      shown: streamTestShownStart,
+    }),
+  ),
 );
 refs.streamTestCancel.addEventListener("click", () =>
   runRequest("panel:cancelStreamTest"),
@@ -1247,7 +1286,7 @@ refs.streamTestFile.addEventListener("change", (event) => {
 refs.streamTestFileRun.addEventListener("click", () => {
   const fileId = Number(streamTestFileChoice);
   if (!streamTestFileChoice || !Number.isInteger(fileId)) return;
-  void runRequest("panel:startStreamTest", {
+  void startStreamTest({
     mode: "basic",
     fileId,
     reuse: true,

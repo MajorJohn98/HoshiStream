@@ -337,6 +337,7 @@ describe("native stream tests", () => {
         episodeHint: 9999,
         fileId: 0,
         mode: "extended",
+        allowPlayback: true,
       }),
       message("getStreamTest", { testId }),
       message("cancelStreamTest", { testId }),
@@ -354,6 +355,7 @@ describe("native stream tests", () => {
       message("startStreamTest", { source: { draftId } }),
       message("startStreamTest", { draftId: "draft-1" }),
       message("startStreamTest", { draftId, mode: "turbo" }),
+      message("startStreamTest", { draftId, allowPlayback: "yes" }),
       message("startStreamTest", { draftId, fileId: -1 }),
       message("startStreamTest", { draftId, fileId: 1.5 }),
       message("startStreamTest", { draftId, seasonHint: -1 }),
@@ -379,6 +381,7 @@ describe("native stream tests", () => {
           episodeHint: 5,
           fileId: 4,
           mode: "extended",
+          allowPlayback: true,
         }),
       ),
     );
@@ -397,6 +400,7 @@ describe("native stream tests", () => {
       episodeHint: 5,
       fileId: 4,
       mode: "extended",
+      allowPlayback: true,
     });
   });
 

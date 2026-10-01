@@ -36,6 +36,8 @@ for what the result means.
   values.
 - **Test longer (up to 3 min)** gives a firmer result. For a torrent with
   several videos, pick another file and press **Test this file**.
+- When something is streaming, the test waits for playback. **Test anyway**
+  runs it during playback, for that one test only.
 - The companion can't measure your line. When a note says peers beat your
   last line reading, run the speed test on HoshiStream's Status page, then
   test again.

@@ -101,6 +101,7 @@ export const nativeRequestSchema = z.discriminatedUnion("command", [
         episodeHint: z.number().int().positive().max(9_999).optional(),
         fileId: z.number().int().nonnegative().optional(),
         mode: z.enum(["basic", "extended"]).optional(),
+        allowPlayback: z.boolean().optional(),
       })
       .strict(),
   ),

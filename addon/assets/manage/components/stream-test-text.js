@@ -17,6 +17,15 @@ export function isStreamTestActive(test) {
   return ACTIVE_STREAM_TEST_PHASES.has(test?.phase);
 }
 
+/** Playback refused this test or stopped it early; Test anyway reruns it. */
+export function streamTestStoppedByPlayback(test) {
+  return test?.code === "streaming_active" || test?.stoppedBy === "stream";
+}
+
+/** Shown beside Test anyway. */
+export const STREAM_TEST_ANYWAY_HINT =
+  "Test anyway runs while something plays: playback may slow down, and peers may deliver faster than the test shows.";
+
 const ACTIVE_BADGES = {
   queued: { tone: "warn", label: "Queued" },
   metadata: { tone: "warn", label: "Finding peers" },
@@ -171,6 +180,9 @@ export function streamTestNotes(
   const notes = [];
   if (test.stoppedBy === "complete")
     notes.push("The whole file arrived during the test.");
+  // An inconclusive summary already says so.
+  if (test.stoppedBy === "stream" && verdict.reason !== "stream_started")
+    notes.push("Playback started, so the test stopped early.");
   if (verdict.flags?.atLeast)
     notes.push(
       "The test reached its data limit early, so peers may deliver faster than shown.",
@@ -181,6 +193,8 @@ export function streamTestNotes(
     notes.push(
       "A disk copy was downloading during the test and shared your line.",
     );
+  if (verdict.flags?.sharedWithPlayback)
+    notes.push("Something was streaming during the test and shared your line.");
   if (verdict.lineStale)
     notes.push(
       "Peers delivered faster than your last line reading. " + lineAdvice,

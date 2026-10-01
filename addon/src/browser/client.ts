@@ -163,6 +163,7 @@ const streamTestSchema = z.object({
         atLeast: z.boolean(),
         stillSpeedingUp: z.boolean(),
         sharedWithDiskCopy: z.boolean(),
+        sharedWithPlayback: z.boolean(),
       }),
       suggestTestLonger: z.boolean(),
     })

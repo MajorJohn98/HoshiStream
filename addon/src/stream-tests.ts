@@ -53,6 +53,11 @@ export type StreamTestRequest = {
   episodeHint?: number;
   fileId?: number;
   mode?: StreamTestMode;
+  /**
+   * Test anyway: run while something streams and don't stop when playback
+   * starts. Applies to this test only.
+   */
+  allowPlayback?: boolean;
 };
 
 export type StreamTestLimits = {
@@ -141,6 +146,7 @@ type TestRecord = {
   type: "movie" | "series";
   hints: { seasonHint?: number; episodeHint?: number };
   fileId?: number;
+  allowPlayback: boolean;
   phase: StreamTestPhase;
   code?: string;
   message: string;
@@ -381,7 +387,8 @@ export class StreamTests {
   async start(request: StreamTestRequest): Promise<StreamTestState> {
     this.#ensureOpen();
     this.#prune();
-    if (this.#streamingNow())
+    const allowPlayback = request.allowPlayback === true;
+    if (!allowPlayback && this.#streamingNow())
       throw new ImportError(
         "streaming_active",
         "Something is streaming. Test after playback stops, so the test doesn't slow it down.",
@@ -408,6 +415,7 @@ export class StreamTests {
           : { episodeHint: request.episodeHint }),
       },
       ...(request.fileId === undefined ? {} : { fileId: request.fileId }),
+      allowPlayback,
       phase: "queued",
       message: "",
       createdAt: now,
@@ -622,9 +630,10 @@ export class StreamTests {
     log("info", "stream_test_started", {
       testId: record.id,
       mode: record.mode,
+      ...(record.allowPlayback ? { allowPlayback: true } : {}),
     });
     try {
-      if (this.#streamingNow())
+      if (!record.allowPlayback && this.#streamingNow())
         throw new ImportError(
           "streaming_active",
           "Playback started before the test could run. Test again after it stops.",
@@ -649,7 +658,7 @@ export class StreamTests {
         .slice(0, this.#limits.maxFiles);
       record.file = this.#pick(record, files);
       signal.throwIfAborted();
-      if (this.#lastStreamActivity() > startedAt) {
+      if (!record.allowPlayback && this.#lastStreamActivity() > startedAt) {
         record.stoppedBy = "stream";
         record.verdict = evaluateStreamTest({ streamStarted: true });
         this.#finish(record, "done", DONE_MESSAGES.stream);
@@ -939,6 +948,7 @@ export class StreamTests {
     let filled = baseline;
     let snapshot: { at: number; bytes: number } | undefined;
     let shared = false;
+    let sharedWithPlayback = false;
     let stoppedBy: StreamTestStop | "failed" | undefined;
     while (!stoppedBy) {
       const wait = Math.min(limits.sampleIntervalMs, deadline - this.#now());
@@ -959,6 +969,8 @@ export class StreamTests {
         }
       }
       if (this.#diskCopyActive()) shared = true;
+      if (record.allowPlayback && this.#streamingNow())
+        sharedWithPlayback = true;
       if (!snapshot && at - measureStart >= limits.warmupMs)
         snapshot = { at, bytes: received };
       const latest = samples.at(-1);
@@ -973,7 +985,10 @@ export class StreamTests {
           : {}),
       };
       if (signal.aborted) stoppedBy = "cancel";
-      else if (this.#lastStreamActivity() > record.startedAt!)
+      else if (
+        !record.allowPlayback &&
+        this.#lastStreamActivity() > record.startedAt!
+      )
         stoppedBy = "stream";
       else if (readerFailed) stoppedBy = "failed";
       else if (readerEnd === "eof") stoppedBy = "complete";
@@ -1033,6 +1048,7 @@ export class StreamTests {
       limitMbps,
       cacheWindowBytes,
       sharedWithDiskCopy: shared,
+      sharedWithPlayback,
       streamStarted: stoppedBy === "stream",
     });
   }

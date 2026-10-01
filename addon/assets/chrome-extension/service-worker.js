@@ -708,6 +708,7 @@ async function startStreamTestState(options) {
       mode: options?.mode ?? "basic",
       fileId: options?.fileId ?? undefined,
       reuse: Boolean(options?.reuse),
+      allowPlayback: Boolean(options?.allowPlayback),
     });
   } catch (error) {
     if (error.code === "draft_expired")

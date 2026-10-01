@@ -20,6 +20,7 @@ import {
   settleStreamTest,
   streamTestBlocker,
   streamTestFields,
+  streamTestRetryOptions,
   streamTestStale,
 } from "../assets/chrome-extension/lib/state.js";
 import { isStreamTestActive } from "../assets/chrome-extension/lib/stream-test-text.js";
@@ -318,6 +319,15 @@ describe("companion stream test state", () => {
     expect(
       buildStreamTestRequest(tested, { mode: "extended" }).payload,
     ).toEqual({ draftId, type: "series", episodeHint: 4, mode: "extended" });
+    expect(
+      buildStreamTestRequest(state, { allowPlayback: true }).payload,
+    ).toEqual({
+      draftId,
+      type: "series",
+      episodeHint: 4,
+      mode: "basic",
+      allowPlayback: true,
+    });
     for (const [options, code] of [
       [{ mode: "turbo" }, "invalid_mode"],
       [{ fileId: -1 }, "invalid_file"],
@@ -337,6 +347,50 @@ describe("companion stream test state", () => {
     expect(errorOf(() => buildStreamTestRequest(leased))).toMatchObject({
       code: "draft_missing",
     });
+  });
+
+  it("repeats the refused start or the shown test for Test anyway", () => {
+    const last = { mode: "extended", fileId: 3 };
+    const refused = settleStreamTest(
+      withTest(readyState(), "done"),
+      failure("streaming_active", "Something is streaming."),
+    );
+    expect(streamTestRetryOptions(refused, { last })).toEqual({
+      mode: "extended",
+      fileId: 3,
+      allowPlayback: true,
+    });
+    expect(streamTestRetryOptions(readyState())).toEqual({
+      mode: "basic",
+      allowPlayback: true,
+    });
+
+    const stopped = withTest(readyState(), "done");
+    stopped.streamTest.test = {
+      ...stopped.streamTest.test!,
+      mode: "extended",
+      stoppedBy: "stream",
+      file: { id: 2, name: "Fixture.mkv", size: 1 },
+    };
+    expect(streamTestRetryOptions(stopped, { last })).toEqual({
+      mode: "extended",
+      fileId: 2,
+      reuse: true,
+      allowPlayback: true,
+    });
+
+    // A test that failed in the queue never learned its file.
+    const queued = withTest(readyState(), "failed");
+    queued.streamTest.test!.code = "streaming_active";
+    const { testId } = queued.streamTest.test!;
+    expect(
+      streamTestRetryOptions(queued, { shown: { testId, fileId: 5 } }),
+    ).toEqual({ mode: "basic", fileId: 5, reuse: true, allowPlayback: true });
+    expect(
+      streamTestRetryOptions(queued, {
+        shown: { testId: randomUUID(), fileId: 5 },
+      }),
+    ).toEqual({ mode: "basic", reuse: true, allowPlayback: true });
   });
 
   it("dates a result once the type or numbering changes", () => {
@@ -595,6 +649,45 @@ describe("companion service worker stream tests", () => {
       status: "ready",
       test: { testId },
       fields: { type: "series", episodeHint: 3 },
+    });
+  });
+
+  it("relays Test anyway after playback refused the start", async () => {
+    const seed = readyState();
+    let worker = await companion(seed, () => {
+      throw failure(
+        "streaming_active",
+        "Something is streaming. Test after playback stops.",
+      );
+    });
+    let reply = await worker.send("panel:startStreamTest", { mode: "basic" });
+    expect(reply.state.streamTest).toMatchObject({
+      status: "idle",
+      test: null,
+      code: "streaming_active",
+    });
+
+    const testId = randomUUID();
+    worker = await companion(reply.state, () => report(testId));
+    reply = await worker.send(
+      "panel:startStreamTest",
+      streamTestRetryOptions(reply.state, { last: { mode: "basic" } }),
+    );
+    expect(worker.calls).toEqual([
+      {
+        command: "startStreamTest",
+        payload: {
+          draftId: seed.draft.draftId,
+          type: "movie",
+          mode: "basic",
+          allowPlayback: true,
+        },
+      },
+    ]);
+    expect(reply.state.streamTest).toMatchObject({
+      status: "ready",
+      test: { testId },
+      code: "",
     });
   });
 

@@ -683,11 +683,11 @@ export function streamTestBlocker(state, now = Date.now()) {
 /**
  * The helper request for a stream test of the prepared draft. `reuse` keeps
  * the type and numbering of the current test, for Test longer and Test this
- * file.
+ * file. `allowPlayback` (Test anyway) runs it while something streams.
  */
 export function buildStreamTestRequest(
   state,
-  { mode = "basic", fileId, reuse = false } = {},
+  { mode = "basic", fileId, reuse = false, allowPlayback = false } = {},
 ) {
   if (state.draft.status === "ready" && isExpired(state.draft.expiresAt)) {
     throw createProtocolError(
@@ -719,8 +719,35 @@ export function buildStreamTestRequest(
       ...fields,
       ...(fileId === undefined ? {} : { fileId }),
       mode,
+      ...(allowPlayback ? { allowPlayback: true } : {}),
     },
     fields,
+  };
+}
+
+/**
+ * The start Test anyway repeats: the start playback refused (`last`), or
+ * else the shown test again with its type and numbering. A test that failed
+ * in the queue reports no file, so its requested file comes from `shown`,
+ * the start that produced it.
+ */
+export function streamTestRetryOptions(
+  state,
+  { last = null, shown = null } = {},
+) {
+  const { test, code } = state.streamTest;
+  if (code === "streaming_active" || !test)
+    return { ...(last ?? { mode: "basic" }), allowPlayback: true };
+  const fileId = Number.isInteger(test.file?.id)
+    ? test.file.id
+    : shown?.testId === test.testId
+      ? shown.fileId
+      : undefined;
+  return {
+    mode: test.mode === "extended" ? "extended" : "basic",
+    ...(fileId === undefined ? {} : { fileId }),
+    reuse: true,
+    allowPlayback: true,
   };
 }
 

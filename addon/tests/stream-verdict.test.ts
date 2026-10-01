@@ -330,6 +330,24 @@ describe("evaluateStreamTest", () => {
     ).toBe(true);
   });
 
+  it("reports playback sharing the line without changing the level", () => {
+    const input = {
+      bitrateMbps: 2,
+      durationSeconds: 3600,
+      sizeBytes: 9e8,
+      swarm: swarm(10),
+    };
+    const alone = evaluateStreamTest(input);
+    const shared = evaluateStreamTest({ ...input, sharedWithPlayback: true });
+    expect(alone.flags.sharedWithPlayback).toBe(false);
+    expect(shared.flags.sharedWithPlayback).toBe(true);
+    expect({ ...shared, flags: alone.flags }).toEqual(alone);
+    expect(
+      evaluateStreamTest({ noMetadata: true, sharedWithPlayback: true }).flags
+        .sharedWithPlayback,
+    ).toBe(true);
+  });
+
   it("stays inconclusive with a reason when it cannot judge", () => {
     expect(evaluateStreamTest({ noMetadata: true })).toMatchObject({
       level: "inconclusive",

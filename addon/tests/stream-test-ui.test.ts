@@ -16,6 +16,8 @@ const {
   magnetTestSource,
   mbpsLabel,
   releaseStreamTest,
+  STREAM_TEST_ANYWAY_HINT,
+  streamTestAnywayOptions,
   streamTestBadge,
   streamTestFields,
   streamTestFigures,
@@ -25,6 +27,7 @@ const {
   streamTestRemedies,
   streamTestRequest,
   streamTestRows,
+  streamTestStoppedByPlayback,
   streamTestSummary,
 } = await import("../assets/manage/components/stream-test.js");
 
@@ -373,6 +376,45 @@ describe("stream test figures and remedies", () => {
     expect(streamTestNotes({ phase: "measuring" })).toEqual([]);
   });
 
+  it("notes playback that stopped or shared a test, and offers Test anyway", () => {
+    const stopped = { ...EPISODE, stoppedBy: "stream" };
+    expect(streamTestNotes(stopped)).toEqual([
+      "Playback started, so the test stopped early.",
+    ]);
+    // The inconclusive summary already says so.
+    expect(
+      streamTestNotes({
+        ...stopped,
+        verdict: evaluateStreamTest({ streamStarted: true }),
+      }),
+    ).toEqual([]);
+    expect(
+      streamTestNotes({
+        ...EPISODE,
+        verdict: {
+          ...EPISODE.verdict,
+          flags: { ...EPISODE.verdict.flags, sharedWithPlayback: true },
+        },
+      }),
+    ).toEqual([
+      "Something was streaming during the test and shared your line.",
+    ]);
+
+    expect(streamTestStoppedByPlayback(stopped)).toBe(true);
+    expect(
+      streamTestStoppedByPlayback({
+        phase: "failed",
+        code: "streaming_active",
+      }),
+    ).toBe(true);
+    expect(streamTestStoppedByPlayback(EPISODE)).toBe(false);
+    expect(
+      streamTestStoppedByPlayback({ phase: "failed", code: "probe_failed" }),
+    ).toBe(false);
+    expect(streamTestStoppedByPlayback(null)).toBe(false);
+    expect(STREAM_TEST_ANYWAY_HINT).toMatch(/^Test anyway runs while/);
+  });
+
   it("reports live progress only while measuring", () => {
     expect(
       streamTestProgress({
@@ -491,6 +533,51 @@ describe("stream test requests", () => {
       ...base,
       fileId: 0,
       mode: "extended",
+    });
+    expect(streamTestRequest(base, { allowPlayback: true })).toEqual({
+      ...base,
+      mode: "basic",
+      allowPlayback: true,
+    });
+  });
+
+  it("repeats the refused start or the shown test for Test anyway", () => {
+    const last = { mode: "extended", fileId: 3 };
+    expect(
+      streamTestAnywayOptions(EPISODE, { blocked: true, last, shown: {} }),
+    ).toEqual({ mode: "extended", fileId: 3, allowPlayback: true });
+    expect(streamTestAnywayOptions(null, { blocked: true })).toEqual({
+      allowPlayback: true,
+    });
+    expect(
+      streamTestAnywayOptions(
+        { ...EPISODE, mode: "extended", stoppedBy: "stream" },
+        { last, shown: { fileId: 7 } },
+      ),
+    ).toEqual({
+      mode: "extended",
+      fileId: 1,
+      reuse: true,
+      allowPlayback: true,
+    });
+    // A test that failed in the queue never learned its file.
+    const queued = {
+      testId: "test-2",
+      phase: "failed",
+      mode: "basic",
+      code: "streaming_active",
+    };
+    expect(streamTestAnywayOptions(queued, { shown: { fileId: 4 } })).toEqual({
+      mode: "basic",
+      fileId: 4,
+      reuse: true,
+      allowPlayback: true,
+    });
+    expect(streamTestAnywayOptions(queued)).toEqual({
+      mode: "basic",
+      fileId: undefined,
+      reuse: true,
+      allowPlayback: true,
     });
   });
 

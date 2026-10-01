@@ -455,3 +455,37 @@ as Add Media. No server change: the helper relays the phase 1 endpoints.
   start, replace, poll, cancel and release order. A packaging guard checks
   that every extension import stays inside the extension folder. Full
   suite: 1313 passed, 2 skipped.
+
+## Test anyway (2026-10-01)
+
+On a fast line, the owner wants to test while something plays, instead of
+waiting for playback to stop. Decided: a one-off **Test anyway** button, not a
+remembered toggle or a Settings switch, so the playback-first default stays.
+
+- **When it shows.** Only after playback blocked or interrupted a test: a
+  start refused with `streaming_active`, a queued test that failed with
+  `streaming_active`, or a test that stopped early (`stoppedBy: "stream"`).
+- **What it runs.** The same request again, with `allowPlayback: true`:
+  - After a refused start, the start the owner tried (Test streaming, Test
+    longer or Test this file).
+  - After an interrupted test, that test again: same mode and file, same
+    type and numbering.
+  - The flag covers only that one test; the next Test again waits for
+    playback as before.
+- **Server.** `POST /api/stream-tests` and the helper's `startStreamTest`
+  accept an optional `allowPlayback` boolean. When it is set:
+  - The test skips the quiet-window refusal at start and when it leaves the
+    queue.
+  - It doesn't stop when playback starts.
+  - The verdict gets the flag `sharedWithPlayback` when something streamed
+    while it measured. This works like `sharedWithDiskCopy`: a note, with no
+    change to the verdict level.
+  - `stream_test_started` logs `allowPlayback: true`.
+- **Text.**
+  - A hint beside the button says what testing during playback costs.
+  - A note marks a result measured while something streamed.
+  - A conclusive result from a test that playback stopped early now says so.
+- **Tests.** Server bypass at start, in the queue, after metadata and while
+  measuring, plus the shared flag; route and helper schemas; the verdict
+  flag; the notes, hint and request builders; the companion's retry options
+  and the payload it relays.

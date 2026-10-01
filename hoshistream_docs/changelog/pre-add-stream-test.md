@@ -155,3 +155,40 @@ Tests:
 
 Docs: [Chrome companion](../guides/chrome-companion.md) ("Test streaming
 before you add") and the plan's "Phase 2: Chrome companion" section.
+
+## Test anyway (2026-10-01)
+
+On a fast line, waiting for playback to stop before testing was needless.
+When playback refuses or stops a test, Add Media and the companion now offer
+a one-off **Test anyway**, with a hint about what it costs. Nothing is
+remembered: the next test waits for playback again.
+
+- **Server.** `POST /api/stream-tests` and the helper's `startStreamTest`
+  accept `allowPlayback`. Such a test skips the `streaming_active` checks at
+  start and in the queue, and playback starting doesn't stop it. If
+  something streamed while it measured, the verdict flags
+  `sharedWithPlayback` and the level stays the same.
+  `stream_test_started` logs `allowPlayback: true`.
+- **Add Media.** **Test anyway** repeats the start that playback refused,
+  or reruns the stopped test with the same mode and file.
+- **Companion.** The same button. The panel remembers which start
+  produced the shown test, so a test that failed in the queue reruns its
+  chosen file.
+- **Notes.** "Something was streaming during the test and shared your
+  line." A conclusive result from a test that playback stopped early now
+  says so too.
+
+Tests:
+
+- `stream-tests`: Test anyway while streaming (at start, through metadata
+  and measuring) with the shared flag, and a queued Test anyway when
+  playback starts before its turn.
+- `stream-tests-api` and `browser-native`: the new field, valid and invalid.
+- `stream-verdict`: the flag leaves the verdict otherwise unchanged.
+- `stream-test-ui` and `chrome-extension-stream-test`: the notes, the hint,
+  the retry options and the relayed payload.
+- Full suite: 1321 passed, 2 skipped.
+
+Docs: [Adding media](../guides/adding-media.md), [Chrome companion](../guides/chrome-companion.md),
+the [management API reference](../api/management-api-reference.md) and the
+plan's "Test anyway" section.

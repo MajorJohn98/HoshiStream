@@ -115,6 +115,12 @@ run one at a time, taking turns with source checks. A test won't start
 while something is streaming, and it stops early if playback starts.
 Results stay in memory for 10 minutes and are never saved.
 
+If your line is fast enough to share, press **Test anyway** when playback
+refuses or stops a test. It runs the same test while something plays, for
+that one test only. Playback may slow down, and because the playing torrent
+shares your line, peers may deliver faster than the result shows; a note
+says so.
+
 Like playback, a test joins the swarm: peers and trackers see your public
 IP, and TorrServer may upload pieces it holds ([privacy](privacy-and-network.md)).
 Playing soon after a test may start from the data it already downloaded.

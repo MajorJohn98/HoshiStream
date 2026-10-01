@@ -432,8 +432,9 @@ never marks a source unviable and never feeds source-check outcomes (0019,
 - **Limits.** Tests run one at a time in the source checks' single work
   slot (0023). A basic test takes at most 90 s and about 256 MB; "Test
   longer" takes 180 s and about 1 GB. A test won't start while HoshiStream
-  is streaming and stops early if a stream starts. Results stay in memory
-  for 10 minutes and are never persisted or sent anywhere.
+  is streaming and stops early if a stream starts, unless the owner chooses
+  **Test anyway** for that one test. Results stay in memory for 10 minutes
+  and are never persisted or sent anywhere.
 - **Verdict.** The test compares the average bitrate with the sustained
   swarm rate: Smooth (≥ 1.2×, as in playback telemetry), Tight (≥ 1×),
   Won't keep up, or Inconclusive. It names the bottleneck (the swarm, the
@@ -468,6 +469,13 @@ cancel); the helper strips the infohash. Closing the side panel doesn't
 cancel a test, because the server's budgets and expiry bound it. Another
 source, Clear source, a save or a replacement test ends it. The companion
 has no line measurement and points to the Status page speed test instead.
+
+Changed: 2026-10-01, Test anyway. On a fast line, waiting for playback to
+stop was needless. When playback refuses or stops a test, a one-off **Test
+anyway** runs it again with `allowPlayback`: the test ignores streaming, and
+the result notes that playback shared the line (`sharedWithPlayback`)
+without changing the level. Nothing is remembered, so the next test waits
+for playback again.
 
 ## Retired decisions
 

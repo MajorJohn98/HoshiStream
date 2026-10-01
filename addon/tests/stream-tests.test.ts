@@ -400,7 +400,11 @@ describe("stream tests", () => {
         level: "smooth",
         lineStale: false,
         suggestTestLonger: false,
-        flags: { atLeast: false, sharedWithDiskCopy: false },
+        flags: {
+          atLeast: false,
+          sharedWithDiskCopy: false,
+          sharedWithPlayback: false,
+        },
       },
     });
     // Playable files only, by path, so the owner can test another one.
@@ -645,6 +649,59 @@ describe("stream tests", () => {
     const state = await finished(h, started.testId);
     expect(state).toMatchObject({ phase: "failed", code: "streaming_active" });
     expect(h.torr.torrServer.addMagnet).not.toHaveBeenCalled();
+  });
+
+  it("tests anyway while something streams and flags the shared line", async () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...values: unknown[]) => {
+      lines.push(values.map(String).join(" "));
+    });
+    const files = Promise.withResolvers<void>();
+    const h = harness({ torr: { metadata: files.promise } });
+    h.streamAt(h.clock.now() - 1_000);
+    const started = await h.service.start({
+      source: { magnetUri: MAGNET },
+      allowPlayback: true,
+    });
+    await vi.waitFor(() =>
+      expect(h.torr.torrServer.waitForFiles).toHaveBeenCalled(),
+    );
+    // Playback goes on through the metadata wait and the whole measurement.
+    h.clock.advance(1_000);
+    h.streamAt(h.clock.now());
+    for (let at = 5_000; at <= 95_000; at += 5_000)
+      h.clock.at(at, () => h.streamAt(h.clock.now()));
+    files.resolve();
+    const state = await finished(h, started.testId);
+    expect(state).toMatchObject({
+      phase: "done",
+      stoppedBy: "time",
+      verdict: { level: "smooth", flags: { sharedWithPlayback: true } },
+    });
+    expect(state).not.toHaveProperty("allowPlayback");
+    expect(
+      lines.find((line) => line.includes("stream_test_started")),
+    ).toContain('"allowPlayback":true');
+  });
+
+  it("keeps a queued Test anyway when playback starts before its turn", async () => {
+    const h = harness();
+    const releaseCheck = holdSlot(h.slot);
+    const started = await h.service.start({
+      source: { magnetUri: MAGNET },
+      allowPlayback: true,
+    });
+    h.streamAt(h.clock.now());
+    releaseCheck();
+    await expect(finished(h, started.testId)).resolves.toMatchObject({
+      phase: "done",
+      stoppedBy: "time",
+    });
+    // Only that test: the next one waits for playback again.
+    h.streamAt(h.clock.now());
+    await expect(
+      h.service.start({ source: { magnetUri: MAGNET } }),
+    ).rejects.toEqual(importError("streaming_active", 409));
   });
 
   it("waits for a running source check, and a check waits for the test", async () => {

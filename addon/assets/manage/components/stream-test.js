@@ -9,6 +9,7 @@ import { createRequestGate, sourceHints } from "../import-state.js";
 import {
   isStreamTestActive,
   mbpsLabel,
+  STREAM_TEST_ANYWAY_HINT,
   streamTestBadge,
   streamTestFigures,
   streamTestFileLabel,
@@ -16,6 +17,7 @@ import {
   streamTestProgress,
   streamTestRemedies,
   streamTestRows,
+  streamTestStoppedByPlayback,
   streamTestSummary,
 } from "./stream-test-text.js";
 
@@ -44,8 +46,35 @@ export function streamTestFields(snapshot) {
   };
 }
 
-export function streamTestRequest(base, { mode = "basic", fileId } = {}) {
-  return { ...base, ...(fileId === undefined ? {} : { fileId }), mode };
+export function streamTestRequest(
+  base,
+  { mode = "basic", fileId, allowPlayback = false } = {},
+) {
+  return {
+    ...base,
+    ...(fileId === undefined ? {} : { fileId }),
+    mode,
+    ...(allowPlayback ? { allowPlayback: true } : {}),
+  };
+}
+
+/**
+ * What Test anyway starts: the start playback refused, or else the shown
+ * test again on the same source. `shown` holds the options that started
+ * the shown test, since a test that failed in the queue reports no file.
+ */
+export function streamTestAnywayOptions(
+  test,
+  { blocked = false, last, shown } = {},
+) {
+  const options = blocked
+    ? (last ?? {})
+    : {
+        mode: test?.mode === "extended" ? "extended" : "basic",
+        fileId: test?.file?.id ?? shown?.fileId,
+        reuse: true,
+      };
+  return { ...options, allowPlayback: true };
 }
 
 /** Ends a test and forgets it; errors are ignored because it may be gone. */
@@ -153,9 +182,13 @@ export function StreamTestPanel({ prepare }) {
   const [note, setNote] = useState("");
   const [stale, setStale] = useState(false);
   const [fileChoice, setFileChoice] = useState("");
+  // The last start was refused because something is streaming.
+  const [blocked, setBlocked] = useState(false);
   const root = useRef(null);
   const testRef = useRef(null);
   const baseRef = useRef(null);
+  const lastStart = useRef(null);
+  const shownStart = useRef(null);
   const controller = useRef(null);
   const alive = useRef(false);
 
@@ -167,8 +200,10 @@ export function StreamTestPanel({ prepare }) {
     controller.current?.stop();
     testRef.current = null;
     baseRef.current = null;
+    shownStart.current = null;
     setTest(null);
     setStale(false);
+    setBlocked(false);
     setPollError("");
   };
 
@@ -219,14 +254,17 @@ export function StreamTestPanel({ prepare }) {
 
   const start = async (
     event,
-    { mode = "basic", fileId, reuse = false } = {},
+    { mode = "basic", fileId, reuse = false, allowPlayback = false } = {},
   ) => {
     const form = event.currentTarget.form;
     const previous = testRef.current;
-    setBusy("starting");
+    const options = { mode, fileId, reuse };
+    lastStart.current = options;
+    setBusy(allowPlayback ? "anyway" : "starting");
     setError("");
     setPollError("");
     setNote("");
+    setBlocked(false);
     try {
       const base =
         reuse && baseRef.current ? baseRef.current : await prepare(form);
@@ -234,11 +272,14 @@ export function StreamTestPanel({ prepare }) {
       const next = await api("stream-tests", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(streamTestRequest(base, { mode, fileId })),
+        body: JSON.stringify(
+          streamTestRequest(base, { mode, fileId, allowPlayback }),
+        ),
         signal: AbortSignal.timeout(10000),
       });
       if (!alive.current) return void releaseStreamTest(next.testId);
       baseRef.current = base;
+      shownStart.current = options;
       if (!reuse) setStale(false);
       setFileChoice("");
       show(next);
@@ -246,7 +287,9 @@ export function StreamTestPanel({ prepare }) {
       // Ended only now, so the torrent stays registered for the new test.
       if (previous) void releaseStreamTest(previous.testId);
     } catch (failure) {
-      if (alive.current) setError(failure.message);
+      if (!alive.current) return;
+      setError(failure.message);
+      setBlocked(failure.code === "streaming_active");
     } finally {
       if (alive.current) setBusy("");
     }
@@ -258,6 +301,7 @@ export function StreamTestPanel({ prepare }) {
     setBusy("cancelling");
     setError("");
     setPollError("");
+    setBlocked(false);
     controller.current.stop();
     try {
       await api("stream-tests/" + encodeURIComponent(current.testId), {
@@ -286,6 +330,7 @@ export function StreamTestPanel({ prepare }) {
     setBusy("line");
     setError("");
     setNote("");
+    setBlocked(false);
     try {
       const result = await api("speedtest", { method: "POST" });
       if (alive.current)
@@ -309,6 +354,9 @@ export function StreamTestPanel({ prepare }) {
   const files = !active && test?.phase === "done" ? (test.files ?? []) : [];
   const chosen = fileChoice || String(test?.file?.id ?? "");
   const waiting = Boolean(busy);
+  const anyway =
+    !active &&
+    (blocked || busy === "anyway" || streamTestStoppedByPlayback(test));
 
   return html`
     <div class="span2 stream-test" ref=${root}>
@@ -367,6 +415,13 @@ export function StreamTestPanel({ prepare }) {
             </details>`
           : null
       }
+      ${
+        anyway
+          ? html`<p class="inline-note stacked-xs">
+              ${STREAM_TEST_ANYWAY_HINT}
+            </p>`
+          : null
+      }
       <div class="actions stacked-sm">
         ${
           active
@@ -392,6 +447,26 @@ export function StreamTestPanel({ prepare }) {
                       : "Test streaming"
                 }
               </button>`
+        }
+        ${
+          anyway
+            ? html`<button
+                type="button"
+                class="secondary"
+                disabled=${waiting}
+                onClick=${(event) =>
+                  start(
+                    event,
+                    streamTestAnywayOptions(test, {
+                      blocked,
+                      last: lastStart.current,
+                      shown: shownStart.current,
+                    }),
+                  )}
+              >
+                ${busy === "anyway" ? "Starting…" : "Test anyway"}
+              </button>`
+            : null
         }
         ${
           test && !active
