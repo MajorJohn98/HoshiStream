@@ -23,6 +23,7 @@ const requestSchema = z
     episodeHint: episodeHintSchema.optional(),
     fileId: z.number().int().nonnegative().optional(),
     mode: z.enum(["basic", "extended"]).optional(),
+    allowPlayback: z.boolean().optional(),
   })
   .strict();
 

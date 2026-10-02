@@ -409,9 +409,10 @@ chooses what to add. The companion, manual import and magnet handler stay.
 
 ### 0029 — Owner-triggered stream test before Add
 
-Accepted 2026-09-30. Phase 1 (server and Add Media) implemented 2026-09-30;
-phases 2 (Chrome companion) and 3 (0028 search) are not. Changes 0028's "No
-peer contact before Add". Plan: `plans/2026-09-30-pre-add-stream-test-plan.md`.
+Accepted 2026-09-30. Phase 1 (server and Add Media) implemented 2026-09-30
+and phase 2 (Chrome companion) 2026-10-01; phase 3 (0028 search) is not.
+Changes 0028's "No peer contact before Add". Plan:
+`plans/2026-09-30-pre-add-stream-test-plan.md`.
 
 Before saving a torrent, the owner may test whether it streams smoothly on
 this connection. The test is advice only: it never blocks or delays Add,
@@ -431,8 +432,9 @@ never marks a source unviable and never feeds source-check outcomes (0019,
 - **Limits.** Tests run one at a time in the source checks' single work
   slot (0023). A basic test takes at most 90 s and about 256 MB; "Test
   longer" takes 180 s and about 1 GB. A test won't start while HoshiStream
-  is streaming and stops early if a stream starts. Results stay in memory
-  for 10 minutes and are never persisted or sent anywhere.
+  is streaming and stops early if a stream starts, unless the owner chooses
+  **Test anyway** for that one test. Results stay in memory for 10 minutes
+  and are never persisted or sent anywhere.
 - **Verdict.** The test compares the average bitrate with the sustained
   swarm rate: Smooth (≥ 1.2×, as in playback telemetry), Tight (≥ 1×),
   Won't keep up, or Inconclusive. It names the bottleneck (the swarm, the
@@ -460,6 +462,20 @@ of the run, since an MP4 indexed at its end needs the tail first. The
 bottleneck and the stale-line check use TorrServer's own download rate,
 because a limit or the line caps what peers send, not what arrives in order.
 The verdict level still uses the in-order rate.
+
+Changed: 2026-10-01, phase 2 built. The companion tests only its prepared
+draft, by draft ID, through three allowlisted helper commands (start, get,
+cancel); the helper strips the infohash. Closing the side panel doesn't
+cancel a test, because the server's budgets and expiry bound it. Another
+source, Clear source, a save or a replacement test ends it. The companion
+has no line measurement and points to the Status page speed test instead.
+
+Changed: 2026-10-01, Test anyway. On a fast line, waiting for playback to
+stop was needless. When playback refuses or stops a test, a one-off **Test
+anyway** runs it again with `allowPlayback`: the test ignores streaming, and
+the result notes that playback shared the line (`sharedWithPlayback`)
+without changing the level. Nothing is remembered, so the next test waits
+for playback again.
 
 ## Retired decisions
 

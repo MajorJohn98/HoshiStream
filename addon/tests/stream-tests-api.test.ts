@@ -74,7 +74,9 @@ function fakeTorrServer() {
   };
 }
 
-async function fixture(options: { service?: boolean } = {}) {
+async function fixture(
+  options: { service?: boolean; streaming?: boolean } = {},
+) {
   root = await mkdtemp(join(process.cwd(), ".test-stream-tests-api-"));
   const uploadRoot = join(root, "media");
   await mkdir(uploadRoot);
@@ -91,7 +93,7 @@ async function fixture(options: { service?: boolean } = {}) {
       torrServer,
       slot: new AnalysisSlot(),
       drafts: imports,
-      lastStreamActivity: () => 0,
+      lastStreamActivity: () => (options.streaming ? Date.now() : 0),
       lineSpeed: () => ({ mbps: 100, source: "configured" }),
       isManagedPath: async (path) => resolve(path).startsWith(uploadRoot + sep),
     });
@@ -216,6 +218,7 @@ describe("stream test API", () => {
       { source: { magnetUri: MAGNET }, fileId: -1 },
       { source: { magnetUri: MAGNET }, type: "album" },
       { source: { magnetUri: MAGNET }, episodeHint: 0 },
+      { source: { magnetUri: MAGNET }, allowPlayback: "yes" },
       { source: { magnetUri: MAGNET }, extra: true },
       "{not json",
     ];
@@ -227,6 +230,25 @@ describe("stream test API", () => {
       expect(JSON.parse(text)).toEqual({ error: "Invalid request" });
     }
     expect(torrServer.addMagnet).not.toHaveBeenCalled();
+  });
+
+  it("tests while something streams only when asked to", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { post, torrServer } = await fixture({ streaming: true });
+    const refused = await post({ source: { magnetUri: MAGNET } });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ code: "streaming_active" });
+    expect(torrServer.addMagnet).not.toHaveBeenCalled();
+
+    const started = await post({
+      source: { magnetUri: MAGNET },
+      allowPlayback: true,
+    });
+    expect(started.status).toBe(202);
+    const state = await started.json();
+    expect(state).not.toHaveProperty("allowPlayback");
+    await vi.waitFor(() => expect(torrServer.addMagnet).toHaveBeenCalled());
   });
 
   it("requires the access token and answers only its own methods", async () => {

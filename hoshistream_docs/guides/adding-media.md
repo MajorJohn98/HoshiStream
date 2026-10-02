@@ -115,6 +115,12 @@ run one at a time, taking turns with source checks. A test won't start
 while something is streaming, and it stops early if playback starts.
 Results stay in memory for 10 minutes and are never saved.
 
+If your line is fast enough to share, press **Test anyway** when playback
+refuses or stops a test. It runs the same test while something plays, for
+that one test only. Playback may slow down, and because the playing torrent
+shares your line, peers may deliver faster than the result shows; a note
+says so.
+
 Like playback, a test joins the swarm: peers and trackers see your public
 IP, and TorrServer may upload pieces it holds ([privacy](privacy-and-network.md)).
 Playing soon after a test may start from the data it already downloaded.
@@ -141,6 +147,7 @@ Browse normally, then use **Add to HoshiStream** on a magnet link or open the
 companion's side panel. Review the suggested name, type and tags before adding.
 You can also paste a magnet or choose/drop a `.torrent` file already downloaded
 through the browser. No indexer, API key or local server address is needed.
+The review also offers the same **Test streaming** check as Add Media.
 
 The native helper transfers only the selected source and approved metadata to
 the local app. It does not export browser cookies or browsing history. A duplicate

@@ -213,6 +213,9 @@ The body is strict JSON:
   pick the file as inspection does: the movie file, or the first episode.
 - `fileId`: test this one-based TorrServer file ID instead.
 - `mode`: `basic` (default) or `extended` (the UI's "Test longer").
+- `allowPlayback`: `true` tests even while something streams (the UI's
+  "Test anyway"). The test skips the `streaming_active` checks, and playback
+  starting doesn't stop it. It applies to this test only.
 
 The state contains:
 
@@ -242,8 +245,9 @@ The state contains:
   - `lineStale`: peers sent more than the last line reading.
   - `remedies`: `waitSeconds`, `bufferBytes`, `fitsCache?`, `copySeconds?`,
     `targetMbps?`, `targetBytes?` and `betterSeeded`.
-  - `flags` (`atLeast`, `stillSpeedingUp`, `sharedWithDiskCopy`) and
-    `suggestTestLonger`.
+  - `flags` (`atLeast`, `stillSpeedingUp`, `sharedWithDiskCopy`, and
+    `sharedWithPlayback` when something streamed while an `allowPlayback`
+    test measured) and `suggestTestLonger`.
 - `stoppedBy`: `time`, `cap`, `stream` (playback started), `complete` (the
   whole file arrived) or `cancel`.
 
@@ -255,7 +259,7 @@ The state never contains a magnet, a local path or a token. Errors are
 | `400` | — | The body fails validation (generic `Invalid request`) |
 | `400` | `invalid_source` | The magnet, `.torrent` or draft can't be tested |
 | `404` | `not_found` | The test expired or the server restarted |
-| `409` | `streaming_active` | A client streamed in the last 10 seconds |
+| `409` | `streaming_active` | A client streamed in the last 10 seconds, and `allowPlayback` isn't set |
 | `409` | `stream_test_unavailable` | This server runs without stream tests |
 | `410` | `draft_expired` | The draft is missing or expired |
 | `429` | `stream_test_busy` | Three tests are already queued |
@@ -263,7 +267,8 @@ The state never contains a magnet, a local path or a token. Errors are
 
 A test that starts can still end `failed` with `torrserver_unavailable`,
 `source_mismatch`, `no_playable_file`, `invalid_file`, `read_failed`,
-`streaming_active` (playback began before it left the queue) or
+`streaming_active` (playback began before it left the queue, without
+`allowPlayback`) or
 `stream_test_failed`. It ends `cancelled` with `draft_discarded` when its
 draft is dropped, `expired` when it waits in the queue past its expiry, or
 `stream_test_unavailable` at shutdown. Metadata that doesn't arrive in time
@@ -285,11 +290,12 @@ Limits:
   soon after may start from cache. The torrent is removed only if the test
   registered it and no other test, draft, episode preview or library entry
   uses it.
-- A stream that starts mid-test stops the test with the figures so far.
+- A stream that starts mid-test stops the test with the figures so far,
+  unless `allowPlayback` is set.
   Playback telemetry ignores torrents under test, and the disk-copy
   archiver yields to a running test as it does to playback.
-- Logs record the test ID, mode, phase, outcome, rates and durations; never
-  a magnet, hash, path, file name or token.
+- Logs record the test ID, mode, phase, outcome, rates, durations and
+  `allowPlayback` when set; never a magnet, hash, path, file name or token.
 
 ### Tags
 

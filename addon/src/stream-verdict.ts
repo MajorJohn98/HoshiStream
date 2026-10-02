@@ -90,6 +90,8 @@ export type StreamVerdict = {
     atLeast: boolean;
     stillSpeedingUp: boolean;
     sharedWithDiskCopy: boolean;
+    /** Test anyway measured while something streamed on the same line. */
+    sharedWithPlayback: boolean;
   };
   suggestTestLonger: boolean;
 };
@@ -109,6 +111,7 @@ export type VerdictInput = {
   /** C: TorrServer's read-ahead window. */
   cacheWindowBytes?: number;
   sharedWithDiskCopy?: boolean;
+  sharedWithPlayback?: boolean;
   /** A stream started, so the test stopped early. */
   streamStarted?: boolean;
   /** Metadata never arrived. */
@@ -208,6 +211,7 @@ export function evaluateStreamTest(input: VerdictInput): StreamVerdict {
     atLeast: swarm?.atLeast ?? false,
     stillSpeedingUp: swarm?.stillSpeedingUp ?? false,
     sharedWithDiskCopy: input.sharedWithDiskCopy ?? false,
+    sharedWithPlayback: input.sharedWithPlayback ?? false,
   };
   const lineStale =
     sent !== undefined &&

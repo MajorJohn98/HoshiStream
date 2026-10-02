@@ -73,6 +73,29 @@ function blankCapture() {
   };
 }
 
+const STREAM_TEST_STATUSES = new Set([
+  "idle",
+  "starting",
+  "ready",
+  "cancelling",
+]);
+
+/**
+ * The pre-add stream test of the prepared draft. `test` is the helper's last
+ * report, `fields` the type and numbering it ran with, `note` a neutral
+ * remark and `message` the last error.
+ */
+function blankStreamTest() {
+  return {
+    status: "idle",
+    test: null,
+    fields: null,
+    note: "",
+    message: "",
+    code: "",
+  };
+}
+
 export function createInitialState() {
   return {
     version: STATE_VERSION,
@@ -82,6 +105,7 @@ export function createInitialState() {
     preview: blankPreview(),
     save: blankSave(),
     capture: blankCapture(),
+    streamTest: blankStreamTest(),
     catalog: { tags: [], series: [], loaded: false },
     editor: { magnetText: "" },
     form: {
@@ -165,6 +189,7 @@ export function selectSource(state, source) {
     preview: blankPreview(),
     save: blankSave(),
     capture: blankCapture(),
+    streamTest: blankStreamTest(),
     form: {
       ...state.form,
       name: carryName(
@@ -196,6 +221,7 @@ export function applyDraftResult(state, draft) {
     },
     preview: blankPreview(),
     save: blankSave(),
+    streamTest: blankStreamTest(),
     form: {
       ...state.form,
       name: carryName(state.form.name, state.form.suggestedName, suggestion),
@@ -505,6 +531,7 @@ export function applyCommitSuccess(state, result) {
     ...state,
     draft: blankDraft(),
     preview: blankPreview(),
+    streamTest: blankStreamTest(),
     save: {
       status: "saved",
       pendingId: "",
@@ -626,11 +653,194 @@ export function markPreviewExpired(
   };
 }
 
+/** The request fields a stream test runs with; editing them dates a result. */
+export function streamTestFields(state) {
+  if (state.form.type !== "series") return { type: "movie" };
+  const seasonHint = seasonHintValue(state.form.seasonHint);
+  const episodeHint = episodeHintValue(state.form.episodeHint);
+  return {
+    type: "series",
+    ...(seasonHint === undefined ? {} : { seasonHint }),
+    ...(episodeHint === undefined ? {} : { episodeHint }),
+  };
+}
+
+/** Why the prepared draft can't be tested now, or "" when it can. */
+export function streamTestBlocker(state, now = Date.now()) {
+  if (state.draft.status === "preparing")
+    return "Wait for the source to finish preparing.";
+  if (state.draft.status === "leased")
+    return "The series preview holds this draft. To test it, cancel the preview and prepare the source again.";
+  if (
+    state.draft.status !== "ready" ||
+    !state.draft.draftId ||
+    isExpired(state.draft.expiresAt, now)
+  )
+    return "Prepare the source again to test it.";
+  return "";
+}
+
+/**
+ * The helper request for a stream test of the prepared draft. `reuse` keeps
+ * the type and numbering of the current test, for Test longer and Test this
+ * file. `allowPlayback` (Test anyway) runs it while something streams.
+ */
+export function buildStreamTestRequest(
+  state,
+  { mode = "basic", fileId, reuse = false, allowPlayback = false } = {},
+) {
+  if (state.draft.status === "ready" && isExpired(state.draft.expiresAt)) {
+    throw createProtocolError(
+      "draft_expired",
+      "This import draft expired. Prepare the source again.",
+    );
+  }
+  const blocker = streamTestBlocker(state);
+  if (blocker) throw createProtocolError("draft_missing", blocker);
+  if (mode !== "basic" && mode !== "extended") {
+    throw createProtocolError(
+      "invalid_mode",
+      "Choose a basic or a longer stream test.",
+    );
+  }
+  if (fileId !== undefined && (!Number.isInteger(fileId) || fileId < 0)) {
+    throw createProtocolError(
+      "invalid_file",
+      "Choose a file from the list, then test it.",
+    );
+  }
+  const fields =
+    reuse && state.streamTest.fields
+      ? { ...state.streamTest.fields }
+      : streamTestFields(state);
+  return {
+    payload: {
+      draftId: state.draft.draftId,
+      ...fields,
+      ...(fileId === undefined ? {} : { fileId }),
+      mode,
+      ...(allowPlayback ? { allowPlayback: true } : {}),
+    },
+    fields,
+  };
+}
+
+/**
+ * The start Test anyway repeats: the start playback refused (`last`), or
+ * else the shown test again with its type and numbering. A test that failed
+ * in the queue reports no file, so its requested file comes from `shown`,
+ * the start that produced it.
+ */
+export function streamTestRetryOptions(
+  state,
+  { last = null, shown = null } = {},
+) {
+  const { test, code } = state.streamTest;
+  if (code === "streaming_active" || !test)
+    return { ...(last ?? { mode: "basic" }), allowPlayback: true };
+  const fileId = Number.isInteger(test.file?.id)
+    ? test.file.id
+    : shown?.testId === test.testId
+      ? shown.fileId
+      : undefined;
+  return {
+    mode: test.mode === "extended" ? "extended" : "basic",
+    ...(fileId === undefined ? {} : { fileId }),
+    reuse: true,
+    allowPlayback: true,
+  };
+}
+
+/** True when the type or numbering changed after the shown test ran. */
+export function streamTestStale(state) {
+  const { test, fields } = state.streamTest;
+  if (!test || !fields) return false;
+  try {
+    const current = streamTestFields(state);
+    return ["type", "seasonHint", "episodeHint"].some(
+      (key) => current[key] !== fields[key],
+    );
+  } catch {
+    return true;
+  }
+}
+
+export function markStreamTestPending(state, status) {
+  return {
+    ...state,
+    streamTest: {
+      ...state.streamTest,
+      status,
+      note: "",
+      message: "",
+      code: "",
+    },
+  };
+}
+
+export function applyStreamTestStarted(state, test, fields) {
+  return {
+    ...state,
+    streamTest: { ...blankStreamTest(), status: "ready", test, fields },
+  };
+}
+
+/** A fresh report of the shown test; a report of any other test is ignored. */
+export function applyStreamTestReport(state, test) {
+  if (state.streamTest.test?.testId !== test?.testId) return state;
+  return { ...state, streamTest: { ...state.streamTest, test } };
+}
+
+/** Ends a pending start or cancel, keeping the shown test. */
+export function settleStreamTest(state, error = null) {
+  return {
+    ...state,
+    streamTest: {
+      ...state.streamTest,
+      status: state.streamTest.test ? "ready" : "idle",
+      note: "",
+      message: error?.message ?? "",
+      code: error ? (error.code ?? "request_failed") : "",
+    },
+  };
+}
+
+export function clearStreamTest(
+  state,
+  { note = "", message = "", code = "" } = {},
+) {
+  return {
+    ...state,
+    streamTest: { ...blankStreamTest(), note, message, code },
+  };
+}
+
+function isStreamTestSection(value) {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    STREAM_TEST_STATUSES.has(value.status) &&
+    (value.test === null || typeof value.test?.testId === "string") &&
+    typeof value.fields === "object"
+  );
+}
+
 export function recoverState(state, now = Date.now()) {
   const next =
     state?.version === STATE_VERSION
       ? structuredClone(state)
       : createInitialState();
+  // Panel state saved before the stream test existed has no section.
+  if (!isStreamTestSection(next.streamTest))
+    next.streamTest = blankStreamTest();
+  if (next.streamTest.status === "starting") {
+    next.streamTest.status = next.streamTest.test ? "ready" : "idle";
+    next.streamTest.code = "stream_test_interrupted";
+    next.streamTest.message =
+      "Starting the stream test was interrupted. Test again.";
+  }
+  if (next.streamTest.status === "cancelling")
+    next.streamTest.status = next.streamTest.test ? "ready" : "idle";
   if (TRANSIENT_DRAFT_STATUSES.has(next.draft.status)) {
     next.draft.status = "error";
     next.draft.code = next.draft.code || "prepare_interrupted";

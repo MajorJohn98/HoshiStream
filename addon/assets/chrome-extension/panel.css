@@ -583,7 +583,8 @@ h3 {
 }
 
 .capture-help summary,
-.details-card summary {
+.details-card summary,
+.stream-test-more summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -596,12 +597,14 @@ h3 {
 }
 
 .capture-help summary::-webkit-details-marker,
-.details-card summary::-webkit-details-marker {
+.details-card summary::-webkit-details-marker,
+.stream-test-more summary::-webkit-details-marker {
   display: none;
 }
 
 .capture-help summary::after,
-.details-card summary::after {
+.details-card summary::after,
+.stream-test-more summary::after {
   content: "";
   width: 6px;
   height: 6px;
@@ -719,6 +722,69 @@ details[open] > summary::after {
   color: var(--muted);
   font-size: 12.75px;
   margin-top: 5px;
+}
+
+.stream-test-gap {
+  margin-top: var(--space-2);
+}
+
+.stream-test-figures {
+  margin-top: var(--space-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.stream-test-figures:empty,
+.stream-test-notes:empty {
+  display: none;
+}
+
+.stream-test-notes p {
+  margin-top: var(--space-2);
+}
+
+.stream-test-more {
+  margin-top: var(--space-2);
+  border-block: 1px solid var(--line);
+}
+
+.stream-test-rows {
+  margin: 0 0 var(--space-3);
+}
+
+.stream-test-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: 4px;
+  font-size: 12.75px;
+}
+
+.stream-test-row dt {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.stream-test-row dd {
+  margin: 0;
+  min-width: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.stream-test-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.stream-test-picker .field {
+  align-self: stretch;
+  margin-top: 0;
 }
 
 @media (max-width: 340px) {

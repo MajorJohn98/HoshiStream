@@ -1,10 +1,13 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import bencode from "bencode";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isStreamTestHash } from "../src/activity.ts";
 import { AnalysisSlot } from "../src/analysis-slot.ts";
+import { NativeClient } from "../src/browser/client.ts";
+import { nativeRequestSchema } from "../src/browser/protocol.ts";
 import { ImportError } from "../src/imports/errors.ts";
 import { magnetHash } from "../src/imports/source-identity.ts";
 import type { TorrentFile } from "../src/media-file-selection.ts";
@@ -397,7 +400,11 @@ describe("stream tests", () => {
         level: "smooth",
         lineStale: false,
         suggestTestLonger: false,
-        flags: { atLeast: false, sharedWithDiskCopy: false },
+        flags: {
+          atLeast: false,
+          sharedWithDiskCopy: false,
+          sharedWithPlayback: false,
+        },
       },
     });
     // Playable files only, by path, so the owner can test another one.
@@ -642,6 +649,59 @@ describe("stream tests", () => {
     const state = await finished(h, started.testId);
     expect(state).toMatchObject({ phase: "failed", code: "streaming_active" });
     expect(h.torr.torrServer.addMagnet).not.toHaveBeenCalled();
+  });
+
+  it("tests anyway while something streams and flags the shared line", async () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...values: unknown[]) => {
+      lines.push(values.map(String).join(" "));
+    });
+    const files = Promise.withResolvers<void>();
+    const h = harness({ torr: { metadata: files.promise } });
+    h.streamAt(h.clock.now() - 1_000);
+    const started = await h.service.start({
+      source: { magnetUri: MAGNET },
+      allowPlayback: true,
+    });
+    await vi.waitFor(() =>
+      expect(h.torr.torrServer.waitForFiles).toHaveBeenCalled(),
+    );
+    // Playback goes on through the metadata wait and the whole measurement.
+    h.clock.advance(1_000);
+    h.streamAt(h.clock.now());
+    for (let at = 5_000; at <= 95_000; at += 5_000)
+      h.clock.at(at, () => h.streamAt(h.clock.now()));
+    files.resolve();
+    const state = await finished(h, started.testId);
+    expect(state).toMatchObject({
+      phase: "done",
+      stoppedBy: "time",
+      verdict: { level: "smooth", flags: { sharedWithPlayback: true } },
+    });
+    expect(state).not.toHaveProperty("allowPlayback");
+    expect(
+      lines.find((line) => line.includes("stream_test_started")),
+    ).toContain('"allowPlayback":true');
+  });
+
+  it("keeps a queued Test anyway when playback starts before its turn", async () => {
+    const h = harness();
+    const releaseCheck = holdSlot(h.slot);
+    const started = await h.service.start({
+      source: { magnetUri: MAGNET },
+      allowPlayback: true,
+    });
+    h.streamAt(h.clock.now());
+    releaseCheck();
+    await expect(finished(h, started.testId)).resolves.toMatchObject({
+      phase: "done",
+      stoppedBy: "time",
+    });
+    // Only that test: the next one waits for playback again.
+    h.streamAt(h.clock.now());
+    await expect(
+      h.service.start({ source: { magnetUri: MAGNET } }),
+    ).rejects.toEqual(importError("streaming_active", 409));
   });
 
   it("waits for a running source check, and a check waits for the test", async () => {
@@ -1071,5 +1131,66 @@ describe("stream tests", () => {
     expect(output).toContain("stream_test_failed");
     for (const secret of [HASH, "magnet:", "Secret.Movie", "tracker.example"])
       expect(output).not.toContain(secret);
+  });
+});
+
+describe("stream test reports in the Chrome companion", () => {
+  it("reach the panel whole, except the infohash", async () => {
+    const reports: StreamTestState[] = [];
+    reports.push(await run(harness({ bitrateMbps: 8 })));
+    reports.push(
+      await run(
+        harness({
+          bitrateMbps: 8,
+          torr: { settings: { DownloadRateLimit: 500 } },
+        }),
+      ),
+    );
+    reports.push(await run(harness({ fetch: { status: 500 } })));
+    const live = harness();
+    const started = await live.service.start({ source: { magnetUri: MAGNET } });
+    live.clock.at(20_000, () => {
+      reports.push(live.service.get(started.testId));
+    });
+    await finished(live, started.testId);
+    // Between them the reports carry every optional field.
+    expect(reports.map((report) => report.phase)).toEqual([
+      "done",
+      "done",
+      "failed",
+      "measuring",
+    ]);
+    expect(reports[0].verdict?.remedies?.fitsCache).toBe(false);
+    expect(reports[1]).toMatchObject({
+      limitMbps: 4.1,
+      verdict: { remedies: { targetMbps: 3.3 } },
+    });
+    expect(reports[2].code).toBeDefined();
+    expect(reports[3].progress?.bytes).toBeGreaterThan(0);
+
+    const root = await mkdtemp(join(tmpdir(), "hoshi-stream-contract-"));
+    directories.push(root);
+    await writeFile(
+      join(root, ".env"),
+      "ADDON_PORT=7001\nACCESS_TOKEN=a-private-contract-test-token\n",
+      { mode: 0o600 },
+    );
+    for (const report of reports) {
+      const client = new NativeClient(
+        { version: 1, extensionId: "a".repeat(32), projectRoot: root },
+        { fetch: async () => new Response(JSON.stringify(report)) },
+      );
+      const relayed = await client.handle(
+        nativeRequestSchema.parse({
+          version: 1,
+          id: randomUUID(),
+          command: "getStreamTest",
+          payload: { testId: report.testId },
+        }),
+      );
+      const { hash, ...shown } = report;
+      expect(hash).toBe(HASH);
+      expect(relayed).toEqual(JSON.parse(JSON.stringify(shown)));
+    }
   });
 });
